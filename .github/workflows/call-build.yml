@@ -1,0 +1,70 @@
+name: Call Build
+
+on:
+  schedule:
+    - cron: "0 12 * * *"
+  repository_dispatch:
+  workflow_dispatch:
+
+env:
+  TZ: UTC
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        config:
+          [
+            {
+              workflow: "build-docker",
+              arch_branch: "linux/amd64,linux/arm64",
+              path_dockerfile: "dockerfile/Dockerfile.alpine",
+              base_image: "alpine:latest",
+              repo_dockerhub: "grinch27/adguardvpn-cli",
+              update_channel: "release",
+              force_push: "false",
+            },
+            {
+              workflow: "build-docker",
+              arch_branch: "linux/amd64,linux/arm64",
+              path_dockerfile: "dockerfile/Dockerfile.alpine",
+              base_image: "alpine:latest",
+              repo_dockerhub: "grinch27/adguardvpn-cli",
+              update_channel: "beta",
+              force_push: "false",
+            },
+            {
+              workflow: "build-docker",
+              arch_branch: "linux/amd64,linux/arm64",
+              path_dockerfile: "dockerfile/Dockerfile.alpine",
+              base_image: "alpine:latest",
+              repo_dockerhub: "grinch27/adguardvpn-cli",
+              update_channel: "nightly",
+              force_push: "false",
+            },
+          ]
+      fail-fast: false
+    steps:
+      - name: Trigger workflow
+        id: trigger
+        working-directory: /
+        env:
+          workflow: ${{ matrix.config.workflow }}
+        run: |
+          data='{
+            "ref": "main",
+            "inputs": {
+              "arch_branch": "${{ matrix.config.arch_branch }}",
+              "path_dockerfile": "${{ matrix.config.path_dockerfile }}",
+              "base_image": "${{ matrix.config.base_image }}",
+              "repo_dockerhub": "${{ matrix.config.repo_dockerhub }}",
+              "update_channel": "${{ matrix.config.update_channel }}",
+              "force_push": "${{ matrix.config.force_push }}"
+            }
+          }'
+          curl -XPOST \
+          -H "Accept: application/vnd.github.v3+json" \
+          -H "Authorization: Bearer ${{ secrets.PAT }}" \
+          https://api.github.com/repos/${{ github.repository }}/actions/workflows/${{ env.workflow }}.yml/dispatches \
+          --data "$data"
