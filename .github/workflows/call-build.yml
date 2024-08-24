@@ -17,16 +17,19 @@ jobs:
         config:
           [
             {
+              workflow: "build-docker",
               app_branch: "adguardvpn-cli",
               tag_repo: "release",
               force_push: "false",
             },
             {
+              workflow: "build-docker",
               app_branch: "adguardvpn-cli",
               tag_repo: "beta",
               force_push: "false",
             },
             {
+              workflow: "build-docker",
               app_branch: "adguardvpn-cli",
               tag_repo: "nightly",
               force_push: "false",
