@@ -492,10 +492,8 @@ jobs:
           for registry_remote in "${registries[@]}"; do
             echo "Registry: ${registry_remote}" >> ${{ env.readme_md }}
             echo "Repository: ${{ env.repo_dockerhub }}" >> ${{ env.readme_md }}
-            echo "Tag: ${{ env.tag_repo }}" >> ${{ env.readme_md }}
-            echo "Version: ${{ env.version }}" >> ${{ env.readme_md }}
             echo "docker load *.tar" >> ${{ env.readme_md }}
-            echo "docker pull ${registry_remote}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}"  >> ${{ env.readme_md }}
+            echo "docker pull ${registry_remote}/${{ env.repo_dockerhub }}:*"  >> ${{ env.readme_md }}
           done
 
           cat ${{ env.readme_md }}
