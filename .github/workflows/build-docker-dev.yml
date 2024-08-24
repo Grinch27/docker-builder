@@ -294,6 +294,7 @@ jobs:
     env:
       registry_local: "localhost:5000"
       version: ${{ needs.check.outputs.version || 'null'}}
+      consistent: ${{ needs.check.outputs.consistent || 'false'}}
     steps:
       - name: Checkout ${{ github.repository }}
         uses: actions/checkout@main
@@ -463,11 +464,12 @@ jobs:
 
       - name: (Push) Image to ${{ env.registry_push }}
         id: push
-        env:
-          tag_version: "${{ env.tag_repo }}-${{ env.version }}"
         working-directory: "${{ github.workspace }}/${{ env.app_branch }}"
         run: |
           echo "Current working directory: $(pwd)"
+
+          declare -a tag_array=("${{ env.tag_repo }}")
+          tag_version="${{ env.tag_repo }}-${{ env.version }}"
 
           if [ -d "push" ]; then
             cd push
@@ -479,10 +481,9 @@ jobs:
           else
             echo "No directory found"
           fi
-
-          declare -a tag_array=("${{ env.tag_repo }}")
-          if [ "${{ needs.check.outputs.consistent }}" == "true" ]; then
-            tag_array+=("${{ env.tag_version }}")
+          
+          if [ "${{ env.consistent }}" == "true" ]; then
+            tag_array+=("${tag_version}")
           fi
 
           IFS=',' read -ra registries <<< "${{ env.registry_push }}"
