@@ -404,7 +404,7 @@ jobs:
       - name: Build and push to local registry
         id: build
         env:
-          output_tar: "${{ github.workspace }}/${{ env.app_branch }}/${{ env.tag_repo }}.tar"
+          output_tar: "${{ github.workspace }}/${{ env.app_branch }}/${{ env.app_branch}}_${{ env.tag_repo }}_${{ env.version }}.tar"
         working-directory: "${{ github.workspace }}/${{ env.app_branch }}/build"
         run: |
           echo "Current working directory: $(pwd)"
