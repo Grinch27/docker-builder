@@ -9,6 +9,11 @@ on:
         type: string
         required: true
         default: "adguardvpn-cli"
+      tag_repo:
+        description: "Tag Push to Repo"
+        type: string
+        required: true
+        default: "latest"
       force_push:
         description: "Force push to Docker Hub"
         type: choice
@@ -17,14 +22,9 @@ on:
         options:
           - "true"
           - "false"
-      tag_repo:
-        description: "Tag Push to Repo"
-        type: string
-        required: false
-        default: "nightly"
 
 env:
-  app_branch: ${{ inputs.app_branch || 'adguardvpn-cli' }}
+  app_branch: ${{ inputs.app_branch }}
   tag_repo: ${{ inputs.tag_repo || 'latest' }}
   force_push: ${{ inputs.force_push || 'false' }}
   registry_push: "docker.io"

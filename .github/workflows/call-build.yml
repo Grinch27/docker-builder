@@ -17,30 +17,18 @@ jobs:
         config:
           [
             {
-              workflow: "build-docker",
-              arch_branch: "linux/amd64,linux/arm64",
-              path_dockerfile: "dockerfile/Dockerfile.alpine",
-              base_image: "alpine:latest",
-              repo_dockerhub: "grinch27/adguardvpn-cli",
-              update_channel: "release",
+              app_branch: "adguardvpn-cli",
+              tag_repo: "release",
               force_push: "false",
             },
             {
-              workflow: "build-docker",
-              arch_branch: "linux/amd64,linux/arm64",
-              path_dockerfile: "dockerfile/Dockerfile.alpine",
-              base_image: "alpine:latest",
-              repo_dockerhub: "grinch27/adguardvpn-cli",
-              update_channel: "beta",
+              app_branch: "adguardvpn-cli",
+              tag_repo: "beta",
               force_push: "false",
             },
             {
-              workflow: "build-docker",
-              arch_branch: "linux/amd64,linux/arm64",
-              path_dockerfile: "dockerfile/Dockerfile.alpine",
-              base_image: "alpine:latest",
-              repo_dockerhub: "grinch27/adguardvpn-cli",
-              update_channel: "nightly",
+              app_branch: "adguardvpn-cli",
+              tag_repo: "nightly",
               force_push: "false",
             },
           ]
@@ -55,11 +43,8 @@ jobs:
           data='{
             "ref": "main",
             "inputs": {
-              "arch_branch": "${{ matrix.config.arch_branch }}",
-              "path_dockerfile": "${{ matrix.config.path_dockerfile }}",
-              "base_image": "${{ matrix.config.base_image }}",
-              "repo_dockerhub": "${{ matrix.config.repo_dockerhub }}",
-              "update_channel": "${{ matrix.config.update_channel }}",
+              "app_branch": "${{ matrix.config.app_branch }}",
+              "tag_repo": "${{ matrix.config.tag_repo }}",
               "force_push": "${{ matrix.config.force_push }}"
             }
           }'
