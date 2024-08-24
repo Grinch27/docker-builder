@@ -328,15 +328,21 @@ jobs:
 
       - name: Load Env
         id: env-app
-        working-directory: "${{ github.workspace }}/${{ env.app_branch }}/env"
+        working-directory: "${{ github.workspace }}/${{ env.app_branch }}"
         run: |
           echo "Current working directory: $(pwd)"
-          for env_file in ./*.env; do
-            if [ -f "${env_file}" ]; then
-              echo "Loading env file: ${env_file}"
-              cat "${env_file}" | awk -F= '/^[a-zA-Z_][a-zA-Z0-9_]*=/ {printf "%s=%s\n", $1, $2}' | tee -a $GITHUB_ENV
-            fi
-          done
+          if [ -d "env" ]; then
+            cd env
+            echo "Changed to directory: $(pwd)"
+            for env_file in ./*.env; do
+              if [ -f "${env_file}" ]; then
+                echo "Loading env file: ${env_file}"
+                cat "${env_file}" | awk -F= '/^[a-zA-Z_][a-zA-Z0-9_]*=/ {printf "%s=%s\n", $1, $2}' | tee -a $GITHUB_ENV
+              fi
+            done
+          else
+            echo "No directory found"
+          fi
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
       - name: Setup Docker
@@ -457,13 +463,27 @@ jobs:
 
       - name: (Push) Image to ${{ env.registry_push }}
         id: push
-        env:
-          extra_tag: "${{ env.tag_repo }}-${{ env.version }}"
+        working-directory: "${{ github.workspace }}/${{ env.app_branch }}"
         run: |
+          echo "Current working directory: $(pwd)"
+
+          ${tag_version}="${{ env.tag_repo }}-${{ env.version }}"
+
+          if [ -d "push" ]; then
+            cd push
+            echo "Changed to directory: $(pwd)"
+            for script_file in ./*.sh; do
+              chmod +x "${script_file}"
+              sh "${script_file}"
+            done
+          else
+            echo "No directory found"
+          fi
+
           declare -a tag_array=("${{ env.tag_repo }}")
           # tag-version
           if [ "${{ needs.check.outputs.consistent }}" == "true" ]; then
-            tag_array+=("${{ env.extra_tag }}")
+            tag_array+=("${${tag_version}}")
           fi
 
           IFS=',' read -ra registries <<< "${{ env.registry_push }}"
