@@ -483,7 +483,7 @@ jobs:
           declare -a tag_array=("${{ env.tag_repo }}")
           # tag-version
           if [ "${{ needs.check.outputs.consistent }}" == "true" ]; then
-            tag_array+=("${tag_version}")
+            tag_array+=("${{ env.tag_version }}")
           fi
 
           IFS=',' read -ra registries <<< "${{ env.registry_push }}"
