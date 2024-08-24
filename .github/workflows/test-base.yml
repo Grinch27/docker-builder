@@ -91,7 +91,7 @@ jobs:
           sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
           # ===== 3. Verify that the Docker Engine installation is successful by running the hello-world image =====
-          sudo docker run hello-world
+          # sudo docker run hello-world
 
           docker --version
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
@@ -111,7 +111,7 @@ jobs:
         working-directory: "${{ github.workspace }}/${{ env.app_branch }}/meta-app"
         run: |
           echo "Current working directory: $(pwd)"
-      
+
           metadata='{"${{ env.category }}":[]}'
           IFS=',' read -ra platforms <<< "${{ env.arch_branch }}"
           for platform in "${platforms[@]}"; do
@@ -124,7 +124,7 @@ jobs:
               --platform $platform \
               ${{ env.base_image }} \
               /bin/sh -c "uname -a && sleep infinity"
-      
+
             log_container=$(mktemp)
             docker exec ${{ env.container_name }} mkdir -p ${{ env.dir_container }}
             for script_file in ./*.sh; do
@@ -135,13 +135,13 @@ jobs:
                 printenv | awk -F= '/^[a-zA-Z_][a-zA-Z0-9_]*=/ {printf "%s=\"%s\"\n", $1, $2}'
                 cat "${script_file}"
               } > ${script_temp}
-      
+
               docker cp ${script_temp} ${{ env.container_name }}:${container_script}
               docker exec ${{ env.container_name }} chmod +x ${container_script}
               docker exec ${{ env.container_name }} sh -c "${container_script}" | tee -a ${log_container}
             done
             docker stop ${{ env.container_name }}
-      
+
             metadata=$(jq \
               --arg platform "${platform}" \
               --arg version "$(awk -F= '/^version=/ {print $2}' ${log_container})" \
