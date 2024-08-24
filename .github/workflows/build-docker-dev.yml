@@ -467,7 +467,7 @@ jobs:
         run: |
           echo "Current working directory: $(pwd)"
 
-          ${tag_version}="${{ env.tag_repo }}-${{ env.version }}"
+          tag_version="${{ env.tag_repo }}-${{ env.version }}"
 
           if [ -d "push" ]; then
             cd push
@@ -483,7 +483,7 @@ jobs:
           declare -a tag_array=("${{ env.tag_repo }}")
           # tag-version
           if [ "${{ needs.check.outputs.consistent }}" == "true" ]; then
-            tag_array+=("${${tag_version}}")
+            tag_array+=("${tag_version}")
           fi
 
           IFS=',' read -ra registries <<< "${{ env.registry_push }}"
