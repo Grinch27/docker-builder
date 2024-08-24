@@ -433,7 +433,8 @@ jobs:
               --rm \
               --detach \
               --platform $platform \
-              ${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}
+              ${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }} \
+              /bin/sh -c "uname -a && sleep infinity"
 
             log_container=$(mktemp)
             docker exec ${{ env.container_name }} mkdir -p ${{ env.dir_container }}

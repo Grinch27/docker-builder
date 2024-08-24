@@ -261,7 +261,7 @@ jobs:
           platform_prefer: "amd64"
         run: |
           # ----- Check if versions are consistent -----
-          if [ ! jq -e ".${category_app}[].version | unique | length == 1" <<< "${metadata_app}" ]; then
+          if [ "$(jq -r ".${category_app}[] | select(.version != null) | .version" <<< "${metadata_app}" | sort -u | wc -l)" -ne 1 ]; then
             version=$(jq -r ".${category_app}[] | select(.platform == ${platform_prefer}) | .version" <<< "${metadata_app}")
             consistent=false
             echo "Versions are not consistent across ${arch_branch}, using ${platform_prefer} version: ${version}"
@@ -433,7 +433,8 @@ jobs:
               --rm \
               --detach \
               --platform $platform \
-              ${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}
+              ${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }} \
+              /bin/sh -c "uname -a && sleep infinity"
 
             log_container=$(mktemp)
             docker exec ${{ env.container_name }} mkdir -p ${{ env.dir_container }}
