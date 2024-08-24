@@ -463,11 +463,11 @@ jobs:
 
       - name: (Push) Image to ${{ env.registry_push }}
         id: push
+        env:
+          tag_version: "${{ env.tag_repo }}-${{ env.version }}"
         working-directory: "${{ github.workspace }}/${{ env.app_branch }}"
         run: |
           echo "Current working directory: $(pwd)"
-
-          tag_version="${{ env.tag_repo }}-${{ env.version }}"
 
           if [ -d "push" ]; then
             cd push
@@ -481,7 +481,6 @@ jobs:
           fi
 
           declare -a tag_array=("${{ env.tag_repo }}")
-          # tag-version
           if [ "${{ needs.check.outputs.consistent }}" == "true" ]; then
             tag_array+=("${{ env.tag_version }}")
           fi
