@@ -261,7 +261,7 @@ jobs:
           platform_prefer: "amd64"
         run: |
           # ----- Check if versions are consistent -----
-          if [ ! jq -e ".${category_app}[].version | unique | length == 1" <<< "${metadata_app}" ]; then
+          if [ "$(jq -r ".${category_app}[] | select(.version != null) | .version" <<< "${metadata_app}" | sort -u | wc -l)" -ne 1 ]; then
             version=$(jq -r ".${category_app}[] | select(.platform == ${platform_prefer}) | .version" <<< "${metadata_app}")
             consistent=false
             echo "Versions are not consistent across ${arch_branch}, using ${platform_prefer} version: ${version}"
@@ -294,6 +294,7 @@ jobs:
     env:
       registry_local: "localhost:5000"
       version: ${{ needs.check.outputs.version || 'null'}}
+      consistent: ${{ needs.check.outputs.consistent || 'false'}}
     steps:
       - name: Checkout ${{ github.repository }}
         uses: actions/checkout@main
@@ -328,15 +329,21 @@ jobs:
 
       - name: Load Env
         id: env-app
-        working-directory: "${{ github.workspace }}/${{ env.app_branch }}/env"
+        working-directory: "${{ github.workspace }}/${{ env.app_branch }}"
         run: |
           echo "Current working directory: $(pwd)"
-          for env_file in ./*.env; do
-            if [ -f "${env_file}" ]; then
-              echo "Loading env file: ${env_file}"
-              cat "${env_file}" | awk -F= '/^[a-zA-Z_][a-zA-Z0-9_]*=/ {printf "%s=%s\n", $1, $2}' | tee -a $GITHUB_ENV
-            fi
-          done
+          if [ -d "env" ]; then
+            cd env
+            echo "Changed to directory: $(pwd)"
+            for env_file in ./*.env; do
+              if [ -f "${env_file}" ]; then
+                echo "Loading env file: ${env_file}"
+                cat "${env_file}" | awk -F= '/^[a-zA-Z_][a-zA-Z0-9_]*=/ {printf "%s=%s\n", $1, $2}' | tee -a $GITHUB_ENV
+              fi
+            done
+          else
+            echo "No directory found"
+          fi
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
       - name: Setup Docker
@@ -398,7 +405,7 @@ jobs:
       - name: Build and push to local registry
         id: build
         env:
-          output_tar: "${{ github.workspace }}/${{ env.app_branch }}/${{ env.tag_repo }}.tar"
+          output_tar: "${{ github.workspace }}/${{ env.app_branch }}/${{ env.app_branch}}_${{ env.tag_repo }}_${{ env.version }}.tar"
         working-directory: "${{ github.workspace }}/${{ env.app_branch }}/build"
         run: |
           echo "Current working directory: $(pwd)"
@@ -457,13 +464,26 @@ jobs:
 
       - name: (Push) Image to ${{ env.registry_push }}
         id: push
-        env:
-          extra_tag: "${{ env.tag_repo }}-${{ env.version }}"
+        working-directory: "${{ github.workspace }}/${{ env.app_branch }}"
         run: |
+          echo "Current working directory: $(pwd)"
+
           declare -a tag_array=("${{ env.tag_repo }}")
-          # tag-version
-          if [ "${{ needs.check.outputs.consistent }}" == "true" ]; then
-            tag_array+=("${{ env.extra_tag }}")
+          tag_version="${{ env.tag_repo }}-${{ env.version }}"
+
+          if [ -d "push" ]; then
+            cd push
+            echo "Changed to directory: $(pwd)"
+            for script_file in ./*.sh; do
+              chmod +x "${script_file}"
+              source "${script_file}"
+            done
+          else
+            echo "No directory found"
+          fi
+
+          if [ "${{ env.consistent }}" == "true" ]; then
+            tag_array+=("${tag_version}")
           fi
 
           IFS=',' read -ra registries <<< "${{ env.registry_push }}"
@@ -490,8 +510,8 @@ jobs:
           for registry_remote in "${registries[@]}"; do
             echo "Registry: ${registry_remote}" >> ${{ env.readme_md }}
             echo "Repository: ${{ env.repo_dockerhub }}" >> ${{ env.readme_md }}
-            echo "docker load *.tar" >> ${{ env.readme_md }}
-            echo "docker pull ${registry_remote}/${{ env.repo_dockerhub }}:*"  >> ${{ env.readme_md }}
+            echo "docker load \*.tar" >> ${{ env.readme_md }}
+            echo "docker pull ${registry_remote}/${{ env.repo_dockerhub }}:\*"  >> ${{ env.readme_md }}
           done
 
           cat ${{ env.readme_md }}
@@ -502,7 +522,7 @@ jobs:
         uses: ncipollo/release-action@main
         with:
           name: "${{ env.repo_dockerhub }}"
-          tag: "tar"
+          tag: "${{ env.app_branch }}"
           artifacts: "${{ github.workspace }}/${{ env.app_branch }}/*.tar"
           allowUpdates: true
           removeArtifacts: false
