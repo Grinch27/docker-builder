@@ -9,4 +9,6 @@ git clone --branch master --single-branch https://github.com/Wind4/vlmcsd.git
 cd vlmcsd/
 make
 
+cp bin/vlmcsd /usr/bin/vlmcsd
+
 /usr/bin/vlmcsd -D -d
