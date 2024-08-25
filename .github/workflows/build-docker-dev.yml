@@ -102,8 +102,8 @@ jobs:
             IFS=',' read -ra platforms <<< "${{ env.arch_branch }}"
             for platform in "${platforms[@]}"; do
               data_json=$(skopeo inspect \
-                --override-os=$(echo ${platform} | awk -F'/' '{print $1}') \
-                --override-arch=$(echo ${platform} | awk -F'/' '{print $2}') \
+                --override-os=$(echo ${platform} | cut -d'/' -f1) \
+                --override-arch=$(echo ${platform} | cut -d'/' -f2-) \
                 --format=json \
                 docker://docker.io/${repo} | jq .)
               metadata=$(jq \
@@ -428,8 +428,8 @@ jobs:
           IFS=',' read -ra platforms <<< "${{ env.arch_branch }}"
           for platform in "${platforms[@]}"; do
             skopeo inspect \
-              --override-os=$(echo $platform | awk -F'/' '{print $1}') \
-              --override-arch=$(echo $platform | awk -F'/' '{print $2}') \
+              --override-os=$(echo ${platform} | cut -d'/' -f1) \
+              --override-arch=$(echo ${platform} | cut -d'/' -f2-) \
               --format=json \
               --tls-verify=false \
               docker://${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}
