@@ -17,7 +17,6 @@ vlmcsd -V
 version=$(vlmcsd -V)
 remove_prefix="vlmcsd svn"
 remove_suffix=", built"
-
 version=${version##*$remove_prefix}
 version=${version%%$remove_suffix*}
 echo "version=${version}"

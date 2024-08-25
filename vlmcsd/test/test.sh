@@ -4,8 +4,11 @@
 dir_current=$(dirname "$(readlink -f "$0")")
 echo "dir_current=${dir_current}"
 
-# version=$(warp-cli --version)
-# remove_prefix="warp-cli "
-# version=${version##*$remove_prefix}
-# echo "version=${version}"
-/usr/bin/vlmcsd -D -d
+vlmcsd -V
+
+version=$(vlmcsd -V)
+remove_prefix="vlmcsd svn"
+remove_suffix=", built"
+version=${version##*$remove_prefix}
+version=${version%%$remove_suffix*}
+echo "version=${version}"
