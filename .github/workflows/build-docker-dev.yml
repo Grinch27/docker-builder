@@ -476,7 +476,7 @@ jobs:
             echo "Changed to directory: $(pwd)"
             for script_file in ./*.sh; do
               chmod +x "${script_file}"
-              sh "${script_file}"
+              source "${script_file}"
             done
           else
             echo "No directory found"
@@ -510,8 +510,8 @@ jobs:
           for registry_remote in "${registries[@]}"; do
             echo "Registry: ${registry_remote}" >> ${{ env.readme_md }}
             echo "Repository: ${{ env.repo_dockerhub }}" >> ${{ env.readme_md }}
-            echo "docker load *.tar" >> ${{ env.readme_md }}
-            echo "docker pull ${registry_remote}/${{ env.repo_dockerhub }}:*"  >> ${{ env.readme_md }}
+            echo "docker load \*.tar" >> ${{ env.readme_md }}
+            echo "docker pull ${registry_remote}/${{ env.repo_dockerhub }}:\*"  >> ${{ env.readme_md }}
           done
 
           cat ${{ env.readme_md }}
