@@ -6,7 +6,7 @@ echo "dir_current=${dir_current}"
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update --ignore-missing
-apt-get install -y --no-install-recommends \
+apt-get install -y --no-install-recommends -qq \
     ca-certificates \
     gpg \
     curl \
