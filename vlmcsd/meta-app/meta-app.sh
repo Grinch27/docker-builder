@@ -15,7 +15,7 @@ cp bin/vlmcsd /usr/bin/vlmcsd
 vlmcsd -V
 
 version=$(vlmcsd -V)
-remove_prefix="vlmcsd "
+remove_prefix="vlmcsd svn"
 remove_suffix=", built"
 
 version=${version##*$remove_prefix}
