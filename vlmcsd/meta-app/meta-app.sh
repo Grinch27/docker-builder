@@ -11,4 +11,5 @@ make
 
 cp bin/vlmcsd /usr/bin/vlmcsd
 
-/usr/bin/vlmcsd -D -d
+# /usr/bin/vlmcsd -D -d
+/usr/bin/vlmcsd -d
