@@ -14,9 +14,9 @@ apt-get install -y --no-install-recommends \
     expect \
     iproute2 \
     jq \
-    iputils-ping \
-    html-xml-utils \
-    tidy
+    iputils-ping
+    # html-xml-utils \
+    # tidy
     # dbus
     # nano
     # man
@@ -33,7 +33,16 @@ export FILE_HTML="/latest.html"
 curl -fsSL ${URL_HTML} -o ${FILE_HTML}
 # cat ${FILE_HTML}
 
-# 提取带有 data-signature-uri 属性的 <option> 标签的 value 属性并存储到文件中
-tidy -quiet -errors -modify ${FILE_HTML}
-cat ${FILE_HTML} | hxselect 'option[data-signature-uri]::attr(value)' >> /tmp/download_links.txt
-cat /tmp/download_links.txt
+# DOWNLOAD_URL=$(cat ${FILE_HTML} | grep -oP 'https://www.download-express-apps.net/clients/linux/xv_.*?_armhf.deb' | head -1)
+if [ "$OS_ARCH" = "amd64" ]; then
+    DOWNLOAD_URL=$(cat ${FILE_HTML} | grep -oP 'https://.*?/clients/linux/.*?_amd64.deb' | head -1);
+elif [ "$OS_ARCH" = "i386" ]; then
+    DOWNLOAD_URL=$(cat ${FILE_HTML} | grep -oP 'https://.*?/clients/linux/.*?_i386.deb' | head -1);
+else
+    DOWNLOAD_URL=$(cat ${FILE_HTML} | grep -oP 'https://.*?/clients/linux/.*?_armhf.deb' | head -1);
+fi
+
+echo "DOWNLOAD_URL=${DOWNLOAD_URL}"
+# curl -fsSL ${DOWNLOAD_URL} -o expressvpn.deb \
+# dpkg -i expressvpn.deb \
+# rm expressvpn_${APP_VER}_${APP_PLATFORM}.deb
