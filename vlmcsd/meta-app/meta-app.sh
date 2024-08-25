@@ -14,6 +14,14 @@ cp bin/vlmcsd /usr/bin/vlmcsd
 # /usr/bin/vlmcsd -D -d
 vlmcsd -V
 
+version=$(vlmcsd -V)
+remove_prefix="vlmcsd "
+remove_suffix=", built"
+
+version=${version##*$remove_prefix}
+version=${version%%$remove_suffix*}
+echo "version=${version}"
+
 # Usage:
 #    /usr/bin/vlmcsd [ options ]
 # Where:
