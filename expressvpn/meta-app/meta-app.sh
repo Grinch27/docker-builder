@@ -15,7 +15,8 @@ apt-get install -y --no-install-recommends \
     iproute2 \
     jq \
     iputils-ping \
-    html-xml-utils
+    html-xml-utils \
+    tidy
     # dbus
     # nano
     # man
@@ -33,5 +34,6 @@ curl -fsSL ${URL_HTML} -o ${FILE_HTML}
 # cat ${FILE_HTML}
 
 # 提取带有 data-signature-uri 属性的 <option> 标签的 value 属性并存储到文件中
+tidy -quiet -errors -modify ${FILE_HTML}
 cat ${FILE_HTML} | hxselect 'option[data-signature-uri]::attr(value)' >> /tmp/download_links.txt
 cat /tmp/download_links.txt
