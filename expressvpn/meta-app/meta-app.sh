@@ -11,19 +11,19 @@ apt-get install -y --no-install-recommends \
     curl \
     lsb-release \
     systemd \
-    # dbus
-    # nano
-    # man
     expect \
     iproute2 \
     jq \
+    iputils-ping \
+    html-xml-utils
+    # dbus
+    # nano
+    # man
     # iptables
     # nftables
-    iputils-ping \
     # vim
     # sudo
     # procps
-    html-xml-utils \
 # Download Expressvpn file
 OS_ARCH=$(dpkg --print-architecture)
 OS_VER=$(lsb_release -cs)
