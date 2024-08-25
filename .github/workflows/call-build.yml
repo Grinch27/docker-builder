@@ -18,6 +18,12 @@ jobs:
           [
             {
               workflow: "build-docker",
+              app_branch: "cloudflare-warp",
+              tag_repo: "latest",
+              force_push: "false",
+            },
+            {
+              workflow: "build-docker",
               app_branch: "adguardvpn-cli",
               tag_repo: "release",
               force_push: "false",
