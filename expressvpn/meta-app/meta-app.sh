@@ -35,18 +35,17 @@ curl -fsSL ${URL_HTML} -o ${FILE_HTML}
 
 # ----- select download url -----
 echo "OS_ARCH=${OS_ARCH}"
-if [[ "${OS_ARCH}" == "amd64" ]]; then
+if [ "${OS_ARCH}" = "amd64" ]; then
     URL_DOWNLOAD=$(cat ${FILE_HTML} | grep -oP 'https://.*?/clients/linux/.*?_amd64.deb' | head -1);
-elif [[ "${OS_ARCH}" == "i386" ]]; then
+elif [ "${OS_ARCH}" = "i386" ]; then
     URL_DOWNLOAD=$(cat ${FILE_HTML} | grep -oP 'https://.*?/clients/linux/.*?_i386.deb' | head -1);
-elif [[ "${OS_ARCH}" == *"arm"* ]]; then
+elif [ "$(echo "$OS_ARCH" | grep -q "arm")" ]; then
     URL_DOWNLOAD=$(cat ${FILE_HTML} | grep -oP 'https://.*?/clients/linux/.*?_armhf.deb' | head -1);
 else
     echo "Unsupported architecture: ${OS_ARCH}"
     exit 1
 fi
 echo "URL_DOWNLOAD=${URL_DOWNLOAD}"
-
 # curl -fsSL ${URL_DOWNLOAD} -o expressvpn.deb \
 # dpkg -i expressvpn.deb \
 # rm expressvpn_${APP_VER}_${APP_PLATFORM}.deb
