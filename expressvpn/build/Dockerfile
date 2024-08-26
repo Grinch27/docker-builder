@@ -69,4 +69,4 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     && rm -rf /var/log/*.log \
     && unset DEBIAN_FRONTEND
 
-ENTRYPOINT ["/startapp.sh"]
+# ENTRYPOINT ["/startapp.sh"]
