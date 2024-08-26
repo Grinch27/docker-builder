@@ -484,7 +484,7 @@ jobs:
 
             # 导出镜像到 tar 文件
             tar_file="${{ env.app_branch }}_${{ env.tag_repo }}_${{ env.version }}_$(echo ${platform} | tr '/' '_').tar"
-            docker save --output ./${tar_file} ${{ env.repo_dockerhub }}:${{ env.tag_repo }}
+            docker save --output ./${tar_file} ${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}
             echo "Exported $platform image to ${tar_file}"
           done
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
