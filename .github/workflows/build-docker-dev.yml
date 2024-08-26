@@ -103,7 +103,7 @@ jobs:
             for platform in "${platforms[@]}"; do
               data_json=$(skopeo inspect \
                 --override-os=$(echo ${platform} | cut -d'/' -f1) \
-                --override-arch=$(echo ${platform} | cut -d'/' -f2-) \
+                --override-arch=$(echo ${platform} | cut -d'/' -f2- | tr -d '/') \
                 --format=json \
                 docker://docker.io/${repo} | jq .)
               metadata=$(jq \
@@ -429,7 +429,7 @@ jobs:
           for platform in "${platforms[@]}"; do
             skopeo inspect \
               --override-os=$(echo ${platform} | cut -d'/' -f1) \
-              --override-arch=$(echo ${platform} | cut -d'/' -f2-) \
+              --override-arch=$(echo ${platform} | cut -d'/' -f2- | tr -d '/') \
               --format=json \
               --tls-verify=false \
               docker://${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}
