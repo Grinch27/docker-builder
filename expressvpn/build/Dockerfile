@@ -70,3 +70,4 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     && unset DEBIAN_FRONTEND
 
 # ENTRYPOINT ["/startapp.sh"]
+ENTRYPOINT ["sh", "-c", "uname -a && sleep infinity"]
