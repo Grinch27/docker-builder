@@ -332,18 +332,26 @@ jobs:
         working-directory: "${{ github.workspace }}/${{ env.app_branch }}"
         run: |
           echo "Current working directory: $(pwd)"
-          if [ -d "env" ]; then
-            cd env
+
+          dir_step="env"
+          dir_original=$(pwd)
+          if [ -d "${dir_step}" ]; then
+            cd ./${dir_step}
             echo "Changed to directory: $(pwd)"
+
             for env_file in ./*.env; do
               if [ -f "${env_file}" ]; then
                 echo "Loading env file: ${env_file}"
                 cat "${env_file}" | awk -F= '/^[a-zA-Z_][a-zA-Z0-9_]*=/ {printf "%s=%s\n", $1, $2}' | tee -a $GITHUB_ENV
               fi
             done
+
+            cd "${dir_original}"
+            echo "Changed back to original directory: $(pwd)"
           else
             echo "No directory found"
           fi
+
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
       - name: Setup Docker
@@ -421,7 +429,7 @@ jobs:
         env:
           container_name: container-test
           dir_container: "/tmp"
-        working-directory: "${{ github.workspace }}/${{ env.app_branch }}/test"
+        working-directory: "${{ github.workspace }}/${{ env.app_branch }}"
         run: |
           echo "Current working directory: $(pwd)"
 
@@ -445,19 +453,33 @@ jobs:
 
             log_container=$(mktemp)
             docker exec ${{ env.container_name }} mkdir -p ${{ env.dir_container }}
-            for script_file in ./*.sh; do
-              container_script="${{ env.dir_container }}/$(basename ${script_file})"
-              script_temp=$(mktemp)
-              {
-                echo "#!/bin/sh"
-                printenv | awk -F= '/^[a-zA-Z_][a-zA-Z0-9_]*=/ {printf "%s=\"%s\"\n", $1, $2}'
-                cat "${script_file}"
-              } > ${script_temp}
 
-              docker cp ${script_temp} ${{ env.container_name }}:${container_script}
-              docker exec ${{ env.container_name }} chmod +x ${container_script}
-              docker exec ${{ env.container_name }} sh -c "${container_script}" | tee -a ${log_container}
-            done
+            dir_step="test"
+            dir_original=$(pwd)
+            if [ -d "${dir_step}" ]; then
+              cd ./${dir_step}
+              echo "Changed to directory: $(pwd)"
+
+              for script_file in ./*.sh; do
+                container_script="${{ env.dir_container }}/$(basename ${script_file})"
+                script_temp=$(mktemp)
+                {
+                  echo "#!/bin/sh"
+                  printenv | awk -F= '/^[a-zA-Z_][a-zA-Z0-9_]*=/ {printf "%s=\"%s\"\n", $1, $2}'
+                  cat "${script_file}"
+                } > ${script_temp}
+
+                docker cp ${script_temp} ${{ env.container_name }}:${container_script}
+                docker exec ${{ env.container_name }} chmod +x ${container_script}
+                docker exec ${{ env.container_name }} sh -c "${container_script}" | tee -a ${log_container}
+              done
+
+              cd "${dir_original}"
+              echo "Changed back to original directory: $(pwd)"
+            else
+              echo "No directory found"
+            fi
+            
             docker stop ${{ env.container_name }}
           done
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
@@ -467,17 +489,22 @@ jobs:
         working-directory: "${{ github.workspace }}/${{ env.app_branch }}"
         run: |
           echo "Current working directory: $(pwd)"
-
           declare -a tag_array=("${{ env.tag_repo }}")
           tag_version="${{ env.tag_repo }}-${{ env.version }}"
 
-          if [ -d "push" ]; then
-            cd push
+          dir_step="push"
+          dir_original=$(pwd)
+          if [ -d "${dir_step}" ]; then
+            cd ./${dir_step}
             echo "Changed to directory: $(pwd)"
+
             for script_file in ./*.sh; do
               chmod +x "${script_file}"
               source "${script_file}"
             done
+
+            cd "${dir_original}"
+            echo "Changed back to original directory: $(pwd)"
           else
             echo "No directory found"
           fi
@@ -498,6 +525,27 @@ jobs:
 
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
+      # - name: Export Docker images to tar files
+      #   id: tar
+      #   working-directory: "${{ github.workspace }}/${{ env.app_branch }}"
+      #   run: |
+      #     echo "Current working directory: $(pwd)"
+
+      #     IFS=',' read -ra platforms <<< "${{ env.arch_branch }}"
+      #     for platform in "${platforms[@]}"; do
+      #       os=$(echo ${platform} | cut -d'/' -f1)
+      #       arch=$(echo ${platform} | cut -d'/' -f2- | tr -d '/')
+
+      #       # 拉取镜像
+      #       docker pull --platform $platform ${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}
+
+      #       # 导出镜像到 tar 文件
+      #       tar_file="${{ env.repo_dockerhub }}_${arch}.tar"
+      #       docker save --output $tar_file ${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}
+
+      #       echo "Exported $platform image to $tar_file"
+      #     done
+
       - name: (README) Generate
         id: readme
         env:
@@ -505,7 +553,6 @@ jobs:
         working-directory: "${{ github.workspace }}/${{ env.app_branch }}"
         run: |
           echo "Current working directory: $(pwd)"
-
           IFS=',' read -ra registries <<< "${{ env.registry_push }}" >> ${{ env.readme_md }}
           for registry_remote in "${registries[@]}"; do
             echo "Registry: ${registry_remote}" >> ${{ env.readme_md }}
