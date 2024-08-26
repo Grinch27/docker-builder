@@ -413,7 +413,7 @@ jobs:
       - name: Build and push to local registry
         id: build
         env:
-          output_tar: "${{ github.workspace }}/${{ env.app_branch }}/${{ env.app_branch}}_${{ env.tag_repo }}_${{ env.version }}.tar"
+          output_tar: "${{ github.workspace }}/${{ env.app_branch }}/${{ env.app_branch }}_${{ env.tag_repo }}_${{ env.version }}.tar"
         working-directory: "${{ github.workspace }}/${{ env.app_branch }}/build"
         run: |
           echo "Current working directory: $(pwd)"
@@ -481,6 +481,11 @@ jobs:
             fi
             
             docker stop ${{ env.container_name }}
+
+            # 导出镜像到 tar 文件
+            tar_file="${{ env.app_branch }}_${{ env.tag_repo }}_${{ env.version }}_$(echo ${platform} | cut -d'/' -f2- | tr -d '/').tar"
+            docker save --output ./${tar_file} ${{ env.repo_dockerhub }}:${{ env.tag_repo }}
+            echo "Exported $platform image to ${tar_file}"
           done
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
@@ -524,27 +529,6 @@ jobs:
           done
 
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
-
-      # - name: Export Docker images to tar files
-      #   id: tar
-      #   working-directory: "${{ github.workspace }}/${{ env.app_branch }}"
-      #   run: |
-      #     echo "Current working directory: $(pwd)"
-
-      #     IFS=',' read -ra platforms <<< "${{ env.arch_branch }}"
-      #     for platform in "${platforms[@]}"; do
-      #       os=$(echo ${platform} | cut -d'/' -f1)
-      #       arch=$(echo ${platform} | cut -d'/' -f2- | tr -d '/')
-
-      #       # 拉取镜像
-      #       docker pull --platform $platform ${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}
-
-      #       # 导出镜像到 tar 文件
-      #       tar_file="${{ env.repo_dockerhub }}_${arch}.tar"
-      #       docker save --output $tar_file ${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}
-
-      #       echo "Exported $platform image to $tar_file"
-      #     done
 
       - name: (README) Generate
         id: readme
