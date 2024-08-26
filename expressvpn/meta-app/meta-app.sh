@@ -6,8 +6,8 @@ echo "dir_current=${dir_current}"
 
 apt-get update --ignore-missing -qq
 apt-get install -y --no-install-recommends -qq \
+    ca-certificates \
     curl
-    # ca-certificates \
     # gpg \
     # lsb-release
     # systemd \
