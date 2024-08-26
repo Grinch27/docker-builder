@@ -20,6 +20,5 @@ docker buildx build \
     --tag "${registry_local}/${repo_dockerhub}:${tag_repo}" \
     --label version=${version} \
     --output type=registry,registry.insecure=true \
-    --output type=tar,dest=${output_tar} \
     .
-
+# --output type=tar,dest=${output_tar} \

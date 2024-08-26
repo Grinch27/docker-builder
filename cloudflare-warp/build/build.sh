@@ -20,5 +20,5 @@ docker buildx build \
     --build-arg base_image=${base_image} \
     --label version=${version} \
     --output type=registry,registry.insecure=true \
-    --output type=tar,dest=${output_tar} \
     .
+# --output type=tar,dest=${output_tar} \

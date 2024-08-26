@@ -21,5 +21,5 @@ docker buildx build \
     --build-arg update_channel=${tag_repo} \
     --label version=${version} \
     --output type=registry,registry.insecure=true \
-    --output type=tar,dest=${output_tar} \
     .
+# --output type=tar,dest=${output_tar} \
