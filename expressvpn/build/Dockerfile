@@ -41,7 +41,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
         URL_DOWNLOAD=$(grep -oP 'https://.*?/clients/linux/.*?_i386.deb' ${FILE_HTML} | head -1); \
     elif echo "${OS_ARCH}" | grep -q "arm"; then \
         URL_DOWNLOAD=$(grep -oP 'https://.*?/clients/linux/.*?_armhf.deb' ${FILE_HTML} | head -1); \
-    fi
+    fi \
     && export FILE_DEB="/expressvpn.deb" \
     && curl -fsSL ${URL_DOWNLOAD} -o ${FILE_DEB} \
     && dpkg -i ${FILE_DEB} \

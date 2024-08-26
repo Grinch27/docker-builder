@@ -46,6 +46,6 @@ else
     exit 1
 fi
 echo "URL_DOWNLOAD=${URL_DOWNLOAD}"
-# curl -fsSL ${URL_DOWNLOAD} -o expressvpn.deb \
-# dpkg -i expressvpn.deb \
-# rm expressvpn_${APP_VER}_${APP_PLATFORM}.deb
+
+version=$(basename ${URL_DOWNLOAD} | awk -F'_' '{print $2}')
+echo "version=${version}"
