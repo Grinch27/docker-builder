@@ -425,13 +425,15 @@ jobs:
         run: |
           echo "Current working directory: $(pwd)"
 
-          skopeo inspect \
-            --format=json \
-            --tls-verify=false \
-            docker://${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}
-
           IFS=',' read -ra platforms <<< "${{ env.arch_branch }}"
           for platform in "${platforms[@]}"; do
+            # skopeo inspect \
+            #   --override-os=$(echo ${platform} | cut -d'/' -f1) \
+            #   --override-arch=$(echo ${platform} | cut -d'/' -f2-) \
+            #   --format=json \
+            #   --tls-verify=false \
+            #   docker://${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}
+            
             docker pull --platform $platform ${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}
             docker run \
               --name ${{ env.container_name }} \
