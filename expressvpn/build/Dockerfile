@@ -29,9 +29,21 @@ RUN export DEBIAN_FRONTEND=noninteractive \
         # vim \
         # sudo \
         # procps \
-    # Download Expressvpn file
+    # System info
     && OS_ARCH=$(dpkg --print-architecture) \
     && OS_VER=$(lsb_release -cs) \
+    # Fix armhf
+    && if echo "${OS_ARCH}" | grep -q "arm"; then \
+        dpkg --add-architecture armhf \
+        && apt update --ignore-missing \
+        && apt install -y --no-install-recommends --fix-missing \
+            libc6:armhf \
+            libstdc++6:armhf \
+        && cd /lib \
+        # && ln -s arm-linux-gnueabihf/ld-2.23.so ld-linux.so.3; \
+        && ln -s $(find /lib -name 'ld-*.so' | grep 'arm-linux-gnueabihf' | head -n 1) ld-linux.so.3; \
+    fi \
+    # Download Expressvpn file
     && export URL_HTML="https://www.expressvpn.works/latest" \
     && export FILE_HTML="/latest.html" \
     && curl -fsSL ${URL_HTML} -o ${FILE_HTML} \
