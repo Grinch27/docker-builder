@@ -99,6 +99,7 @@ jobs:
           metadata='{"${{ env.category }}":[]}'
           declare -a repo_array=("${{ env.base_image }}" "${{ env.repo_dockerhub }}:${{ env.tag_repo }}")
           for repo in "${repo_array[@]}"; do
+            skopeo inspect --raw docker://docker.io/${repo}
             IFS=',' read -ra platforms <<< "${{ env.arch_branch }}"
             for platform in "${platforms[@]}"; do
               data_json=$(skopeo inspect \
