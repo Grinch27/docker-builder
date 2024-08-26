@@ -4,9 +4,9 @@
 dir_current=$(dirname "$(readlink -f "$0")")
 echo "dir_current=${dir_current}"
 
-expressvpn -h
+expressvpn --version
 
-version=$(expressvpn -h)
+version=$(expressvpn --version)
 remove_prefix="expressvpn"
 # remove_suffix=", built"
 version=${version##*$remove_prefix}
