@@ -35,8 +35,8 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     # Fix armhf
     && if echo "${OS_ARCH}" | grep -q "arm"; then \
         dpkg --add-architecture armhf \
-        && apt update --ignore-missing \
-        && apt install -y --no-install-recommends --fix-missing \
+        && apt-get update --ignore-missing \
+        && apt-get install -y --no-install-recommends --fix-missing \
             libc6:armhf \
             libstdc++6:armhf \
         && cd /lib \
