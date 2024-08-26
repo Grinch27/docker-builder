@@ -523,9 +523,9 @@ jobs:
           for registry_remote in "${registries[@]}"; do
             for tag_each in "${tag_array[@]}"; do
               docker buildx imagetools create --tag "${registry_remote}/${{ env.repo_dockerhub }}:${tag_each}" "${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}"
-              skopeo inspect \
-                --format=json \
-                docker://${registry_remote}/${{ env.repo_dockerhub }}:${tag_each}
+              # skopeo inspect \
+              #   --format=json \
+              #   docker://${registry_remote}/${{ env.repo_dockerhub }}:${tag_each}
             done
           done
 
