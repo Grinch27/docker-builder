@@ -1,4 +1,4 @@
-name: Test Base
+name: Base Image Test
 
 on:
   repository_dispatch:
