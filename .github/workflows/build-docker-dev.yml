@@ -443,12 +443,13 @@ jobs:
             #   docker://${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}
             
             docker pull --platform $platform ${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}
+            docker tag ${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }} ${{ env.repo_dockerhub }}:${{ env.tag_repo }}
             docker run \
               --name ${{ env.container_name }} \
               --rm \
               --detach \
               --platform $platform \
-              ${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }} \
+              ${{ env.repo_dockerhub }}:${{ env.tag_repo }} \
               /bin/sh -c "uname -a && sleep infinity"
 
             dir_step="test"
@@ -484,7 +485,7 @@ jobs:
 
             # 导出镜像到 tar 文件
             tar_file="${{ env.app_branch }}_${{ env.tag_repo }}_${{ env.version }}_$(echo ${platform} | tr '/' '_').tar"
-            docker save --output ./${tar_file} ${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}
+            docker save --output ./${tar_file} ${{ env.repo_dockerhub }}:${{ env.tag_repo }}
             echo "Exported $platform image to ${tar_file}"
           done
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
@@ -541,8 +542,8 @@ jobs:
           for registry_remote in "${registries[@]}"; do
             echo "Registry: ${registry_remote}" >> ${{ env.readme_md }}
             echo "Repository: ${{ env.repo_dockerhub }}" >> ${{ env.readme_md }}
-            echo "docker load \*.tar" >> ${{ env.readme_md }}
             echo "docker pull ${registry_remote}/${{ env.repo_dockerhub }}:\*"  >> ${{ env.readme_md }}
+            echo "docker load < \*.tar" >> ${{ env.readme_md }}
           done
 
           cat ${{ env.readme_md }}
