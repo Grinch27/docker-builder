@@ -36,11 +36,11 @@ curl -fsSL ${URL_HTML} -o ${FILE_HTML}
 # ----- select download url -----
 echo "OS_ARCH=${OS_ARCH}"
 if [ "${OS_ARCH}" = "amd64" ]; then
-    URL_DOWNLOAD=$(cat ${FILE_HTML} | grep -oP 'https://.*?/clients/linux/.*?_amd64.deb' | head -1);
+    URL_DOWNLOAD=$(grep -oP 'https://.*?/clients/linux/.*?_amd64.deb' ${FILE_HTML} | head -1);
 elif [ "${OS_ARCH}" = "i386" ]; then
-    URL_DOWNLOAD=$(cat ${FILE_HTML} | grep -oP 'https://.*?/clients/linux/.*?_i386.deb' | head -1);
-elif echo "$OS_ARCH" | grep -q "arm"; then
-    URL_DOWNLOAD=$(cat ${FILE_HTML} | grep -oP 'https://.*?/clients/linux/.*?_armhf.deb' | head -1);
+    URL_DOWNLOAD=$(grep -oP 'https://.*?/clients/linux/.*?_i386.deb' ${FILE_HTML} | head -1);
+elif echo "${OS_ARCH}" | grep -q "arm"; then
+    URL_DOWNLOAD=$(grep -oP 'https://.*?/clients/linux/.*?_armhf.deb' ${FILE_HTML} | head -1);
 else
     echo "Unsupported architecture: ${OS_ARCH}"
     exit 1
