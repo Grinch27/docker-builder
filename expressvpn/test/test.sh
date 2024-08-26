@@ -7,8 +7,8 @@ echo "dir_current=${dir_current}"
 expressvpn --version
 
 version=$(expressvpn --version)
-remove_prefix="expressvpn"
-# remove_suffix=", built"
+remove_prefix="expressvpn version "
+remove_suffix=" ("
 version=${version##*$remove_prefix}
-# version=${version%%$remove_suffix*}
+version=${version%%$remove_suffix*}
 echo "version=${version}"
