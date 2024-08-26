@@ -33,7 +33,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     && OS_ARCH=$(dpkg --print-architecture) \
     && OS_VER=$(lsb_release -cs) \
     # Fix armhf
-    && if echo "${OS_ARCH}" | grep -q "arm"; then \
+    && if [ "${OS_ARCH}" = "arm64" ]; then \
         dpkg --add-architecture armhf \
         && apt-get update --ignore-missing \
         && apt-get install -y --no-install-recommends --fix-missing \
