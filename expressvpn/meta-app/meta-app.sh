@@ -47,5 +47,5 @@ else
 fi
 echo "URL_DOWNLOAD=${URL_DOWNLOAD}"
 
-version=$(basename ${URL_DOWNLOAD} | awk -F'_' '{print $2}')
+version=$(basename ${URL_DOWNLOAD} | awk -F'_' '{print $2}' | awk -F'-' '{print $1}')
 echo "version=${version}"
