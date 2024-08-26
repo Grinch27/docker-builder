@@ -8,13 +8,13 @@ apt-get update --ignore-missing -qq
 apt-get install -y --no-install-recommends -qq \
     ca-certificates \
     gpg \
-    curl \
-    lsb-release \
-    systemd \
-    expect \
-    iproute2 \
-    jq \
-    iputils-ping
+    curl
+    # lsb-release
+    # systemd \
+    # expect \
+    # iproute2 \
+    # jq \
+    # iputils-ping
     # html-xml-utils \
     # tidy
     # dbus
@@ -28,7 +28,7 @@ apt-get install -y --no-install-recommends -qq \
 
 # ===== Download deb file =====
 OS_ARCH=$(dpkg --print-architecture)
-OS_VER=$(lsb_release -cs)
+# OS_VER=$(lsb_release -cs)
 export URL_HTML="https://www.expressvpn.works/latest"
 export FILE_HTML="/latest.html"
 curl -fsSL ${URL_HTML} -o ${FILE_HTML}
