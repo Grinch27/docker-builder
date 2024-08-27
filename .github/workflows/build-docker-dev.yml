@@ -99,14 +99,28 @@ jobs:
           metadata='{"${{ env.category }}":[]}'
           declare -a repo_array=("${{ env.base_image }}" "${{ env.repo_dockerhub }}:${{ env.tag_repo }}")
           for repo in "${repo_array[@]}"; do
-            skopeo inspect --raw docker://docker.io/${repo}
             IFS=',' read -ra platforms <<< "${{ env.arch_branch }}"
             for platform in "${platforms[@]}"; do
-              data_json=$(skopeo inspect \
-                --override-os=$(echo ${platform} | cut -d'/' -f1) \
-                --override-arch=$(echo ${platform} | cut -d'/' -f2-) \
-                --format=json \
-                docker://docker.io/${repo} | jq .)
+              os=$(echo ${platform} | cut -d'/' -f1)
+              arch=$(echo ${platform} | cut -d'/' -f2-)
+              
+              if echo "${arch}" | grep -q "arm"; then
+                variant=$(echo ${arch} | cut -d'/' -f2)
+                arch=$(echo ${arch} | cut -d'/' -f1)
+                data_json=$(skopeo inspect \
+                  --override-os=${os} \
+                  --override-arch=${arch} \
+                  --override-variant=${variant} \
+                  --format=json \
+                  docker://docker.io/${repo} | jq .)
+              else
+                data_json=$(skopeo inspect \
+                  --override-os=${os} \
+                  --override-arch=${arch} \
+                  --format=json \
+                  docker://docker.io/${repo} | jq .)
+              fi
+              
               metadata=$(jq \
                 --argjson data "${data_json}" \
                 --arg platform "${platform}" \
@@ -436,12 +450,27 @@ jobs:
 
           IFS=',' read -ra platforms <<< "${{ env.arch_branch }}"
           for platform in "${platforms[@]}"; do
-            # skopeo inspect \
-            #   --override-os=$(echo ${platform} | cut -d'/' -f1) \
-            #   --override-arch=$(echo ${platform} | cut -d'/' -f2-) \
-            #   --format=json \
-            #   --tls-verify=false \
-            #   docker://${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}
+            os=$(echo ${platform} | cut -d'/' -f1)
+            arch=$(echo ${platform} | cut -d'/' -f2-)
+            
+            if echo "${arch}" | grep -q "arm"; then
+              variant=$(echo ${arch} | cut -d'/' -f2)
+              arch=$(echo ${arch} | cut -d'/' -f1)
+              skopeo inspect \
+                --override-os=${os} \
+                --override-arch=${arch} \
+                --override-variant=${variant} \
+                --format=json \
+                --tls-verify=false \
+                docker://${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}
+            else
+              skopeo inspect \
+                --override-os=${os} \
+                --override-arch=${arch} \
+                --format=json \
+                --tls-verify=false \
+                docker://${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}
+            fi
             
             docker pull --platform $platform ${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}
             docker run \
