@@ -28,8 +28,6 @@ env:
   tag_repo: ${{ inputs.tag_repo || 'latest' }}
   force_push: ${{ inputs.force_push || 'false' }}
   registry_push: "docker.io"
-  metadata_image_path: "${{ github.workspace }}/${{ inputs.app_branch }}/metadata_image.json"
-  metadata_app_path: "${{ github.workspace }}/${{ inputs.app_branch }}/metadata_app.json"
 
 jobs:
   check:
@@ -42,6 +40,9 @@ jobs:
       changed: ${{ steps.summary.outputs.changed }}
       version: ${{ steps.summary.outputs.version }}
       consistent: ${{ steps.summary.outputs.consistent }}
+    env:
+      metadata_image_path: "${{ github.workspace }}/${{ inputs.app_branch }}/metadata_image.json"
+      metadata_app_path: "${{ github.workspace }}/${{ inputs.app_branch }}/metadata_app.json"
     steps:
       - name: Checkout ${{ github.repository }}
         uses: actions/checkout@main
