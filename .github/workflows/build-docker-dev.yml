@@ -76,15 +76,29 @@ jobs:
 
       - name: Load Env
         id: env-app
-        working-directory: "${{ github.workspace }}/${{ env.app_branch }}/env"
+        working-directory: "${{ github.workspace }}/${{ env.app_branch }}"
         run: |
           echo "Current working directory: $(pwd)"
-          for env_file in ./*.env; do
-            if [ -f "${env_file}" ]; then
-              echo "Loading env file: ${env_file}"
-              cat "${env_file}" | awk -F= '/^[a-zA-Z_][a-zA-Z0-9_]*=/ {printf "%s=%s\n", $1, $2}' | tee -a $GITHUB_ENV
-            fi
-          done
+
+          dir_step="env"
+          dir_original=$(pwd)
+          if [ -d "${dir_step}" ]; then
+            cd ./${dir_step}
+            echo "Changed to directory: $(pwd)"
+
+            for env_file in ./*.env; do
+              if [ -f "${env_file}" ]; then
+                echo "Loading env file: ${env_file}"
+                cat "${env_file}" | awk -F= '/^[a-zA-Z_][a-zA-Z0-9_]*=/ {printf "%s=%s\n", $1, $2}' | tee -a $GITHUB_ENV
+              fi
+            done
+
+            cd "${dir_original}"
+            echo "Changed back to original directory: $(pwd)"
+          else
+            echo "No directory found"
+          fi
+
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
       - name: Setup QEMU
@@ -171,7 +185,7 @@ jobs:
           container_name: "container-test"
           category: "platforms"
           dir_container: "/tmp"
-        working-directory: "${{ github.workspace }}/${{ env.app_branch }}/meta-app"
+        working-directory: "${{ github.workspace }}/${{ env.app_branch }}"
         run: |
           echo "Current working directory: $(pwd)"
 
@@ -190,19 +204,33 @@ jobs:
 
             log_container=$(mktemp)
             docker exec ${{ env.container_name }} mkdir -p ${{ env.dir_container }}
-            for script_file in ./*.sh; do
-              container_script="${{ env.dir_container }}/$(basename ${script_file})"
-              script_temp=$(mktemp)
-              {
-                echo "#!/bin/sh"
-                printenv | awk -F= '/^[a-zA-Z_][a-zA-Z0-9_]*=/ {printf "%s=\"%s\"\n", $1, $2}'
-                cat "${script_file}"
-              } > ${script_temp}
 
-              docker cp ${script_temp} ${{ env.container_name }}:${container_script}
-              docker exec ${{ env.container_name }} chmod +x ${container_script}
-              docker exec ${{ env.container_name }} sh -c "${container_script}" | tee -a ${log_container}
-            done
+            dir_step="meta-app"
+            dir_original=$(pwd)
+            if [ -d "${dir_step}" ]; then
+              cd ./${dir_step}
+              echo "Changed to directory: $(pwd)"
+
+              for script_file in ./*.sh; do
+                container_script="${{ env.dir_container }}/$(basename ${script_file})"
+                script_temp=$(mktemp)
+                {
+                  echo "#!/bin/sh"
+                  printenv | awk -F= '/^[a-zA-Z_][a-zA-Z0-9_]*=/ {printf "%s=\"%s\"\n", $1, $2}'
+                  cat "${script_file}"
+                } > ${script_temp}
+
+                docker cp ${script_temp} ${{ env.container_name }}:${container_script}
+                docker exec ${{ env.container_name }} chmod +x ${container_script}
+                docker exec ${{ env.container_name }} sh -c "${container_script}" | tee -a ${log_container}
+              done
+
+              cd "${dir_original}"
+              echo "Changed back to original directory: $(pwd)"
+            else
+              echo "No directory found"
+            fi
+
             docker stop ${{ env.container_name }}
 
             metadata=$(jq \
