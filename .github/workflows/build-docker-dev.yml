@@ -144,24 +144,12 @@ jobs:
           metadata_image=$(cat ${{ env.metadata_image_path }})
           IFS=',' read -ra platforms <<< "${{ env.arch_branch }}"
           for platform in "${platforms[@]}"; do
-            base_json=$(
-              jq --argjson metadata "${metadata_image}" \
-                 --arg platform "${platform}" \
-                 --arg repo "${{ env.base_image }}" '
-                   $metadata.${{ env.category_image }}[]
-                   | select(.platform == $platform and .name == $repo) 
-                   | .data
-                 '
-            )
-            repo_json=$(
-              jq --argjson metadata "${metadata_image}" \
-                 --arg platform "${platform}" \
-                 --arg repo "${{ env.repo_dockerhub }}:${{ env.tag_repo }}" '
-                   $metadata.${{ env.category_image }}[]
-                   | select(.platform == $platform and .name == $repo) 
-                   | .data
-                 '
-            )
+            base_json=$(echo "${metadata_image}" | jq --arg platform "${platform}" --arg repo "${{ env.base_image }}" '
+              .repository[] | select(.platform == $platform and .name == $repo) | .data
+            ')
+            repo_json=$(echo "${metadata_image}" | jq --arg platform "${platform}" --arg repo "${{ env.repo_dockerhub }}:${{ env.tag_repo }}" '
+              .repository[] | select(.platform == $platform and .name == $repo) | .data
+            ')
             echo -e "========== Base image: ${{ env.base_image }} ${platform} ==========\n${base_json}"
             echo -e "========== Repo image: ${{ env.repo_dockerhub }}:${{ env.tag_repo }} ${platform} ==========\n${repo_json}"
 
@@ -244,22 +232,17 @@ jobs:
           metadata_app=$(cat ${{ env.metadata_app_path }})
           IFS=',' read -ra platforms <<< "${{ env.arch_branch }}"
           for platform in "${platforms[@]}"; do
-            repo_json=$(
-              jq --argjson metadata "${metadata_image}" \
-                --arg platform "${platform}" \
-                --arg repo "${{ env.repo_dockerhub }}:${{ env.tag_repo }}" '
-                  $metadata.${{ env.category_image }}[] 
-                  | select(.platform == $platform and .name == $repo) 
-                  | .data
-                '
-            )
-            app_json=$(
-              jq --argjson metadata "${metadata_app}" \
-                --arg platform "${platform}" '
-                  $metadata.${{ env.category_app }}[] 
-                  | select(.platform == $platform)
-                '
-            )
+            repo_json=$(echo "${metadata_image}" | jq --arg platform "${platform}" --arg repo "${{ env.repo_dockerhub }}:${{ env.tag_repo }}" '
+              .repository[] 
+              | select(.platform == $platform and .name == $repo) 
+              | .data
+            ')
+            
+            app_json=$(echo "${metadata_app}" | jq --arg platform "${platform}" '
+              .repository[] 
+              | select(.platform == $platform)
+            ')
+
             echo "repo_json=${repo_json}"
             echo "app_json=${app_json}"
 
