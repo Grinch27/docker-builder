@@ -1,13 +1,13 @@
 ARG base_image=debian:stable-slim
 FROM ${base_image}
 
-ENV CODE="code"
-ENV SERVER="smart"
-ENV HEALTHCHECK=""
-ENV BEARER=""
-ENV NETWORK="on"
-ENV PROTOCOL="lightway_udp"
-ENV CIPHER="chacha20"
+ENV CODE="code" \
+    SERVER="smart" \
+    HEALTHCHECK="" \
+    BEARER="" \
+    NETWORK="on" \
+    PROTOCOL="lightway_udp" \
+    CIPHER="chacha20"
 
 RUN export DEBIAN_FRONTEND=noninteractive \
     && apt-get update --ignore-missing \
