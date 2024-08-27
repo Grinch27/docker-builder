@@ -28,6 +28,8 @@ env:
   tag_repo: ${{ inputs.tag_repo || 'latest' }}
   force_push: ${{ inputs.force_push || 'false' }}
   registry_push: "docker.io"
+  metadata_image_path: "${{ github.workspace }}/${{ inputs.app_branch }}/metadata_image.json"
+  metadata_app_path: "${{ github.workspace }}/${{ inputs.app_branch }}/metadata_app.json"
 
 jobs:
   check:
@@ -103,7 +105,7 @@ jobs:
             for platform in "${platforms[@]}"; do
               os=$(echo ${platform} | cut -d'/' -f1)
               arch=$(echo ${platform} | cut -d'/' -f2-)
-              
+
               if echo "${arch}" | grep -q "arm/v"; then
                 variant=$(echo ${arch} | cut -d'/' -f2)
                 arch=$(echo ${arch} | cut -d'/' -f1)
@@ -120,7 +122,7 @@ jobs:
                   --format=json \
                   docker://docker.io/${repo} | jq .)
               fi
-              
+
               metadata=$(jq \
                 --argjson data "${data_json}" \
                 --arg platform "${platform}" \
@@ -129,28 +131,27 @@ jobs:
             done
           done
           echo "metadata=${metadata}"
-
-          echo "metadata=$(echo ${metadata} | jq . --compact-output --raw-output)" >> ${GITHUB_OUTPUT}
+          echo "${metadata}" | jq . > ${{ env.metadata_image_path }}
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
       - name: (Check) Layer ${{ env.base_image }} in ${{ env.repo_dockerhub }}:${{ env.tag_repo }}
         id: check-layer
         if: steps.meta-image.outputs.status == 'success' && !cancelled()
         env:
-          metadata_image: ${{ steps.meta-image.outputs.metadata }}
           category_image: "repository"
         run: |
           changed=false
+          metadata_image=$(cat ${{ env.metadata_image_path }})
           IFS=',' read -ra platforms <<< "${{ env.arch_branch }}"
           for platform in "${platforms[@]}"; do
             base_json=$(
               jq --argjson metadata "${metadata_image}" \
-                --arg platform "${platform}" \
-                --arg repo "${{ env.base_image }}" '
-                  $metadata.${{ env.category_image }}[]
-                  | select(.platform == $platform and .name == $repo) 
-                  | .data
-                '
+                 --arg platform "${platform}" \
+                 --arg repo "${{ env.base_image }}" '
+                   $metadata.${{ env.category_image }}[]
+                   | select(.platform == $platform and .name == $repo) 
+                   | .data
+                 '
             )
             repo_json=$(
               jq --argjson metadata "${metadata_image}" \
@@ -212,50 +213,52 @@ jobs:
                 echo "#!/bin/sh"
                 printenv | awk -F= '/^[a-zA-Z_][a-zA-Z0-9_]*=/ {printf "%s=\"%s\"\n", $1, $2}'
                 cat "${script_file}"
-              } > ${script_temp}
-
-              docker cp ${script_temp} ${{ env.container_name }}:${container_script}
-              docker exec ${{ env.container_name }} chmod +x ${container_script}
-              docker exec ${{ env.container_name }} sh -c "${container_script}" | tee -a ${log_container}
+              } > "${script_temp}"
+              echo "=== Run script: ${container_script} in container: ${{ env.container_name }} ==="
+              docker cp "${script_temp}" ${{ env.container_name }}:${container_script}
+              docker exec ${{ env.container_name }} sh -c "chmod +x ${container_script} && ${container_script}" | tee -a ${log_container}
             done
-            docker stop ${{ env.container_name }}
 
+            echo "====== Collect MetaData in Container ======"
+            data_json=$(docker inspect ${{ env.container_name }} | jq '.[0]')
             metadata=$(jq \
+              --argjson data "${data_json}" \
               --arg platform "${platform}" \
-              --arg version "$(awk -F= '/^version=/ {print $2}' ${log_container})" \
-              '.${{ env.category }} += [{platform: $platform, version: $version}]' <<< "${metadata}")
+              '.${{ env.category }} += [{platform: $platform, data: $data}]' <<< "${metadata}")
+
+            docker stop ${{ env.container_name }}
           done
           echo "metadata=${metadata}"
-          echo "metadata=$(echo ${metadata} | jq . --compact-output --raw-output)" >> ${GITHUB_OUTPUT}
+          echo "${metadata}" | jq . > ${{ env.metadata_app_path }}
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
       - name: (Check) Version of app
         id: check-version
         if: steps.meta-app.outputs.status == 'success' && !cancelled()
         env:
-          metadata_image: ${{ steps.meta-image.outputs.metadata }}
-          metadata_app: ${{ steps.meta-app.outputs.metadata }}
           category_image: "repository"
           category_app: "platforms"
         run: |
           changed=false
+          metadata_image=$(cat ${{ env.metadata_image_path }})
+          metadata_app=$(cat ${{ env.metadata_app_path }})
           IFS=',' read -ra platforms <<< "${{ env.arch_branch }}"
           for platform in "${platforms[@]}"; do
             repo_json=$(
               jq --argjson metadata "${metadata_image}" \
-                 --arg platform "${platform}" \
-                 --arg repo "${repo_dockerhub}:${tag_repo}" '
-                   $metadata.${{ env.category_image }}[] 
-                   | select(.platform == $platform and .name == $repo) 
-                   | .data
-                 '
+                --arg platform "${platform}" \
+                --arg repo "${{ env.repo_dockerhub }}:${{ env.tag_repo }}" '
+                  $metadata.${{ env.category_image }}[] 
+                  | select(.platform == $platform and .name == $repo) 
+                  | .data
+                '
             )
             app_json=$(
               jq --argjson metadata "${metadata_app}" \
-                 --arg platform "${platform}" '
-                   $metadata.${{ env.category_app }}[] 
-                   | select(.platform == $platform)
-                 '
+                --arg platform "${platform}" '
+                  $metadata.${{ env.category_app }}[] 
+                  | select(.platform == $platform)
+                '
             )
             echo "repo_json=${repo_json}"
             echo "app_json=${app_json}"
@@ -283,14 +286,15 @@ jobs:
         id: summary
         if: always() && !cancelled()
         env:
-          metadata_app: ${{ steps.meta-app.outputs.metadata }}
           category_image: "repository"
           category_app: "platforms"
           platform_prefer: "amd64"
         run: |
+          metadata_app=$(cat ${{ env.metadata_app_path }})
+
           # ----- Check if versions are consistent -----
           if [ "$(jq -r ".${category_app}[] | select(.version != null) | .version" <<< "${metadata_app}" | sort -u | wc -l)" -ne 1 ]; then
-            version=$(jq -r ".${category_app}[] | select(.platform == ${platform_prefer}) | .version" <<< "${metadata_app}")
+            version=$(jq -r ".${category_app}[] | select(.platform == \"${platform_prefer}\") | .version" <<< "${metadata_app}")
             consistent=false
             echo "Versions are not consistent across ${arch_branch}, using ${platform_prefer} version: ${version}"
           else
@@ -303,8 +307,8 @@ jobs:
 
           # ----- Check changed -----
           if [ "${{ steps.check-layer.outputs.changed || 'true' }}" != 'true' ] && \
-             [ "${{ steps.check-version.outputs.changed || 'true' }}" != 'true' ] && \
-             [ "${{ env.force_push || 'false' }}" != 'true' ]; then
+            [ "${{ steps.check-version.outputs.changed || 'true' }}" != 'true' ] && \
+            [ "${{ env.force_push || 'false' }}" != 'true' ]; then
               changed=false
           else
               changed=true
