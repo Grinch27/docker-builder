@@ -137,18 +137,18 @@ jobs:
         id: check-layer
         if: steps.meta-image.outputs.status == 'success' && !cancelled()
         env:
-          metadata_image: ${{ steps.meta-image.outputs.metadata }}
+          # metadata_image: ${{ steps.meta-image.outputs.metadata }}
           category_image: "repository"
         run: |
           changed=false
           IFS=',' read -ra platforms <<< "${{ env.arch_branch }}"
           for platform in "${platforms[@]}"; do
-            base_json=$(echo "${metadata_image}" | jq --arg platform "${platform}" --arg repo "${{ env.base_image }}" '
+            base_json=$(echo "${{ steps.meta-image.outputs.metadata }}" | jq --arg platform "${platform}" --arg repo "${{ env.base_image }}" '
               .${{ env.category_image }}[]
               | select(.platform == $platform and .name == $repo) 
               | .data
             ')
-            repo_json=$(echo "${metadata_image}" | jq --arg platform "${platform}" --arg repo "${{ env.repo_dockerhub }}:${{ env.tag_repo }}" '
+            repo_json=$(echo "${{ steps.meta-image.outputs.metadata }}" | jq --arg platform "${platform}" --arg repo "${{ env.repo_dockerhub }}:${{ env.tag_repo }}" '
               .${{ env.category_image }}[]
               | select(.platform == $platform and .name == $repo) 
               | .data
@@ -225,7 +225,7 @@ jobs:
         id: check-version
         if: steps.meta-app.outputs.status == 'success' && !cancelled()
         env:
-          metadata_image: ${{ steps.meta-image.outputs.metadata }}
+          # metadata_image: ${{ steps.meta-image.outputs.metadata }}
           metadata_app: ${{ steps.meta-app.outputs.metadata }}
           category_image: "repository"
           category_app: "platforms"
@@ -233,7 +233,7 @@ jobs:
           changed=false
           IFS=',' read -ra platforms <<< "${{ env.arch_branch }}"
           for platform in "${platforms[@]}"; do
-            repo_json=$(echo "${metadata_image}" | jq --arg platform "${platform}" --arg repo "${repo_dockerhub}:${tag_repo}" '
+            repo_json=$(echo "${{ steps.meta-image.outputs.metadata }}" | jq --arg platform "${platform}" --arg repo "${repo_dockerhub}:${tag_repo}" '
               .${{ env.category_image }}[] 
               | select(.platform == $platform and .name == $repo) 
               | .data
