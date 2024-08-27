@@ -105,23 +105,19 @@ jobs:
             for platform in "${platforms[@]}"; do
               os=$(echo ${platform} | cut -d'/' -f1)
               arch=$(echo ${platform} | cut -d'/' -f2-)
-
+              
+              variant=""
               if echo "${arch}" | grep -q "arm/v"; then
                 variant=$(echo ${arch} | cut -d'/' -f2)
                 arch=$(echo ${arch} | cut -d'/' -f1)
-                data_json=$(skopeo inspect \
-                  --override-os=${os} \
-                  --override-arch=${arch} \
-                  --override-variant=${variant} \
-                  --format=json \
-                  docker://docker.io/${repo} | jq .)
-              else
-                data_json=$(skopeo inspect \
-                  --override-os=${os} \
-                  --override-arch=${arch} \
-                  --format=json \
-                  docker://docker.io/${repo} | jq .)
               fi
+              
+              data_json=$(skopeo inspect \
+                --override-os=${os} \
+                --override-arch=${arch} \
+                ${variant:+--override-variant=${variant}} \
+                --format=json \
+                docker://docker.io/${repo} | jq .)
 
               metadata=$(jq \
                 --argjson data "${data_json}" \
@@ -426,19 +422,30 @@ jobs:
 
       - name: Build and push to local registry
         id: build
-        # env:
-        #   output_tar: "${{ github.workspace }}/${{ env.app_branch }}/${{ env.app_branch }}_${{ env.tag_repo }}_${{ env.version }}.tar"
-        working-directory: "${{ github.workspace }}/${{ env.app_branch }}/build"
+        working-directory: "${{ github.workspace }}/${{ env.app_branch }}"
         run: |
           echo "Current working directory: $(pwd)"
-          for script_file in ./*.sh; do
-            chmod +x "${script_file}"
-            sh "${script_file}"
-          done
+
+          dir_step="build"
+          dir_original=$(pwd)
+          if [ -d "${dir_step}" ]; then
+            cd ./${dir_step}
+            echo "Changed to directory: $(pwd)"
+
+            for script_file in ./*.sh; do
+              chmod +x "${script_file}"
+              sh "${script_file}"
+            done
+
+            cd "${dir_original}"
+            echo "Changed back to original directory: $(pwd)"
+          else
+            echo "No directory found"
+          fi
 
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
-      - name: Test Docker image & Inspect Layers with skopeo
+      - name: Test Docker image & Inspect Layers with skopeo & Save to tar
         id: test
         env:
           container_name: container-test
@@ -452,24 +459,19 @@ jobs:
             os=$(echo ${platform} | cut -d'/' -f1)
             arch=$(echo ${platform} | cut -d'/' -f2-)
             
+            variant=""
             if echo "${arch}" | grep -q "arm/v"; then
               variant=$(echo ${arch} | cut -d'/' -f2)
               arch=$(echo ${arch} | cut -d'/' -f1)
-              skopeo inspect \
-                --override-os=${os} \
-                --override-arch=${arch} \
-                --override-variant=${variant} \
-                --format=json \
-                --tls-verify=false \
-                docker://${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}
-            else
-              skopeo inspect \
-                --override-os=${os} \
-                --override-arch=${arch} \
-                --format=json \
-                --tls-verify=false \
-                docker://${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}
             fi
+            
+            skopeo inspect \
+              --override-os=${os} \
+              --override-arch=${arch} \
+              ${variant:+--override-variant=${variant}} \
+              --format=json \
+              --tls-verify=false \
+              docker://${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}
             
             docker pull --platform $platform ${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}
             docker run \
