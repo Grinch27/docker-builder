@@ -329,7 +329,7 @@ jobs:
       pull-requests: write
     env:
       registry_local: "localhost:5000"
-      version: ${{ needs.check.outputs.version || 'null'}}
+      version: ${{ needs.check.outputs.version || 'null' }}
       consistent: ${{ needs.check.outputs.consistent || 'false'}}
     steps:
       - name: Checkout ${{ github.repository }}
