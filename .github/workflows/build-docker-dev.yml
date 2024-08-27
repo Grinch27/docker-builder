@@ -104,7 +104,7 @@ jobs:
               os=$(echo ${platform} | cut -d'/' -f1)
               arch=$(echo ${platform} | cut -d'/' -f2-)
               
-              if echo "${arch}" | grep -q "arm"; then
+              if echo "${arch}" | grep -q "arm/v"; then
                 variant=$(echo ${arch} | cut -d'/' -f2)
                 arch=$(echo ${arch} | cut -d'/' -f1)
                 data_json=$(skopeo inspect \
@@ -453,7 +453,7 @@ jobs:
             os=$(echo ${platform} | cut -d'/' -f1)
             arch=$(echo ${platform} | cut -d'/' -f2-)
             
-            if echo "${arch}" | grep -q "arm"; then
+            if echo "${arch}" | grep -q "arm/v"; then
               variant=$(echo ${arch} | cut -d'/' -f2)
               arch=$(echo ${arch} | cut -d'/' -f1)
               skopeo inspect \
