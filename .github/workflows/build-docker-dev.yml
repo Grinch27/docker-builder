@@ -197,20 +197,18 @@ jobs:
                 echo "#!/bin/sh"
                 printenv | awk -F= '/^[a-zA-Z_][a-zA-Z0-9_]*=/ {printf "%s=\"%s\"\n", $1, $2}'
                 cat "${script_file}"
-              } > "${script_temp}"
-              echo "=== Run script: ${container_script} in container: ${{ env.container_name }} ==="
-              docker cp "${script_temp}" ${{ env.container_name }}:${container_script}
-              docker exec ${{ env.container_name }} sh -c "chmod +x ${container_script} && ${container_script}" | tee -a ${log_container}
+              } > ${script_temp}
+
+              docker cp ${script_temp} ${{ env.container_name }}:${container_script}
+              docker exec ${{ env.container_name }} chmod +x ${container_script}
+              docker exec ${{ env.container_name }} sh -c "${container_script}" | tee -a ${log_container}
             done
-
-            echo "====== Collect MetaData in Container ======"
-            data_json=$(docker inspect ${{ env.container_name }} | jq '.[0]')
-            metadata=$(jq \
-              --argjson data "${data_json}" \
-              --arg platform "${platform}" \
-              '.${{ env.category }} += [{platform: $platform, data: $data}]' <<< "${metadata}")
-
             docker stop ${{ env.container_name }}
+
+            metadata=$(jq \
+              --arg platform "${platform}" \
+              --arg version "$(awk -F= '/^version=/ {print $2}' ${log_container})" \
+              '.${{ env.category }} += [{platform: $platform, version: $version}]' <<< "${metadata}")
           done
           echo "metadata=${metadata}"
           echo "${metadata}" | jq . > ${{ env.metadata_app_path }}
