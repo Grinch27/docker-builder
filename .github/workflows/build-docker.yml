@@ -40,6 +40,9 @@ jobs:
       changed: ${{ steps.summary.outputs.changed }}
       version: ${{ steps.summary.outputs.version }}
       consistent: ${{ steps.summary.outputs.consistent }}
+    env:
+      metadata_image_path: "${{ github.workspace }}/${{ inputs.app_branch }}/metadata_image.json"
+      metadata_app_path: "${{ github.workspace }}/${{ inputs.app_branch }}/metadata_app.json"
     steps:
       - name: Checkout ${{ github.repository }}
         uses: actions/checkout@main
@@ -74,15 +77,29 @@ jobs:
 
       - name: Load Env
         id: env-app
-        working-directory: "${{ github.workspace }}/${{ env.app_branch }}/env"
+        working-directory: "${{ github.workspace }}/${{ env.app_branch }}"
         run: |
           echo "Current working directory: $(pwd)"
-          for env_file in ./*.env; do
-            if [ -f "${env_file}" ]; then
-              echo "Loading env file: ${env_file}"
-              cat "${env_file}" | awk -F= '/^[a-zA-Z_][a-zA-Z0-9_]*=/ {printf "%s=%s\n", $1, $2}' | tee -a $GITHUB_ENV
-            fi
-          done
+
+          dir_step="env"
+          dir_original=$(pwd)
+          if [ -d "${dir_step}" ]; then
+            cd ./${dir_step}
+            echo "Changed to directory: $(pwd)"
+
+            for env_file in ./*.env; do
+              if [ -f "${env_file}" ]; then
+                echo "Loading env file: ${env_file}"
+                cat "${env_file}" | awk -F= '/^[a-zA-Z_][a-zA-Z0-9_]*=/ {printf "%s=%s\n", $1, $2}' | tee -a $GITHUB_ENV
+              fi
+            done
+
+            cd "${dir_original}"
+            echo "Changed back to original directory: $(pwd)"
+          else
+            echo "No directory found"
+          fi
+
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
       - name: Setup QEMU
@@ -101,11 +118,22 @@ jobs:
           for repo in "${repo_array[@]}"; do
             IFS=',' read -ra platforms <<< "${{ env.arch_branch }}"
             for platform in "${platforms[@]}"; do
+              os=$(echo ${platform} | cut -d'/' -f1)
+              arch=$(echo ${platform} | cut -d'/' -f2-)
+              
+              variant=""
+              if echo "${arch}" | grep -q "arm/v"; then
+                variant=$(echo ${arch} | cut -d'/' -f2)
+                arch=$(echo ${arch} | cut -d'/' -f1)
+              fi
+              
               data_json=$(skopeo inspect \
-                --override-os=$(echo ${platform} | awk -F'/' '{print $1}') \
-                --override-arch=$(echo ${platform} | awk -F'/' '{print $2}') \
+                --override-os=${os} \
+                --override-arch=${arch} \
+                ${variant:+--override-variant=${variant}} \
                 --format=json \
                 docker://docker.io/${repo} | jq .)
+
               metadata=$(jq \
                 --argjson data "${data_json}" \
                 --arg platform "${platform}" \
@@ -114,29 +142,24 @@ jobs:
             done
           done
           echo "metadata=${metadata}"
-
-          echo "metadata=$(echo ${metadata} | jq . --compact-output --raw-output)" >> ${GITHUB_OUTPUT}
+          echo "${metadata}" | jq . > ${{ env.metadata_image_path }}
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
       - name: (Check) Layer ${{ env.base_image }} in ${{ env.repo_dockerhub }}:${{ env.tag_repo }}
         id: check-layer
         if: steps.meta-image.outputs.status == 'success' && !cancelled()
         env:
-          metadata_image: ${{ steps.meta-image.outputs.metadata }}
           category_image: "repository"
         run: |
           changed=false
+          metadata_image=$(cat ${{ env.metadata_image_path }})
           IFS=',' read -ra platforms <<< "${{ env.arch_branch }}"
           for platform in "${platforms[@]}"; do
             base_json=$(echo "${metadata_image}" | jq --arg platform "${platform}" --arg repo "${{ env.base_image }}" '
-              .${{ env.category_image }}[]
-              | select(.platform == $platform and .name == $repo) 
-              | .data
+              .repository[] | select(.platform == $platform and .name == $repo) | .data
             ')
             repo_json=$(echo "${metadata_image}" | jq --arg platform "${platform}" --arg repo "${{ env.repo_dockerhub }}:${{ env.tag_repo }}" '
-              .${{ env.category_image }}[]
-              | select(.platform == $platform and .name == $repo) 
-              | .data
+              .repository[] | select(.platform == $platform and .name == $repo) | .data
             ')
             echo -e "========== Base image: ${{ env.base_image }} ${platform} ==========\n${base_json}"
             echo -e "========== Repo image: ${{ env.repo_dockerhub }}:${{ env.tag_repo }} ${platform} ==========\n${repo_json}"
@@ -163,7 +186,7 @@ jobs:
           container_name: "container-test"
           category: "platforms"
           dir_container: "/tmp"
-        working-directory: "${{ github.workspace }}/${{ env.app_branch }}/meta-app"
+        working-directory: "${{ github.workspace }}/${{ env.app_branch }}"
         run: |
           echo "Current working directory: $(pwd)"
 
@@ -182,19 +205,33 @@ jobs:
 
             log_container=$(mktemp)
             docker exec ${{ env.container_name }} mkdir -p ${{ env.dir_container }}
-            for script_file in ./*.sh; do
-              container_script="${{ env.dir_container }}/$(basename ${script_file})"
-              script_temp=$(mktemp)
-              {
-                echo "#!/bin/sh"
-                printenv | awk -F= '/^[a-zA-Z_][a-zA-Z0-9_]*=/ {printf "%s=\"%s\"\n", $1, $2}'
-                cat "${script_file}"
-              } > ${script_temp}
 
-              docker cp ${script_temp} ${{ env.container_name }}:${container_script}
-              docker exec ${{ env.container_name }} chmod +x ${container_script}
-              docker exec ${{ env.container_name }} sh -c "${container_script}" | tee -a ${log_container}
-            done
+            dir_step="meta-app"
+            dir_original=$(pwd)
+            if [ -d "${dir_step}" ]; then
+              cd ./${dir_step}
+              echo "Changed to directory: $(pwd)"
+
+              for script_file in ./*.sh; do
+                container_script="${{ env.dir_container }}/$(basename ${script_file})"
+                script_temp=$(mktemp)
+                {
+                  echo "#!/bin/sh"
+                  printenv | awk -F= '/^[a-zA-Z_][a-zA-Z0-9_]*=/ {printf "%s=\"%s\"\n", $1, $2}'
+                  cat "${script_file}"
+                } > ${script_temp}
+
+                docker cp ${script_temp} ${{ env.container_name }}:${container_script}
+                docker exec ${{ env.container_name }} chmod +x ${container_script}
+                docker exec ${{ env.container_name }} sh -c "${container_script}" | tee -a ${log_container}
+              done
+
+              cd "${dir_original}"
+              echo "Changed back to original directory: $(pwd)"
+            else
+              echo "No directory found"
+            fi
+
             docker stop ${{ env.container_name }}
 
             metadata=$(jq \
@@ -203,33 +240,32 @@ jobs:
               '.${{ env.category }} += [{platform: $platform, version: $version}]' <<< "${metadata}")
           done
           echo "metadata=${metadata}"
-          echo "metadata=$(echo ${metadata} | jq . --compact-output --raw-output)" >> ${GITHUB_OUTPUT}
+          echo "${metadata}" | jq . > ${{ env.metadata_app_path }}
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
       - name: (Check) Version of app
         id: check-version
         if: steps.meta-app.outputs.status == 'success' && !cancelled()
         env:
-          metadata_image: ${{ steps.meta-image.outputs.metadata }}
-          metadata_app: ${{ steps.meta-app.outputs.metadata }}
           category_image: "repository"
           category_app: "platforms"
         run: |
           changed=false
+          metadata_image=$(cat ${{ env.metadata_image_path }})
+          metadata_app=$(cat ${{ env.metadata_app_path }})
           IFS=',' read -ra platforms <<< "${{ env.arch_branch }}"
           for platform in "${platforms[@]}"; do
-            repo_json=$(echo "${metadata_image}" | jq --arg platform "${platform}" --arg repo "${repo_dockerhub}:${tag_repo}" '
-            
-              .${{ env.category_image }}[] 
+            repo_json=$(echo "${metadata_image}" | jq --arg platform "${platform}" --arg repo "${{ env.repo_dockerhub }}:${{ env.tag_repo }}" '
+              .${{ env.category_image }}[]
               | select(.platform == $platform and .name == $repo) 
               | .data
             ')
-            echo "repo_json=${repo_json}"
-            
             app_json=$(echo "${metadata_app}" | jq --arg platform "${platform}" '
-              .${{ env.category_app }}[] 
+              .${{ env.category_app }}[]
               | select(.platform == $platform)
             ')
+
+            echo "repo_json=${repo_json}"
             echo "app_json=${app_json}"
 
             repo_labels=$(echo "${repo_json}" | jq -r '.Labels')
@@ -255,14 +291,15 @@ jobs:
         id: summary
         if: always() && !cancelled()
         env:
-          metadata_app: ${{ steps.meta-app.outputs.metadata }}
           category_image: "repository"
           category_app: "platforms"
           platform_prefer: "amd64"
         run: |
+          metadata_app=$(cat ${{ env.metadata_app_path }})
+
           # ----- Check if versions are consistent -----
           if [ "$(jq -r ".${category_app}[] | select(.version != null) | .version" <<< "${metadata_app}" | sort -u | wc -l)" -ne 1 ]; then
-            version=$(jq -r ".${category_app}[] | select(.platform == ${platform_prefer}) | .version" <<< "${metadata_app}")
+            version=$(jq -r ".${category_app}[] | select(.platform == \"${platform_prefer}\") | .version" <<< "${metadata_app}")
             consistent=false
             echo "Versions are not consistent across ${arch_branch}, using ${platform_prefer} version: ${version}"
           else
@@ -275,8 +312,8 @@ jobs:
 
           # ----- Check changed -----
           if [ "${{ steps.check-layer.outputs.changed || 'true' }}" != 'true' ] && \
-             [ "${{ steps.check-version.outputs.changed || 'true' }}" != 'true' ] && \
-             [ "${{ env.force_push || 'false' }}" != 'true' ]; then
+            [ "${{ steps.check-version.outputs.changed || 'true' }}" != 'true' ] && \
+            [ "${{ env.force_push || 'false' }}" != 'true' ]; then
               changed=false
           else
               changed=true
@@ -293,7 +330,7 @@ jobs:
       pull-requests: write
     env:
       registry_local: "localhost:5000"
-      version: ${{ needs.check.outputs.version || 'null'}}
+      version: ${{ needs.check.outputs.version || 'null' }}
       consistent: ${{ needs.check.outputs.consistent || 'false'}}
     steps:
       - name: Checkout ${{ github.repository }}
@@ -332,18 +369,26 @@ jobs:
         working-directory: "${{ github.workspace }}/${{ env.app_branch }}"
         run: |
           echo "Current working directory: $(pwd)"
-          if [ -d "env" ]; then
-            cd env
+
+          dir_step="env"
+          dir_original=$(pwd)
+          if [ -d "${dir_step}" ]; then
+            cd ./${dir_step}
             echo "Changed to directory: $(pwd)"
+
             for env_file in ./*.env; do
               if [ -f "${env_file}" ]; then
                 echo "Loading env file: ${env_file}"
                 cat "${env_file}" | awk -F= '/^[a-zA-Z_][a-zA-Z0-9_]*=/ {printf "%s=%s\n", $1, $2}' | tee -a $GITHUB_ENV
               fi
             done
+
+            cd "${dir_original}"
+            echo "Changed back to original directory: $(pwd)"
           else
             echo "No directory found"
           fi
+
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
       - name: Setup Docker
@@ -404,32 +449,53 @@ jobs:
 
       - name: Build and push to local registry
         id: build
-        env:
-          output_tar: "${{ github.workspace }}/${{ env.app_branch }}/${{ env.app_branch}}_${{ env.tag_repo }}_${{ env.version }}.tar"
-        working-directory: "${{ github.workspace }}/${{ env.app_branch }}/build"
+        working-directory: "${{ github.workspace }}/${{ env.app_branch }}"
         run: |
           echo "Current working directory: $(pwd)"
-          for script_file in ./*.sh; do
-            chmod +x "${script_file}"
-            sh "${script_file}"
-          done
+
+          dir_step="build"
+          dir_original=$(pwd)
+          if [ -d "${dir_step}" ]; then
+            cd ./${dir_step}
+            echo "Changed to directory: $(pwd)"
+
+            for script_file in ./*.sh; do
+              chmod +x "${script_file}"
+              sh "${script_file}"
+            done
+
+            cd "${dir_original}"
+            echo "Changed back to original directory: $(pwd)"
+          else
+            echo "No directory found"
+          fi
 
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
-      - name: Test Docker image & Inspect Layers with skopeo
+      - name: Test Docker image & Inspect Layers with skopeo & Save to tar
         id: test
         env:
           container_name: container-test
           dir_container: "/tmp"
-        working-directory: "${{ github.workspace }}/${{ env.app_branch }}/test"
+        working-directory: "${{ github.workspace }}/${{ env.app_branch }}"
         run: |
           echo "Current working directory: $(pwd)"
 
           IFS=',' read -ra platforms <<< "${{ env.arch_branch }}"
           for platform in "${platforms[@]}"; do
+            os=$(echo ${platform} | cut -d'/' -f1)
+            arch=$(echo ${platform} | cut -d'/' -f2-)
+            
+            variant=""
+            if echo "${arch}" | grep -q "arm/v"; then
+              variant=$(echo ${arch} | cut -d'/' -f2)
+              arch=$(echo ${arch} | cut -d'/' -f1)
+            fi
+            
             skopeo inspect \
-              --override-os=$(echo $platform | awk -F'/' '{print $1}') \
-              --override-arch=$(echo $platform | awk -F'/' '{print $2}') \
+              --override-os=${os} \
+              --override-arch=${arch} \
+              ${variant:+--override-variant=${variant}} \
               --format=json \
               --tls-verify=false \
               docker://${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}
@@ -443,22 +509,41 @@ jobs:
               ${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }} \
               /bin/sh -c "uname -a && sleep infinity"
 
-            log_container=$(mktemp)
-            docker exec ${{ env.container_name }} mkdir -p ${{ env.dir_container }}
-            for script_file in ./*.sh; do
-              container_script="${{ env.dir_container }}/$(basename ${script_file})"
-              script_temp=$(mktemp)
-              {
-                echo "#!/bin/sh"
-                printenv | awk -F= '/^[a-zA-Z_][a-zA-Z0-9_]*=/ {printf "%s=\"%s\"\n", $1, $2}'
-                cat "${script_file}"
-              } > ${script_temp}
+            dir_step="test"
+            dir_original=$(pwd)
+            if [ -d "${dir_step}" ]; then
+              cd ./${dir_step}
+              echo "Changed to directory: $(pwd)"
 
-              docker cp ${script_temp} ${{ env.container_name }}:${container_script}
-              docker exec ${{ env.container_name }} chmod +x ${container_script}
-              docker exec ${{ env.container_name }} sh -c "${container_script}" | tee -a ${log_container}
-            done
+              log_container=$(mktemp)
+              docker exec ${{ env.container_name }} mkdir -p ${{ env.dir_container }}
+              
+              for script_file in ./*.sh; do
+                container_script="${{ env.dir_container }}/$(basename ${script_file})"
+                script_temp=$(mktemp)
+                {
+                  echo "#!/bin/sh"
+                  printenv | awk -F= '/^[a-zA-Z_][a-zA-Z0-9_]*=/ {printf "%s=\"%s\"\n", $1, $2}'
+                  cat "${script_file}"
+                } > ${script_temp}
+
+                docker cp ${script_temp} ${{ env.container_name }}:${container_script}
+                docker exec ${{ env.container_name }} chmod +x ${container_script}
+                docker exec ${{ env.container_name }} sh -c "${container_script}" | tee -a ${log_container}
+              done
+
+              cd "${dir_original}"
+              echo "Changed back to original directory: $(pwd)"
+            else
+              echo "No directory found"
+            fi
+            
             docker stop ${{ env.container_name }}
+
+            tar_file="${{ env.app_branch }}_${{ env.tag_repo }}_${{ env.version }}_$(echo ${platform} | tr '/' '_').tar"
+            docker tag ${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }} ${{ env.repo_dockerhub }}:${{ env.tag_repo }}
+            docker save --output ./${tar_file} ${{ env.repo_dockerhub }}:${{ env.tag_repo }}
+            echo "Exported $platform image to ${tar_file}"
           done
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
@@ -467,17 +552,22 @@ jobs:
         working-directory: "${{ github.workspace }}/${{ env.app_branch }}"
         run: |
           echo "Current working directory: $(pwd)"
-
           declare -a tag_array=("${{ env.tag_repo }}")
           tag_version="${{ env.tag_repo }}-${{ env.version }}"
 
-          if [ -d "push" ]; then
-            cd push
+          dir_step="push"
+          dir_original=$(pwd)
+          if [ -d "${dir_step}" ]; then
+            cd ./${dir_step}
             echo "Changed to directory: $(pwd)"
+
             for script_file in ./*.sh; do
               chmod +x "${script_file}"
               source "${script_file}"
             done
+
+            cd "${dir_original}"
+            echo "Changed back to original directory: $(pwd)"
           else
             echo "No directory found"
           fi
@@ -490,9 +580,9 @@ jobs:
           for registry_remote in "${registries[@]}"; do
             for tag_each in "${tag_array[@]}"; do
               docker buildx imagetools create --tag "${registry_remote}/${{ env.repo_dockerhub }}:${tag_each}" "${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}"
-              skopeo inspect \
-                --format=json \
-                docker://${registry_remote}/${{ env.repo_dockerhub }}:${tag_each}
+              # skopeo inspect \
+              #   --format=json \
+              #   docker://${registry_remote}/${{ env.repo_dockerhub }}:${tag_each}
             done
           done
 
@@ -505,13 +595,12 @@ jobs:
         working-directory: "${{ github.workspace }}/${{ env.app_branch }}"
         run: |
           echo "Current working directory: $(pwd)"
-
           IFS=',' read -ra registries <<< "${{ env.registry_push }}" >> ${{ env.readme_md }}
           for registry_remote in "${registries[@]}"; do
             echo "Registry: ${registry_remote}" >> ${{ env.readme_md }}
             echo "Repository: ${{ env.repo_dockerhub }}" >> ${{ env.readme_md }}
-            echo "docker load \*.tar" >> ${{ env.readme_md }}
             echo "docker pull ${registry_remote}/${{ env.repo_dockerhub }}:\*"  >> ${{ env.readme_md }}
+            echo "docker load < \*.tar" >> ${{ env.readme_md }}
           done
 
           cat ${{ env.readme_md }}
