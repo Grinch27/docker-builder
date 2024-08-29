@@ -6,10 +6,10 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     && apt-get update --ignore-missing \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
-        gpg \
         curl \
+        gpg \
         lsb-release \
-        systemd \
+        # systemd \
         # dbus \
         # nano \
         # man \
