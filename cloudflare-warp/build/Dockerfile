@@ -40,7 +40,8 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     && rm -rf /var/log/*.log \
     && unset DEBIAN_FRONTEND \
     # ENTRYPOINT startapp.sh
-    && echo "#!/bin/sh\nservice dbus start\n/bin/warp-svc\nwarp-cli disconnect --accept-tos" > /startapp.sh \
+    # && echo "#!/bin/sh\nservice dbus start\n/bin/warp-svc\nwarp-cli disconnect --accept-tos" > /startapp.sh \
+    && echo "#!/bin/sh\n/bin/warp-svc\nwarp-cli disconnect --accept-tos" > /startapp.sh \
     && chmod +x /startapp.sh
     
 # ENTRYPOINT ["/bin/warp-svc"]
