@@ -78,7 +78,9 @@ jobs:
         run: |
           echo -e "Current working directory: $(pwd)"
           packages_install=(
+            "ca-certificates"
             "curl"
+            "gpg"
           )
           packages_extra=(
             "skopeo"
@@ -87,8 +89,8 @@ jobs:
           sudo -E apt-get -qq -y update
           sudo -E apt-get -y install "${packages_install[@]}"
           sudo -E apt-get -y install "${packages_extra[@]}"
-          sudo -E apt-get -qq -y autoremove --purge
-          sudo -E apt-get -qq clean
+          # sudo -E apt-get -qq -y autoremove --purge
+          # sudo -E apt-get -qq clean
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
       - name: Setup Docker
@@ -101,8 +103,8 @@ jobs:
 
           # ===== 1. Set up Docker's apt repository =====
           # Add Docker's official GPG key:
-          sudo apt-get update
-          sudo apt-get install ca-certificates curl
+          # sudo apt-get update
+          # sudo apt-get install ca-certificates curl
           sudo install -m 0755 -d /etc/apt/keyrings
           sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
           sudo chmod a+r /etc/apt/keyrings/docker.asc
