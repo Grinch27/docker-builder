@@ -32,7 +32,7 @@ env:
 jobs:
   check:
     name: Check Version
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       pull-requests: read
@@ -575,7 +575,7 @@ jobs:
           else
             echo "No directory found"
           fi
-          
+
           if [ "${{ env.consistent }}" == "true" ]; then
             tag_array+=("${tag_version}")
           fi
