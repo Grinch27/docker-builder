@@ -1,4 +1,3 @@
-# FROM ubuntu:jammy
 ARG base_image=debian:stable-slim
 FROM ${base_image}
 
