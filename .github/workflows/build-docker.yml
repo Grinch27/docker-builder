@@ -105,6 +105,36 @@ jobs:
 
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
+      - name: Setup Docker
+        id: docker
+        if: ${{ 'true' == 'false' }} # disable
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        working-directory: /
+        run: |
+          # https://docs.docker.com/engine/install/ubuntu/
+
+          # ===== 1. Set up Docker's apt repository =====
+          # Add Docker's official GPG key:
+          # sudo apt-get update
+          # sudo apt-get install ca-certificates curl
+          sudo install -m 0755 -d /etc/apt/keyrings
+          sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+          sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+          # Add the repository to Apt sources:
+          echo \
+            "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+            $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+            sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+          sudo apt-get update
+
+          # ===== 2. Install the Docker packages =====
+          sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+          docker --version
+          echo "status=success" | tee -a ${GITHUB_OUTPUT}
+
       - name: Setup QEMU
         id: qemu
         uses: docker/setup-qemu-action@master
@@ -520,6 +550,7 @@ jobs:
               cd ./${dir_step}
               echo "Changed to directory: $(pwd)"
 
+              set +e
               log_container=$(mktemp)
               docker exec ${{ env.container_name }} mkdir -p ${{ env.dir_container }}
               
@@ -536,6 +567,7 @@ jobs:
                 docker exec ${{ env.container_name }} chmod +x ${container_script}
                 docker exec ${{ env.container_name }} sh -c "${container_script}" | tee -a ${log_container}
               done
+              set -e
 
               cd "${dir_original}"
               echo "Changed back to original directory: $(pwd)"
