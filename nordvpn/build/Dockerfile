@@ -7,7 +7,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
         ca-certificates \
         curl \
         gpg \
-        sudo \
+        # sudo \
     # Add nordvpn gpg key
     && curl -fsSL https://repo.nordvpn.com/gpg/nordvpn_public.asc | gpg --yes --dearmor --output /usr/share/keyrings/nordvpn_public.gpg \
     && echo "deb [signed-by=/usr/share/keyrings/nordvpn_public.gpg] https://repo.nordvpn.com/deb/nordvpn/debian stable main" > /etc/apt/sources.list.d/nordvpn.list \
@@ -19,11 +19,13 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     # Install nordvpn
     && sudo apt-get install -y \
         nordvpn \
-    # Uninstall sudo
-    && export SUDO_FORCE_REMOVE=yes \
-    && apt-get purge --autoremove -y \
-        sudo \
-    && unset SUDO_FORCE_REMOVE \
+    # Add user
+    && useradd -m user \
+    # # Uninstall sudo
+    # && export SUDO_FORCE_REMOVE=yes \
+    # && apt-get purge --autoremove -y \
+    #     sudo \
+    # && unset SUDO_FORCE_REMOVE \
     # Clean apt
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
