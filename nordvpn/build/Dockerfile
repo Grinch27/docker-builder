@@ -16,14 +16,15 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     # Plan B: Install deb
     && OS_ARCH=$(dpkg --print-architecture) \
     && echo "Detected architecture: ${OS_ARCH}" \
+    && URL_DOWNLOAD='https://repo.nordvpn.com/deb/nordvpn/debian/pool/main/nordvpn_3.18.5' \
     && if [ "${OS_ARCH}" = "amd64" ]; then \
-        URL_DOWNLOAD=$(grep -oP 'https://repo.nordvpn.com/deb/nordvpn/debian/pool/main/nordvpn_3.18.5_amd64.deb' ${FILE_HTML} | head -1); \
+        URL_DOWNLOAD="${URL_DOWNLOAD}_amd64.deb"; \
     elif [ "${OS_ARCH}" = "i386" ]; then \
-        URL_DOWNLOAD=$(grep -oP 'https://repo.nordvpn.com/deb/nordvpn/debian/pool/main/nordvpn_3.18.5_i386.deb' ${FILE_HTML} | head -1); \
+        URL_DOWNLOAD="${URL_DOWNLOAD}_i386.deb"; \
     elif [ "${OS_ARCH}" = "arm64" ]; then \
-        URL_DOWNLOAD=$(grep -oP 'https://repo.nordvpn.com/deb/nordvpn/debian/pool/main/nordvpn_3.18.5_arm64.deb' ${FILE_HTML} | head -1); \
+        URL_DOWNLOAD="${URL_DOWNLOAD}_arm64.deb"; \
     elif [ "${OS_ARCH}" = "armhf" ]; then \
-        URL_DOWNLOAD=$(grep -oP 'https://repo.nordvpn.com/deb/nordvpn/debian/pool/main/nordvpn_3.18.5_armhf.deb' ${FILE_HTML} | head -1); \
+        URL_DOWNLOAD="${URL_DOWNLOAD}_armhf.deb"; \
     else \
         echo "Unsupported architecture: ${OS_ARCH}" && exit 1; \
     fi \
