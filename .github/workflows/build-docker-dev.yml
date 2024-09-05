@@ -1,4 +1,4 @@
-name: Build Docker (Dev)
+name: (Dev) Build Docker
 
 on:
   repository_dispatch:
