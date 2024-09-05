@@ -8,14 +8,19 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update --ignore-missing
 apt-get install -y --no-install-recommends -qq \
     ca-certificates \
-    gpg
+    gpg \
+    curl \
 
 # Temporary failure resolving repo.nordvpn.com
 # sudo -i
-cd /etc/apt/sources.list.d
-echo "deb https://repo.nordvpn.com/deb/nordvpn/debian stable main" > nordvpn.list
+curl -fsSL https://repo.nordvpn.com/gpg/nordvpn_public.asc | gpg --yes --dearmor --output /usr/share/keyrings/nordvpn_public.gpg
+echo "deb [signed-by=/usr/share/keyrings/nordvpn_public.gpg] https://repo.nordvpn.com/deb/nordvpn/debian stable main" > /etc/apt/sources.list.d/nordvpn.list
 apt-get update
 apt-get install nordvpn
+
+# Clean pre-install
+apt-get purge --autoremove -y \
+    curl \
 
 # Clean apt
 apt-get clean
