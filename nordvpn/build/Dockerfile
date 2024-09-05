@@ -7,7 +7,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
         ca-certificates \
         curl \
         gpg \
-        systemd \
+        # systemd \
         # sudo \
     # Add nordvpn gpg key
     # && curl -fsSL https://repo.nordvpn.com/gpg/nordvpn_public.asc | gpg --yes --dearmor --output /usr/share/keyrings/nordvpn_public.gpg \
@@ -49,8 +49,8 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     && echo "#!/bin/sh\n/etc/init.d/nordvpn start" > /docker-entrypoint.sh \
     && chmod +x /docker-entrypoint.sh
 
-STOPSIGNAL SIGRTMIN+3
-ENV container=docker
+# STOPSIGNAL SIGRTMIN+3
+# ENV container=docker
 # ENTRYPOINT ["/lib/systemd/systemd"]
 # CMD ["/docker-entrypoint.sh"]
 
