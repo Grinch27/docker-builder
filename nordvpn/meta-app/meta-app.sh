@@ -35,3 +35,6 @@ apt-get update
 
 version=$(apt-cache madison nordvpn | awk -F '|' '{print $2}' | tr -d ' ' | head -n 1)
 echo "version=${version}"
+
+# /run/nordvpn/nordvpnd.sock not found.
+# The NordVPN background service isn't running. Execute the "systemctl enable --now nordvpnd" command with root privileges to start the background service. If you're using NordVPN in an environment without systemd (a container, for example), use the "/etc/init.d/nordvpn start" command.
