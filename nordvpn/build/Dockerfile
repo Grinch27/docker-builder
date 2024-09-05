@@ -1,14 +1,13 @@
 ARG base_image=debian:stable-slim
 FROM ${base_image}
 
-# USER root
-
 RUN export DEBIAN_FRONTEND=noninteractive \
     && apt-get update --ignore-missing \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
         gpg \
+        systemd \
         # sudo \
     # Add nordvpn gpg key
     && curl -fsSL https://repo.nordvpn.com/gpg/nordvpn_public.asc | gpg --yes --dearmor --output /usr/share/keyrings/nordvpn_public.gpg \
@@ -33,6 +32,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     && rm -rf /var/log/*.log \
     && unset DEBIAN_FRONTEND
 
-USER root
+# USER root
     
-ENTRYPOINT ["sh", "-c", "uname -a && sleep infinity"]
+# ENTRYPOINT ["sh", "-c", "uname -a && sleep infinity"]
+ENTRYPOINT ["sh", "-c", "/etc/init.d/nordvpn start"]
