@@ -21,7 +21,7 @@ env:
 
 jobs:
   check:
-    name: Test meta-app in Base Image
+    name: Test meta-app
     runs-on: ubuntu-24.04
     permissions:
       contents: read
