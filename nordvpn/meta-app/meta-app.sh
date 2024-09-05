@@ -19,7 +19,7 @@ apt-get update
 apt-get install -y \
     nordvpn
 
-Clean pre-install
+# Clean pre-install
 apt-get purge --autoremove -y \
     curl \
 
