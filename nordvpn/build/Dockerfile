@@ -20,6 +20,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     && sudo apt-get install -y \
         nordvpn \
     # Uninstall sudo
+    && export SUDO_FORCE_REMOVE=yes \
     && apt-get purge --autoremove -y \
         sudo \
     # Clean apt
