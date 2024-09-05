@@ -7,7 +7,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
         ca-certificates \
         curl \
         gpg \
-        # systemd \
+        systemd \
         # sudo \
     # Add nordvpn gpg key
     && curl -fsSL https://repo.nordvpn.com/gpg/nordvpn_public.asc | gpg --yes --dearmor --output /usr/share/keyrings/nordvpn_public.gpg \
@@ -35,6 +35,5 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 # USER root
     
 # ENTRYPOINT ["sh", "-c", "uname -a && sleep infinity"]
-# ENTRYPOINT ["sh", "-c", "service nordvpn start"]
 # systemctl enable --now nordvpnd
-ENTRYPOINT ["/etc/init.d/nordvpn start"]
+ENTRYPOINT ["systemctl enable --now nordvpnd"]
