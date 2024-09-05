@@ -36,5 +36,5 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     
 # ENTRYPOINT ["sh", "-c", "uname -a && sleep infinity"]
 # ENTRYPOINT ["sh", "-c", "service nordvpn start"]
-ENTRYPOINT ["/bin/bash", "-c", "/etc/init.d/nordvpn start && tail -f /dev/null"]
-
+# systemctl enable --now nordvpnd
+ENTRYPOINT ["/etc/init.d/nordvpn start"]
