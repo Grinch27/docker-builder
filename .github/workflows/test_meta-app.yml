@@ -1,4 +1,4 @@
-name: (Test) meta-app in Base Image
+name: (Test) meta-app
 
 on:
   repository_dispatch:
