@@ -230,8 +230,8 @@ jobs:
                 } > ${script_temp}
 
                 docker cp ${script_temp} ${{ env.container_name }}:${container_script}
-                docker exec ${{ env.container_name }} chmod +x ${container_script}
-                docker exec ${{ env.container_name }} sh -c "${container_script}" | tee -a ${log_container}
+                docker exec --user root ${{ env.container_name }} chmod +x ${container_script}
+                docker exec --user root ${{ env.container_name }} sh -c "${container_script}" | tee -a ${log_container}
               done
               set -e
 
