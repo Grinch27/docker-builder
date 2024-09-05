@@ -1,4 +1,3 @@
-# FROM ubuntu:jammy
 ARG base_image=debian:stable-slim
 FROM ${base_image}
 
@@ -8,6 +7,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
         ca-certificates \
         curl \
         gpg \
+        sudo \
     # Add nordvpn gpg key
     && curl -fsSL https://repo.nordvpn.com/gpg/nordvpn_public.asc | gpg --yes --dearmor --output /usr/share/keyrings/nordvpn_public.gpg \
     && echo "deb [signed-by=/usr/share/keyrings/nordvpn_public.gpg] https://repo.nordvpn.com/deb/nordvpn/debian stable main" > /etc/apt/sources.list.d/nordvpn.list \
@@ -17,8 +17,11 @@ RUN export DEBIAN_FRONTEND=noninteractive \
         curl \
         gpg \
     # Install nordvpn
-    && apt-get install -y \
+    && sudo apt-get install -y \
         nordvpn \
+    # Uninstall sudo
+    && apt-get purge --autoremove -y \
+        sudo \
     # Clean apt
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
