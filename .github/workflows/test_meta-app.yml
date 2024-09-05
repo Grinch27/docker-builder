@@ -22,14 +22,10 @@ env:
 jobs:
   check:
     name: Test meta-app in Base Image
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       pull-requests: read
-    # outputs:
-    #   changed: ${{ steps.summary.outputs.changed }}
-    #   version: ${{ steps.summary.outputs.version }}
-    #   consistent: ${{ steps.summary.outputs.consistent }}
     steps:
       - name: Checkout ${{ github.repository }}
         uses: actions/checkout@main
