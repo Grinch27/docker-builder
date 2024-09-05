@@ -28,4 +28,5 @@ rm -rf /var/lib/apt/lists/*
 rm -rf /var/log/*.log
 unset DEBIAN_FRONTEND
 
+dpkg -l
 nordvpn --version
