@@ -9,7 +9,7 @@ apt-get update --ignore-missing
 apt-get install -y --no-install-recommends -qq \
     ca-certificates \
     gpg \
-    curl \
+    curl
 
 # Temporary failure resolving repo.nordvpn.com
 # sudo -i
@@ -29,5 +29,5 @@ rm -rf /var/lib/apt/lists/*
 rm -rf /var/log/*.log
 unset DEBIAN_FRONTEND
 
-dpkg -l
+# dpkg -l
 nordvpn --version
