@@ -21,7 +21,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     # Install nordvpn
     && apt-get install -y \
         nordvpn \
-    # && useradd -m user \
+    && useradd -m user \
     # # Uninstall sudo
     # && export SUDO_FORCE_REMOVE=yes \
     # && apt-get purge --autoremove -y \
