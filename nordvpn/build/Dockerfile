@@ -15,6 +15,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     # && apt-get update \
     # Plan B: Install deb
     && OS_ARCH=$(dpkg --print-architecture) \
+    && echo "Detected architecture: ${OS_ARCH}" \
     && if [ "${OS_ARCH}" = "amd64" ]; then \
         URL_DOWNLOAD=$(grep -oP 'https://repo.nordvpn.com/deb/nordvpn/debian/pool/main/nordvpn_3.18.5_amd64.deb' ${FILE_HTML} | head -1); \
     elif [ "${OS_ARCH}" = "i386" ]; then \
@@ -23,7 +24,10 @@ RUN export DEBIAN_FRONTEND=noninteractive \
         URL_DOWNLOAD=$(grep -oP 'https://repo.nordvpn.com/deb/nordvpn/debian/pool/main/nordvpn_3.18.5_arm64.deb' ${FILE_HTML} | head -1); \
     elif [ "${OS_ARCH}" = "armhf" ]; then \
         URL_DOWNLOAD=$(grep -oP 'https://repo.nordvpn.com/deb/nordvpn/debian/pool/main/nordvpn_3.18.5_armhf.deb' ${FILE_HTML} | head -1); \
+    else \
+        echo "Unsupported architecture: ${OS_ARCH}" && exit 1; \
     fi \
+    && echo "Download URL: ${URL_DOWNLOAD}" \
     && export FILE_DEB="/nordvpn.deb" \
     && curl -fsSL ${URL_DOWNLOAD} -o ${FILE_DEB} \
     && dpkg -i ${FILE_DEB} \
