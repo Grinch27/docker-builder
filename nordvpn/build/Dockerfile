@@ -48,4 +48,4 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     
 # ENTRYPOINT ["sh", "-c", "uname -a && sleep infinity"]
 # systemctl enable --now nordvpnd
-ENTRYPOINT ["systemctl enable --now nordvpnd"]
+ENTRYPOINT ["sh", "-c", "systemctl enable --now nordvpnd && tail -f /dev/null"]
