@@ -16,6 +16,7 @@ apt-get install -y --no-install-recommends -qq \
 curl -fsSL https://repo.nordvpn.com/gpg/nordvpn_public.asc | gpg --yes --dearmor --output /usr/share/keyrings/nordvpn_public.gpg
 echo "deb [signed-by=/usr/share/keyrings/nordvpn_public.gpg] https://repo.nordvpn.com/deb/nordvpn/debian stable main" > /etc/apt/sources.list.d/nordvpn.list
 apt-get update
+
 # apt-get install -y \
 #     nordvpn
 
@@ -31,5 +32,6 @@ apt-get update
 
 # # dpkg -l
 # nordvpn --version
+
 version=$(apt-cache madison nordvpn | awk -F '|' '{print $2}' | tr -d ' ' | head -n 1)
 echo "version=${version}"
