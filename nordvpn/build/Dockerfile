@@ -1,7 +1,7 @@
 ARG base_image=debian:stable-slim
 FROM ${base_image}
 
-USER root
+# USER root
 
 RUN export DEBIAN_FRONTEND=noninteractive \
     && apt-get update --ignore-missing \
@@ -33,6 +33,6 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     && rm -rf /var/log/*.log \
     && unset DEBIAN_FRONTEND
 
-# USER user
+USER user
     
 ENTRYPOINT ["sh", "-c", "uname -a && sleep infinity"]
