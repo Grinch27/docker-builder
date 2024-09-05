@@ -44,14 +44,15 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
     && rm -rf /var/log/*.log \
-    && unset DEBIAN_FRONTEND
-    # Entry point
-    # && systemctl enable --now nordvpnd
+    && unset DEBIAN_FRONTEND \
+    # docker-entrypoint.sh
+    && echo "#!/bin/sh\nsystemctl enable --now nordvpnd\nsleep infinity" > /docker-entrypoint.sh \
+    && chmod +x /docker-entrypoint.sh
 
 STOPSIGNAL SIGRTMIN+3
 ENV container docker
 ENTRYPOINT ["/lib/systemd/systemd"]
-CMD ["systemctl", "enable", "--now", "nordvpnd"]
-    
+CMD ["/docker-entrypoint.sh"]
+# CMD ["systemctl", "enable", "--now", "nordvpnd"]
 # ENTRYPOINT ["sh", "-c", "uname -a && sleep infinity"]
 # CMD ["sh", "-c", "systemctl enable --now nordvpnd && tail -f /dev/null"]
