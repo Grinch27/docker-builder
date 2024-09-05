@@ -50,7 +50,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     && chmod +x /docker-entrypoint.sh
 
 STOPSIGNAL SIGRTMIN+3
-ENV container docker
+ENV container=docker
 # ENTRYPOINT ["/lib/systemd/systemd"]
 # CMD ["/docker-entrypoint.sh"]
 
