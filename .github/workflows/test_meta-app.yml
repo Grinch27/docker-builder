@@ -30,7 +30,7 @@ jobs:
       - name: Checkout ${{ github.repository }}
         uses: actions/checkout@main
 
-      - name: Initialize environment
+      - name: Initialize environment - ${{ env.app_branch }} - ${{ env.tag_repo }}
         id: init
         env:
           DEBIAN_FRONTEND: noninteractive
