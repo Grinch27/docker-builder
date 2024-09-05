@@ -216,6 +216,7 @@ jobs:
               cd ./${dir_step}
               echo "Changed to directory: $(pwd)"
 
+              set +e
               log_container=$(mktemp)
               docker exec ${{ env.container_name }} mkdir -p ${{ env.dir_container }}
               
@@ -232,6 +233,7 @@ jobs:
                 docker exec ${{ env.container_name }} chmod +x ${container_script}
                 docker exec ${{ env.container_name }} sh -c "${container_script}" | tee -a ${log_container}
               done
+              set -e
 
               cd "${dir_original}"
               echo "Changed back to original directory: $(pwd)"
