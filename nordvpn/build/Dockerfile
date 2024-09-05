@@ -34,5 +34,5 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 
 # USER root
     
-# ENTRYPOINT ["sh", "-c", "uname -a && sleep infinity"]
-ENTRYPOINT ["sh", "-c", "/etc/init.d/nordvpn start"]
+ENTRYPOINT ["sh", "-c", "uname -a && sleep infinity"]
+# ENTRYPOINT ["sh", "-c", "service nordvpn start"]
