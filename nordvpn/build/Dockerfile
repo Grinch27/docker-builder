@@ -31,7 +31,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     && echo "Download URL: ${URL_DOWNLOAD}" \
     && export FILE_DEB="/nordvpn.deb" \
     && curl -fsSL ${URL_DOWNLOAD} -o ${FILE_DEB} \
-    && dpkg -i ${FILE_DEB} \
+    && apt-get install -y ${FILE_DEB} \
     && rm -f ${FILE_DEB} \
     # Clean pre-install
     && apt-get purge --autoremove -y \
