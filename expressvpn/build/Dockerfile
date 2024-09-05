@@ -56,7 +56,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     fi \
     && export FILE_DEB="/expressvpn.deb" \
     && curl -fsSL ${URL_DOWNLOAD} -o ${FILE_DEB} \
-    && dpkg -i ${FILE_DEB} \
+    && apt-get install -y ${FILE_DEB} \
     && rm -f ${FILE_HTML} \
     && rm -f ${FILE_DEB} \
     # Clean pre-install
