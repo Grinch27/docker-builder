@@ -32,3 +32,4 @@ apt-get update
 # # dpkg -l
 # nordvpn --version
 version=$(apt-cache madison nordvpn | awk -F '|' '{print $2}' | tr -d ' ' | head -n 1)
+echo "version=${version}"
