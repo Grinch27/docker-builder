@@ -8,4 +8,3 @@ version=$(warp-cli --version)
 remove_prefix="warp-cli "
 version=${version##*$remove_prefix}
 echo "version=${version}"
-
