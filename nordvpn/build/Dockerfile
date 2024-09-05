@@ -46,7 +46,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     && rm -rf /var/log/*.log \
     && unset DEBIAN_FRONTEND \
     # docker-entrypoint.sh
-    && echo "#!/bin/sh\n/lib/systemd/systemd\nsystemctl enable --now nordvpnd\nsleep infinity" > /docker-entrypoint.sh \
+    && echo "#!/bin/sh\n/etc/init.d/nordvpn start" > /docker-entrypoint.sh \
     && chmod +x /docker-entrypoint.sh
 
 STOPSIGNAL SIGRTMIN+3
