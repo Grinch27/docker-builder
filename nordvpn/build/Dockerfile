@@ -33,6 +33,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     && curl -fsSL ${URL_DOWNLOAD} -o ${FILE_DEB} \
     && apt-get install -y ${FILE_DEB} \
     && rm -f ${FILE_DEB} \
+    && chmod +x /etc/init.d/nordvpn \
     # Clean pre-install
     && apt-get purge --autoremove -y \
         curl \
