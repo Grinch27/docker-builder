@@ -23,6 +23,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     && export SUDO_FORCE_REMOVE=yes \
     && apt-get purge --autoremove -y \
         sudo \
+    && unset SUDO_FORCE_REMOVE \
     # Clean apt
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
