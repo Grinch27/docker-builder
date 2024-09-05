@@ -20,12 +20,12 @@ RUN export DEBIAN_FRONTEND=noninteractive \
         # dbus \
         # nano \
         # man \
-        expect \
-        iproute2 \
-        jq \
+        # expect \
+        # iproute2 \
+        # jq \
         # iptables \
         # nftables \
-        iputils-ping \
+        # iputils-ping \
         # vim \
         # sudo \
         # procps \
