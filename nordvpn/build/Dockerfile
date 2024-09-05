@@ -17,7 +17,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
         curl \
         gpg \
     # Install nordvpn
-    && sudo apt-get install -y \
+    && apt-get install -y \
         nordvpn \
     # Add user
     && useradd -m user \
