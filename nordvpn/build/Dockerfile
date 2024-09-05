@@ -22,6 +22,6 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
     && rm -rf /var/log/*.log \
-    && unset DEBIAN_FRONTEND \
+    && unset DEBIAN_FRONTEND
     
 ENTRYPOINT ["sh", "-c", "uname -a && sleep infinity"]
