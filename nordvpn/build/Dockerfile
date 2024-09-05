@@ -44,8 +44,9 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
     && rm -rf /var/log/*.log \
-    && unset DEBIAN_FRONTEND
+    && unset DEBIAN_FRONTEND \
+    # Entry point
+    && systemctl enable --now nordvpnd
     
 # ENTRYPOINT ["sh", "-c", "uname -a && sleep infinity"]
-# systemctl enable --now nordvpnd
-ENTRYPOINT ["sh", "-c", "systemctl enable --now nordvpnd && tail -f /dev/null"]
+# ENTRYPOINT ["sh", "-c", "systemctl enable --now nordvpnd && tail -f /dev/null"]
