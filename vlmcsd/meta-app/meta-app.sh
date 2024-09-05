@@ -7,19 +7,20 @@ echo "dir_current=${dir_current}"
 apk add --no-cache -q git make build-base
 git clone --branch master --single-branch https://github.com/Wind4/vlmcsd.git
 cd vlmcsd/
-make
 
-cp bin/vlmcsd /usr/bin/vlmcsd
+svn info
+# make
+# cp bin/vlmcsd /usr/bin/vlmcsd
 
-# /usr/bin/vlmcsd -D -d
-vlmcsd -V
+# # /usr/bin/vlmcsd -D -d
+# vlmcsd -V
 
-version=$(vlmcsd -V)
-remove_prefix="vlmcsd svn"
-remove_suffix=", built"
-version=${version##*$remove_prefix}
-version=${version%%$remove_suffix*}
-echo "version=${version}"
+# version=$(vlmcsd -V)
+# remove_prefix="vlmcsd svn"
+# remove_suffix=", built"
+# version=${version##*$remove_prefix}
+# version=${version%%$remove_suffix*}
+# echo "version=${version}"
 
 # Usage:
 #    /usr/bin/vlmcsd [ options ]
