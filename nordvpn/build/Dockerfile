@@ -21,7 +21,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     # Install nordvpn
     && apt-get install -y \
         nordvpn \
-    && useradd -m root \
+    && useradd -m user \
     # # Uninstall sudo
     # && export SUDO_FORCE_REMOVE=yes \
     # && apt-get purge --autoremove -y \
@@ -33,6 +33,6 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     && rm -rf /var/log/*.log \
     && unset DEBIAN_FRONTEND
 
-USER root
+USER user
     
 ENTRYPOINT ["sh", "-c", "uname -a && sleep infinity"]
