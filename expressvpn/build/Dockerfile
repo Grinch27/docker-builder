@@ -31,8 +31,8 @@ RUN export DEBIAN_FRONTEND=noninteractive \
         && ln -s $(find /lib -name 'ld-*.so' | grep 'arm-linux-gnueabihf' | head -n 1) ld-linux.so.3; \
     fi \
     # ===== Download Expressvpn =====
-    && export URL_HTML="https://www.expressvpn.works/latest" \
-    && export FILE_HTML="/latest.html" \
+    && URL_HTML="https://www.expressvpn.works/latest" \
+    && FILE_HTML="/latest.html" \
     && curl -fsSL ${URL_HTML} -o ${FILE_HTML} \
     && if [ "${OS_ARCH}" = "amd64" ]; then \
         URL_DOWNLOAD=$(grep -oP 'https://.*?/clients/linux/.*?_amd64.deb' ${FILE_HTML} | head -1); \
@@ -41,7 +41,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     elif echo "${OS_ARCH}" | grep -q "arm"; then \
         URL_DOWNLOAD=$(grep -oP 'https://.*?/clients/linux/.*?_armhf.deb' ${FILE_HTML} | head -1); \
     fi \
-    && export FILE_DEB="/expressvpn.deb" \
+    && FILE_DEB="/expressvpn.deb" \
     && curl -fsSL ${URL_DOWNLOAD} -o ${FILE_DEB} \
     # ===== Clean pre-install =====
     && apt-get purge --autoremove -y \
