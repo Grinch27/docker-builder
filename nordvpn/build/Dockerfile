@@ -22,7 +22,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     && apt-get install -y \
         nordvpn \
     # ----- /etc/init.d/nordvpn -----
-    && export SOCKET_DIR=/run/nordvpn \
+    && SOCKET_DIR=/run/nordvpn \
     && mkdir -m 0750 "$SOCKET_DIR" \
     && chown root:nordvpn "$SOCKET_DIR" \
     # && useradd -m user \
