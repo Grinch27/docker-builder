@@ -41,7 +41,9 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     # Install nordvpn
     && apt-get install -y \
         nordvpn \
-    && chown root:nordvpn /run/nordvpn \
+    && export SOCKET_DIR=/run/nordvpn \
+    && mkdir -m 0750 "$SOCKET_DIR" \
+    && chown root:nordvpn "$SOCKET_DIR" \
     # Clean apt
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
