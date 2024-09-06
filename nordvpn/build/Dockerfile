@@ -25,7 +25,6 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     && mkdir -m 0750 "$SOCKET_DIR" \
     && chown root:nordvpn "$SOCKET_DIR" \
     && useradd -m user \
-    && useradd -m nordvpn \
     # Clean apt
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
