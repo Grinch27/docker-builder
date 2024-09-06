@@ -25,14 +25,14 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     && export SOCKET_DIR=/run/nordvpn \
     && mkdir -m 0750 "$SOCKET_DIR" \
     && chown root:nordvpn "$SOCKET_DIR" \
-    && useradd -m user \
+    # && useradd -m user \
     # ===== Clean apt =====
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
     && rm -rf /var/log/*.log \
     && unset DEBIAN_FRONTEND \
     # ===== docker-entrypoint.sh =====
-    && echo "#!/bin/sh\nuname -a\n/usr/sbin/nordvpn\nsleep infinity" > /docker-entrypoint.sh \
+    && echo "#!/bin/sh\nuname -a\n/usr/sbin/nordvpnd\nsleep infinity" > /docker-entrypoint.sh \
     && chmod +x /docker-entrypoint.sh
 
 ENTRYPOINT ["sh", "/docker-entrypoint.sh"]
