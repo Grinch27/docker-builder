@@ -1,13 +1,13 @@
 ARG base_image=debian:stable-slim
 FROM ${base_image}
 
-ENV CODE="code" \
-    SERVER="smart" \
-    HEALTHCHECK="" \
-    BEARER="" \
-    NETWORK="on" \
-    PROTOCOL="lightway_udp" \
-    CIPHER="chacha20"
+# ENV CODE="code" \
+#     SERVER="smart" \
+#     HEALTHCHECK="" \
+#     BEARER="" \
+#     NETWORK="on" \
+#     PROTOCOL="lightway_udp" \
+#     CIPHER="chacha20"
 
 RUN export DEBIAN_FRONTEND=noninteractive \
     && apt-get update --ignore-missing \
@@ -68,7 +68,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     && apt clean \
     && rm -rf /var/lib/apt/lists/* \
     && rm -rf /var/log/*.log \
-    && unset DEBIAN_FRONTEND
+    && unset DEBIAN_FRONTEND \
     # ===== docker-entrypoint.sh =====
     # /usr/sbin/expressvpnd
     && echo "#!/bin/sh\nuname -a\n/etc/init.d/expressvpn start" > /docker-entrypoint.sh \
