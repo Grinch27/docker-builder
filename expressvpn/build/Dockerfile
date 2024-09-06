@@ -43,7 +43,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
         # && ln -s arm-linux-gnueabihf/ld-2.23.so ld-linux.so.3; \
         && ln -s $(find /lib -name 'ld-*.so' | grep 'arm-linux-gnueabihf' | head -n 1) ld-linux.so.3; \
     fi \
-    # Download Expressvpn file
+    # ===== Download Expressvpn file =====
     && export URL_HTML="https://www.expressvpn.works/latest" \
     && export FILE_HTML="/latest.html" \
     && curl -fsSL ${URL_HTML} -o ${FILE_HTML} \
@@ -56,14 +56,15 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     fi \
     && export FILE_DEB="/expressvpn.deb" \
     && curl -fsSL ${URL_DOWNLOAD} -o ${FILE_DEB} \
-    && apt-get install -y ${FILE_DEB} \
-    && rm -f ${FILE_HTML} \
-    && rm -f ${FILE_DEB} \
     # Clean pre-install
     && apt-get purge --autoremove -y \
         curl \
         lsb-release \
-    # clear cache
+    # ===== Install expressvpn =====
+    && apt-get install -y ${FILE_DEB} \
+    && rm -f ${FILE_HTML} \
+    && rm -f ${FILE_DEB} \
+    # ===== Clean apt =====
     && apt clean \
     && rm -rf /var/lib/apt/lists/* \
     && rm -rf /var/log/*.log \
