@@ -9,28 +9,29 @@ RUN export DEBIAN_FRONTEND=noninteractive \
         gpg \
         # systemd \
         # sudo \
-    # Add nordvpn gpg key
+    # ===== Add nordvpn gpg key =====
     && curl -fsSL https://repo.nordvpn.com/gpg/nordvpn_public.asc | gpg --yes --dearmor --output /usr/share/keyrings/nordvpn_public.gpg \
     && echo "deb [signed-by=/usr/share/keyrings/nordvpn_public.gpg] https://repo.nordvpn.com/deb/nordvpn/debian stable main" > /etc/apt/sources.list.d/nordvpn.list \
     && apt-get update \
-    # Clean pre-install
+    # ===== Clean pre-install =====
     && apt-get purge --autoremove -y \
         curl \
         gpg \
         # sudo \
-    # Install nordvpn
+    # ===== Install nordvpn =====
     && apt-get install -y \
         nordvpn \
+    # ----- /etc/init.d/nordvpn -----
     && export SOCKET_DIR=/run/nordvpn \
     && mkdir -m 0750 "$SOCKET_DIR" \
     && chown root:nordvpn "$SOCKET_DIR" \
     && useradd -m user \
-    # Clean apt
+    # ===== Clean apt =====
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
     && rm -rf /var/log/*.log \
     && unset DEBIAN_FRONTEND \
-    # docker-entrypoint.sh
+    # ===== docker-entrypoint.sh =====
     && echo "#!/bin/sh\nuname -a\n/usr/sbin/nordvpn\nsleep infinity" > /docker-entrypoint.sh \
     && chmod +x /docker-entrypoint.sh
 
