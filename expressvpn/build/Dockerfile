@@ -16,7 +16,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
         gpg \
         curl \
         lsb-release \
-        systemd \
+        # systemd \
         # dbus \
         # nano \
         # man \
@@ -29,10 +29,10 @@ RUN export DEBIAN_FRONTEND=noninteractive \
         # vim \
         # sudo \
         # procps \
-    # System info
+    # ===== System info =====
     && OS_ARCH=$(dpkg --print-architecture) \
     && OS_VER=$(lsb_release -cs) \
-    # Fix armhf
+    # ===== Fix armhf =====
     && if [ "${OS_ARCH}" = "arm64" ]; then \
         dpkg --add-architecture armhf \
         && apt-get update --ignore-missing \
@@ -43,7 +43,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
         # && ln -s arm-linux-gnueabihf/ld-2.23.so ld-linux.so.3; \
         && ln -s $(find /lib -name 'ld-*.so' | grep 'arm-linux-gnueabihf' | head -n 1) ld-linux.so.3; \
     fi \
-    # ===== Download Expressvpn file =====
+    # ===== Download Expressvpn =====
     && export URL_HTML="https://www.expressvpn.works/latest" \
     && export FILE_HTML="/latest.html" \
     && curl -fsSL ${URL_HTML} -o ${FILE_HTML} \
@@ -56,7 +56,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     fi \
     && export FILE_DEB="/expressvpn.deb" \
     && curl -fsSL ${URL_DOWNLOAD} -o ${FILE_DEB} \
-    # Clean pre-install
+    # ===== Clean pre-install =====
     && apt-get purge --autoremove -y \
         curl \
         lsb-release \
