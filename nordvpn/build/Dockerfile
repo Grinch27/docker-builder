@@ -2,13 +2,14 @@ ARG base_image=debian:stable-slim
 FROM ${base_image}
 
 RUN export DEBIAN_FRONTEND=noninteractive \
+    && export SUDO_FORCE_REMOVE=yes \
     && apt-get update --ignore-missing \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
         gpg \
         # systemd \
-        # sudo \
+        sudo \
     # Add nordvpn gpg key
     # && curl -fsSL https://repo.nordvpn.com/gpg/nordvpn_public.asc | gpg --yes --dearmor --output /usr/share/keyrings/nordvpn_public.gpg \
     # && echo "deb [signed-by=/usr/share/keyrings/nordvpn_public.gpg] https://repo.nordvpn.com/deb/nordvpn/debian stable main" > /etc/apt/sources.list.d/nordvpn.list \
@@ -31,13 +32,13 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     && echo "Download URL: ${URL_DOWNLOAD}" \
     && export FILE_DEB="/nordvpn.deb" \
     && curl -fsSL ${URL_DOWNLOAD} -o ${FILE_DEB} \
-    && apt-get install -y ${FILE_DEB} \
+    && sudo apt-get install -y ${FILE_DEB} \
     && rm -f ${FILE_DEB} \
-    && chmod +x /etc/init.d/nordvpn \
     # Clean pre-install
     && apt-get purge --autoremove -y \
         curl \
         gpg \
+        sudo \
     # Install nordvpn
     # && apt-get install -y \
     #     nordvpn \
