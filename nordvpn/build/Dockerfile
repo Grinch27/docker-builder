@@ -34,6 +34,8 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     && echo "#!/bin/sh\nuname -a\n/usr/sbin/nordvpn\nsleep infinity" > /docker-entrypoint.sh \
     && chmod +x /docker-entrypoint.sh
 
+USER nordvpn
+
 ENTRYPOINT ["sh", "/docker-entrypoint.sh"]
 
 # # Plan B: Install deb
