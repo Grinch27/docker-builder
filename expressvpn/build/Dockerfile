@@ -13,22 +13,9 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     && apt-get update --ignore-missing \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
-        gpg \
         curl \
+        gpg \
         lsb-release \
-        # systemd \
-        # dbus \
-        # nano \
-        # man \
-        # expect \
-        # iproute2 \
-        # jq \
-        # iptables \
-        # nftables \
-        # iputils-ping \
-        # vim \
-        # sudo \
-        # procps \
     # ===== System info =====
     && OS_ARCH=$(dpkg --print-architecture) \
     && OS_VER=$(lsb_release -cs) \
@@ -59,6 +46,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     # ===== Clean pre-install =====
     && apt-get purge --autoremove -y \
         curl \
+        gpg \
         lsb-release \
     # ===== Install expressvpn =====
     && apt-get install -y ${FILE_DEB} \
