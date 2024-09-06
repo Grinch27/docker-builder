@@ -32,7 +32,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     && rm -rf /var/log/*.log \
     && unset DEBIAN_FRONTEND \
     # ===== docker-entrypoint.sh =====
-    && echo "#!/bin/sh\n/usr/sbin/nordvpnd\n/usr/lib/nordvpn/norduserd" > /docker-entrypoint.sh \
+    && echo "#!/bin/sh\nuname -a\n/usr/sbin/nordvpnd\n/usr/lib/nordvpn/norduserd" > /docker-entrypoint.sh \
     && chmod +x /docker-entrypoint.sh
 
 ENTRYPOINT ["sh", "/docker-entrypoint.sh"]
