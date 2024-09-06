@@ -38,7 +38,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     && apt-get purge --autoremove -y \
         curl \
         gpg \
-        sudo \
+        # sudo \
     # Install nordvpn
     # && apt-get install -y \
     #     nordvpn \
