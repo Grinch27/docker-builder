@@ -50,7 +50,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     && rm -rf /var/log/*.log \
     && unset DEBIAN_FRONTEND \
     # docker-entrypoint.sh
-    && echo "#!/bin/sh\nuname -a && sleep infinity\n/etc/init.d/nordvpn start" > /docker-entrypoint.sh \
+    && echo "#!/bin/sh\nuname -a && sleep infinity\n/usr/sbin/nordvpn" > /docker-entrypoint.sh \
     && chmod +x /docker-entrypoint.sh
 
 # ENTRYPOINT ["/lib/systemd/systemd"]
