@@ -54,5 +54,5 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 # ENTRYPOINT ["/lib/systemd/systemd"]
 # CMD ["/docker-entrypoint.sh"]
 
-ENTRYPOINT ["/docker-entrypoint.sh"]
+ENTRYPOINT ["sh", "/docker-entrypoint.sh"]
 # CMD ["sh", "-c", "systemctl enable --now nordvpnd && tail -f /dev/null"]
