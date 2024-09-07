@@ -14,13 +14,13 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     # ===== Add cloudflare gpg key =====
     && curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | gpg --yes --dearmor --output /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg \
     && echo "deb [arch=${OS_ARCH} signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ ${OS_VER} main" > /etc/apt/sources.list.d/cloudflare-client.list \
+    && apt-get update \
     # ===== Clean pre-install =====
     && apt-get purge --autoremove -y \
         curl \
         gpg \
         lsb-release \
     # ===== Install cloudflare-warp =====
-    && apt-get update \
     && apt-get install -y \
         cloudflare-warp \
     # ===== Clean apt =====
