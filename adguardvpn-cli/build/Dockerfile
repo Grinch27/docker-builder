@@ -11,8 +11,8 @@ RUN apk update \
         tar \
         gpg \
     # install.sh
-    && export URL_SH="https://raw.githubusercontent.com/AdguardTeam/AdGuardVPNCLI/master/scripts/${update_channel}/install.sh" \
-    && export FILE_SH="/install.sh" \
+    && URL_SH="https://raw.githubusercontent.com/AdguardTeam/AdGuardVPNCLI/master/scripts/${update_channel}/install.sh" \
+    && FILE_SH="/install.sh" \
     && curl -fsSL ${URL_SH} -o ${FILE_SH} \
     && sed -i 's/read -r response < \/dev\/tty/response="y"/g' ${FILE_SH} \
     && chmod +x ${FILE_SH} \
