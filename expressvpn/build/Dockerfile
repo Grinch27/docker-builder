@@ -62,5 +62,4 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     && echo "#!/bin/sh\nuname -a\n/etc/init.d/expressvpn start\nsleep infinity" > /docker-entrypoint.sh \
     && chmod +x /docker-entrypoint.sh
 
-# ENTRYPOINT ["/startapp.sh"]
 ENTRYPOINT ["sh", "/docker-entrypoint.sh"]
