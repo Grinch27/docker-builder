@@ -34,4 +34,4 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     && chmod +x /docker-entrypoint.sh
     
 # ENTRYPOINT ["/bin/warp-svc"]
-ENTRYPOINT ["/docker-entrypoint.sh"]
+ENTRYPOINT ["sh", "/docker-entrypoint.sh"]
