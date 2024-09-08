@@ -11,7 +11,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	# ===== noVNC =====
 	&& URL_noVNC=$(curl -s https://api.github.com/repos/novnc/noVNC/releases/latest | grep 'tarball_url' | cut -d ':' -f 2- | cut -d '"' -f 2) \
     && FILE_noVNC="/noVNC-latest.tar.gz" \
-	&& PATH_noVNC="/opt/bin/noVNC" \
+	# && PATH_noVNC="/opt/bin/noVNC" \
 	# ----- noVNC: Setup -----
 	&& curl -fsSL ${URL_noVNC} -o ${FILE_noVNC} \
 	&& mkdir -p ${PATH_noVNC} \
