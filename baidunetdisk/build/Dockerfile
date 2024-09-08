@@ -96,8 +96,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		gpg \
 	# ===== System info =====
     && OS_ARCH=$(dpkg --print-architecture) \
-	# ===== baidunetdisk =====
-	# ----- baidunetdisk: Pre-Setup -----
+	# ===== baidunetdisk: Pre-Setup =====
 	&& APP_VER="4.17.7" \
 	&& URL_baidunetdisk="https://pkg-ant.baidu.com/issue/netdisk/LinuxGuanjia/${APP_VER}/baidunetdisk_${APP_VER}_${OS_ARCH}.deb" \
 	&& FILE_baidunetdisk="/baidunetdisk.deb" \
@@ -171,9 +170,6 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	# abandon with C
 	# && locale-gen ${LANGUAGE} \
 	# && dpkg-reconfigure --frontend noninteractive locales \
-	# ===== openbox =====
-	# && apt-get install --no-install-recommends --fix-missing -y -qq \
-    #     python3-pyxdg \
 	# ===== noVNC =====
 	&& ln -s "${PATH_noVNC}/utils/novnc_proxy" /usr/local/bin/novnc \
 	# ===== baidunetdisk =====
@@ -189,10 +185,8 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	# ===== Misc =====
 	# ----- fix executable file permissions of /dev/shm for Docker Desktop and WSL2 -----
 	&& chmod +x /dev/shm \
-	# ----- Creating Xvfb base directory -----
+	# ----- Setup Xvfb base directory -----
 	&& mkdir -p /tmp/.X11-unix \
-	# ----- Generating VNC password -----
-	# && x11vnc -storepasswd $(cat /run/secrets/NOVNC_PASSWD) ${HOME}/.vnc/passwd \
 	&& chmod -R 775 ${HOME} /tmp/.X11-unix \
 	&& chgrp -R 0 ${HOME} /tmp/.X11-unix \
 	&& chmod -R g=u ${HOME} /tmp/.X11-unix \
@@ -204,10 +198,6 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	&& unset DEBIAN_FRONTEND \
 	# ===== docker-entrypoint.sh =====
     && echo "#!/usr/bin/env sh" >> /docker-entrypoint.sh \
-	# code reference: https://github.com/SeleniumHQ/docker-selenium/
-	# # ----- start Xvfb & Fluxbox -----
-	# && echo 'rm -f /tmp/.X*lock' >> /docker-entrypoint.sh \
-	# && echo '/usr/bin/xvfb-run --server-num=${DISPLAY_NUM} --server-args="-screen 0 ${SCREEN_WIDTH}x${SCREEN_HEIGHT}x${SCREEN_DEPTH} -fbdir /var/tmp -dpi ${SCREEN_DPI} -listen tcp -noreset -ac +extension RANDR" /usr/bin/fluxbox -display ${DISPLAY}' >> /docker-entrypoint.sh \
 	# ----- sh: start Xvfb & Openbox -----
 	&& sh_xvfb="/start-xvfb.sh" \
 	&& echo "#!/usr/bin/env sh" >> ${sh_xvfb} \
@@ -218,9 +208,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	# ----- start vnc -----
 	&& sh_x11vnc="/start-x11vnc.sh" \
 	&& echo "#!/usr/bin/env sh" >> ${sh_x11vnc} \
-	# x11vnc -storepasswd ${VNC_PASSWORD} ${HOME}/.vnc/passwd
-	# no -usepw (without password), no -viewonly
-	&& echo 'for i in $(seq 1 10); do sleep 1 && xdpyinfo -display ${DISPLAY} >/dev/null 2>&1 && break || echo "Wait for Xvfb Starting"; done' >> ${sh_x11vnc} \
+	&& echo 'for i in $(seq 1 10); do { sleep 1; xdpyinfo -display ${DISPLAY} && break || echo "Wait for Xvfb"; }; done' >> ${sh_x11vnc} \
 	&& echo 'x11vnc -forever -shared -rfbport ${VNC_PORT} -display ${DISPLAY}' >> ${sh_x11vnc} \
 	&& chmod +x ${sh_x11vnc} \
 	&& echo "${sh_x11vnc} &" >> /docker-entrypoint.sh \
