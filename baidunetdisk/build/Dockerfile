@@ -1,3 +1,4 @@
+# ===== Build: noVNC =====
 ARG base_image=debian:stable-slim
 FROM ${base_image} AS noVNC
 ARG PATH_noVNC="/opt/bin/noVNC"
@@ -40,9 +41,21 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 
 
 
+# ===== Build: /var/lib/openbox/debian-menu.xml =====
+ARG base_image=debian:stable-slim
+FROM ${base_image} AS menu
+RUN export DEBIAN_FRONTEND=noninteractive \
+    && apt-get update --ignore-missing -y -qq \
+    && apt-get install --no-install-recommends --fix-missing -y -qq \
+        menu \
+        openbox \
+		python3-pyxdg \
+    && update-menus
+
+
+# ===== Main =====
 ARG base_image=debian:stable-slim
 FROM ${base_image}
-
 ARG LANGUAGE=C
 ENV	LANGUAGE=${LANGUAGE} \
     LANG=${LANGUAGE} \
@@ -57,10 +70,10 @@ ENV	LANGUAGE=${LANGUAGE} \
 	NO_VNC_PORT=7900 \
 	DISPLAY=:99.0 \
     DISPLAY_NUM=99
-
 # --mount=type=secret,id=NOVNC_PASSWD
 ARG PATH_noVNC="/opt/bin/noVNC"
 COPY --from=noVNC ${PATH_noVNC} ${PATH_noVNC}
+COPY --from=menu /var/lib/openbox/debian-menu.xml /var/lib/openbox/debian-menu.xml
 RUN export DEBIAN_FRONTEND=noninteractive \
 	# ===== non-apt Install =====
 	&& apt-get update --ignore-missing -y -qq \
@@ -102,8 +115,8 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		# feh \
 		# ----- Openbox -----
 		openbox \
-		obconf \
-		menu \
+		# obconf \
+		# menu \
 		# Tool for configuring the appearance of LXDE desktop environment
 		# lxappearance \
 		# Lightweight taskbar and system tray for Openbox and other window managers
@@ -146,8 +159,8 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	# && locale-gen ${LANGUAGE} \
 	# && dpkg-reconfigure --frontend noninteractive locales \
 	# ===== openbox =====
-	&& apt-get install --no-install-recommends --fix-missing -y -qq \
-        python3-pyxdg \
+	# && apt-get install --no-install-recommends --fix-missing -y -qq \
+    #     python3-pyxdg \
 	# ===== noVNC =====
 	&& ln -s "${PATH_noVNC}/utils/novnc_proxy" /usr/local/bin/novnc \
 	# ===== baidunetdisk =====
