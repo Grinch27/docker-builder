@@ -154,6 +154,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	&& apt-get install --no-install-recommends --fix-missing -y -qq \
 		${FILE_baidunetdisk} \
     && rm -f ${FILE_baidunetdisk} \
+	&& ln -s "/opt/baidunetdisk/baidunetdisk" /usr/local/bin/baidunetdisk \
 	# ===== Misc =====
 	# ----- fix executable file permissions of /dev/shm for Docker Desktop and WSL2 -----
 	&& chmod +x /dev/shm \
@@ -198,6 +199,11 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	&& echo 'novnc --listen ${NO_VNC_PORT} --vnc localhost:${VNC_PORT}' >> ${sh_novnc} \
 	&& chmod +x ${sh_novnc} \
 	&& echo "${sh_novnc} &" >> /docker-entrypoint.sh \
+	# ----- start app -----
+	&& sh_app="/start-app.sh" \
+	&& echo "baidunetdisk --disable-gpu-sandbox --no-sandbox &" >> ${sh_app} \
+	&& chmod +x ${sh_app} \
+	&& echo "${sh_app} &" >> /docker-entrypoint.sh \
 	# ----- sleep infinity -----
 	&& echo "uname -a\nsleep infinity" >> /docker-entrypoint.sh \
 	&& chmod +x /docker-entrypoint.sh
