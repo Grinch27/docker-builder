@@ -132,7 +132,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		openbox \
 		# obconf \
 		# menu \
-		python3-pyxdg \
+		# python3-pyxdg \
 		# lxappearance \
 		# tint2 \
 		# xcompmgr \
