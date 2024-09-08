@@ -33,10 +33,8 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	&& PATH_noVNC="/opt/bin/noVNC" \
 	# ----- noVNC: Setup -----
 	&& curl -fsSL ${URL_noVNC} -o ${FILE_noVNC} \
-	&& echo "Downloaded noVNC to ${FILE_noVNC}" \
 	&& mkdir -p ${PATH_noVNC} \
     && tar xzf ${FILE_noVNC} -C ${PATH_noVNC} --strip-components=1 \
-	&& echo "Extracted noVNC to ${PATH_noVNC}" \
     && cp "${PATH_noVNC}/vnc.html" "${PATH_noVNC}/index.html" \
 	&& ln -s "${PATH_noVNC}/utils/novnc_proxy" /usr/local/bin/novnc \
     && rm -f ${FILE_noVNC} \
@@ -51,6 +49,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	&& PATH_websockify="/opt/bin/noVNC/utils/websockify" \
 	# ----- websockify: Setup -----
 	&& curl -fsSL ${URL_websockify} -o ${FILE_websockify} \
+	&& mkdir -p ${PATH_websockify} \
     && tar xzf ${FILE_websockify} -C ${PATH_websockify} --strip-components=1 \
 	&& rm -rf "${PATH_websockify}/docker" "${PATH_websockify}/tests" \
 	&& rm -f ${FILE_websockify} \
