@@ -137,9 +137,10 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	&& apt-get install --no-install-recommends --fix-missing -y -qq \
 		${FILE_baidunetdisk} \
     && rm -f ${FILE_baidunetdisk} \
-	# ===== fix executable file permissions of /dev/shm for Docker Desktop and WSL2 =====
+	# ===== Misc =====
+	# ----- fix executable file permissions of /dev/shm for Docker Desktop and WSL2 -----
 	&& chmod +x /dev/shm \
-	# ===== Creating Xvfb base directory =====
+	# ----- Creating Xvfb base directory -----
 	&& mkdir -p /tmp/.X11-unix \
 	# ----- Generating VNC password -----
 	# && x11vnc -storepasswd $(cat /run/secrets/NOVNC_PASSWD) ${HOME}/.vnc/passwd \
@@ -158,18 +159,28 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	# # ----- start Xvfb & Fluxbox -----
 	# && echo 'rm -f /tmp/.X*lock' >> /docker-entrypoint.sh \
 	# && echo '/usr/bin/xvfb-run --server-num=${DISPLAY_NUM} --server-args="-screen 0 ${SCREEN_WIDTH}x${SCREEN_HEIGHT}x${SCREEN_DEPTH} -fbdir /var/tmp -dpi ${SCREEN_DPI} -listen tcp -noreset -ac +extension RANDR" /usr/bin/fluxbox -display ${DISPLAY}' >> /docker-entrypoint.sh \
-	# ----- start Xvfb & Openbox -----
-	&& echo 'rm -f /tmp/.X*lock' >> /docker-entrypoint.sh \
-	&& echo 'xvfb-run --server-num=${DISPLAY_NUM} --server-args="-screen 0 ${SCREEN_WIDTH}x${SCREEN_HEIGHT}x${SCREEN_DEPTH} -fbdir /var/tmp -dpi ${SCREEN_DPI} -listen tcp -noreset -ac +extension RANDR" openbox-session' >> /docker-entrypoint.sh \
+	# ----- sh: start Xvfb & Openbox -----
+	&& sh_xvfb="/start-xvfb.sh" \
+	&& echo "#!/usr/bin/env sh" >> ${sh_xvfb} \
+	&& echo 'rm -f /tmp/.X*lock' >> ${sh_xvfb} \
+	&& echo 'xvfb-run --server-num=${DISPLAY_NUM} --server-args="-screen 0 ${SCREEN_WIDTH}x${SCREEN_HEIGHT}x${SCREEN_DEPTH} -fbdir /var/tmp -dpi ${SCREEN_DPI} -listen tcp -noreset -ac +extension RANDR" openbox-session' >> ${sh_xvfb} \
+	&& chmod +x ${sh_xvfb} \
+	&& echo "${sh_xvfb}" >> /docker-entrypoint.sh \
 	# ----- start vnc -----
+	&& sh_x11vnc="/start-x11vnc.sh" \
+	&& echo "#!/usr/bin/env sh" >> ${sh_x11vnc} \
 	# x11vnc -storepasswd ${VNC_PASSWORD} ${HOME}/.vnc/passwd
 	# no -usepw (without password), no -viewonly
-	# && echo 'for i in $(seq 1 10); do sleep 1 && xdpyinfo -display ${DISPLAY} >/dev/null 2>&1 && break || echo "Wait for Xvfb Starting"; done' >> /docker-entrypoint.sh \
-	&& echo 'sleep 10' >> /docker-entrypoint.sh \
-	&& echo 'x11vnc -forever -shared -rfbport ${VNC_PORT} -display ${DISPLAY}' >> /docker-entrypoint.sh \
+	&& echo 'for i in $(seq 1 10); do sleep 1 && xdpyinfo -display ${DISPLAY} >/dev/null 2>&1 && break || echo "Wait for Xvfb Starting"; done' >> ${sh_x11vnc} \
+	&& echo 'x11vnc -forever -shared -rfbport ${VNC_PORT} -display ${DISPLAY}' >> ${sh_x11vnc} \
+	&& chmod +x ${sh_x11vnc} \
+	&& echo "${sh_x11vnc}" >> /docker-entrypoint.sh \
 	# ----- start novnc -----
-	&& echo 'sleep 10' >> /docker-entrypoint.sh \
-	&& echo 'novnc --listen ${NO_VNC_PORT} --vnc localhost:${VNC_PORT}' >> /docker-entrypoint.sh \
+	&& sh_novnc="/start-novnc.sh" \
+	&& echo "#!/usr/bin/env sh" >> ${sh_novnc} \
+	&& echo 'novnc --listen ${NO_VNC_PORT} --vnc localhost:${VNC_PORT}' >> ${sh_novnc} \
+	&& chmod +x ${sh_novnc} \
+	&& echo "${sh_novnc}" >> /docker-entrypoint.sh \
 	# ----- sleep infinity -----
 	&& echo "uname -a\nsleep infinity" >> /docker-entrypoint.sh \
 	&& chmod +x /docker-entrypoint.sh
