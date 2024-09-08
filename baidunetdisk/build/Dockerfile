@@ -47,8 +47,9 @@ FROM ${base_image} AS menu
 RUN export DEBIAN_FRONTEND=noninteractive \
     && apt-get update --ignore-missing -y -qq \
     && apt-get install --no-install-recommends --fix-missing -y -qq \
+		openbox \
+		obconf \
         menu \
-        openbox \
 		python3-pyxdg \
     && update-menus
 
