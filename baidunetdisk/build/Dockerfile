@@ -51,8 +51,12 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	&& curl -fsSL ${URL_websockify} -o ${FILE_websockify} \
 	&& mkdir -p ${PATH_websockify} \
     && tar xzf ${FILE_websockify} -C ${PATH_websockify} --strip-components=1 \
-	&& rm -rf "${PATH_websockify}/docker" "${PATH_websockify}/tests" \
 	&& rm -f ${FILE_websockify} \
+	# ----- websockify: Clean -----
+	&& rm -rf "${PATH_websockify}/.github" \
+	&& rm -rf "${PATH_websockify}/docker" \
+	&& rm -rf "${PATH_websockify}/docs" \
+	&& rm -rf "${PATH_websockify}/tests" \
 	# ===== Clean pre-install =====
     && apt-get purge --autoremove -y -qq \
         curl \
@@ -74,13 +78,13 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		hsetroot \
 		feh \
 		# ----- Locale Encoding -----
-		language-pack-zh-hans \
+		# language-pack-zh-hans \
 		locales \
 		libfontconfig \
 		libfreetype6 \
 		xfonts-scalable \
-		xfonts-cyrillic \
-		fonts-ubuntu \
+		# xfonts-cyrillic \
+		# fonts-ubuntu \
 		fonts-liberation \
 		fonts-ipafont-gothic \
 		fonts-wqy-zenhei \
