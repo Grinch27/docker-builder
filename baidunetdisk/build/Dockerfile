@@ -1,5 +1,6 @@
 ARG base_image=debian:stable-slim
 FROM ${base_image} AS noVNC
+ARG PATH_noVNC="/opt/bin/noVNC"
 RUN export DEBIAN_FRONTEND=noninteractive \
 	# ===== non-apt Install =====
 	&& apt-get update --ignore-missing -y -qq \
@@ -16,7 +17,6 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	&& mkdir -p ${PATH_noVNC} \
     && tar xzf ${FILE_noVNC} -C ${PATH_noVNC} --strip-components=1 \
     && cp "${PATH_noVNC}/vnc.html" "${PATH_noVNC}/index.html" \
-	&& ln -s "${PATH_noVNC}/utils/novnc_proxy" /usr/local/bin/novnc \
     && rm -f ${FILE_noVNC} \
 	# ----- noVNC: Clean -----
 	&& rm -rf "${PATH_noVNC}/.github" \
@@ -26,7 +26,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	# ===== websockify =====
 	&& URL_websockify=$(curl -s https://api.github.com/repos/novnc/websockify/releases/latest | grep 'tarball_url' | cut -d ':' -f 2- | cut -d '"' -f 2) \
     && FILE_websockify="/websockify.tar.gz" \
-	&& PATH_websockify="/opt/bin/noVNC/utils/websockify" \
+	&& PATH_websockify="${PATH_noVNC}/utils/websockify" \
 	# ----- websockify: Setup -----
 	&& curl -fsSL ${URL_websockify} -o ${FILE_websockify} \
 	&& mkdir -p ${PATH_websockify} \
@@ -36,7 +36,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	&& rm -rf "${PATH_websockify}/.github" \
 	&& rm -rf "${PATH_websockify}/docker" \
 	&& rm -rf "${PATH_websockify}/docs" \
-	&& rm -rf "${PATH_websockify}/tests" \
+	&& rm -rf "${PATH_websockify}/tests"
 
 
 
@@ -59,7 +59,8 @@ ENV	LANGUAGE=${LANGUAGE} \
     DISPLAY_NUM=99
 
 # --mount=type=secret,id=NOVNC_PASSWD
-COPY --from=noVNC /opt/bin/noVNC /opt/bin/noVNC
+ARG PATH_noVNC="/opt/bin/noVNC"
+COPY --from=noVNC ${PATH_noVNC} ${PATH_noVNC}
 RUN export DEBIAN_FRONTEND=noninteractive \
 	# ===== non-apt Install =====
 	&& apt-get update --ignore-missing -y -qq \
@@ -123,6 +124,8 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	# ===== baidunetdisk =====
 	&& apt-get install --no-install-recommends --fix-missing -y -qq ${FILE_baidunetdisk} \
     && rm -f ${FILE_baidunetdisk} \
+	# ===== noVNC =====
+	&& ln -s "${PATH_noVNC}/utils/novnc_proxy" /usr/local/bin/novnc \
 	# ===== openbox =====
 	&& pip3 install pyxdg \
 	&& pip3 cache purge \
