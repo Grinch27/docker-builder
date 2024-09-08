@@ -129,6 +129,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		openbox \
 		# obconf \
 		# menu \
+		python3-pyxdg \
 		# Tool for configuring the appearance of LXDE desktop environment
 		# lxappearance \
 		# Lightweight taskbar and system tray for Openbox and other window managers
