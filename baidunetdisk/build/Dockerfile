@@ -91,26 +91,25 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		# ----- VNC -----
 		x11vnc	\
 		x11-utils \
+		x11-xserver-utils \
 		# # ----- Fluxbox -----
 		# fluxbox \
-		# Lightweight terminal emulator for X Window System
-		eterm \
-		# Tool to set wallpaper and root window properties
-		hsetroot \
-		# Tool to set wallpaper and root window properties
-		feh \
+		# # Lightweight terminal emulator for X Window System
+		# eterm \
+		# # Tool to set wallpaper and root window properties
+		# hsetroot \
+		# # Tool to set wallpaper and root window properties
+		# feh \
 		# ----- Openbox -----
 		openbox \
 		obconf \
 		menu \
 		# Tool for configuring the appearance of LXDE desktop environment
-		lxappearance \
+		# lxappearance \
 		# Lightweight taskbar and system tray for Openbox and other window managers
 		# tint2 \
 		# Lightweight composite manager for enabling window transparency and shadows
 		# xcompmgr \
-		# Generic Buffer Management library for graphics rendering with OpenGL and Vulkan
-		libgbm1 \
 		# ----- Locale Encoding -----
 		# language-pack-zh-hans \
 		# locales \
@@ -124,6 +123,24 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		fonts-wqy-zenhei \
 		# fonts-tlwg-loma-otf \
 		# fonts-noto-color-emoji \
+		# ----- Misc -----
+		libasound2 \
+		libgbm1 \
+		libgtk-3-0 \
+		libnss3 \
+		libxss1 \
+		desktop-file-utils \
+		libnotify4 \
+		xdg-utils \
+		libsecret-common \
+		libsecret-1-0 \
+		libdbusmenu-glib4 \
+		libdbusmenu-gtk3-4 \
+		libappindicator3-1 \
+		# ttf-wqy-zenhei \
+		procps \
+		libxtst6 \
+		libx11-xcb1 \
 	# ===== Setup Locale Encoding =====
 	# abandon with C
 	# && locale-gen ${LANGUAGE} \
@@ -134,7 +151,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	# ===== noVNC =====
 	&& ln -s "${PATH_noVNC}/utils/novnc_proxy" /usr/local/bin/novnc \
 	# ===== baidunetdisk =====
-	&& apt-get install --fix-missing -y -qq \
+	&& apt-get install --no-install-recommends --fix-missing -y -qq \
 		${FILE_baidunetdisk} \
     && rm -f ${FILE_baidunetdisk} \
 	# ===== Misc =====
