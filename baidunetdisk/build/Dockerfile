@@ -94,6 +94,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		lxappearance \
 		tint2 \
 		xcompmgr \
+		menu \
 		# ----- Locale Encoding -----
 		# language-pack-zh-hans \
 		locales \
@@ -136,7 +137,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	# && echo '/usr/bin/xvfb-run --server-num=${DISPLAY_NUM} --server-args="-screen 0 ${SCREEN_WIDTH}x${SCREEN_HEIGHT}x${SCREEN_DEPTH} -fbdir /var/tmp -dpi ${SCREEN_DPI} -listen tcp -noreset -ac +extension RANDR" /usr/bin/fluxbox -display ${DISPLAY}' >> /docker-entrypoint.sh \
 	# ----- start Xvfb & Openbox -----
 	&& echo 'rm -f /tmp/.X*lock' >> /docker-entrypoint.sh \
-	&& echo '/usr/bin/xvfb-run --server-num=${DISPLAY_NUM} --server-args="-screen 0 ${SCREEN_WIDTH}x${SCREEN_HEIGHT}x${SCREEN_DEPTH} -fbdir /var/tmp -dpi ${SCREEN_DPI} -listen tcp -noreset -ac +extension RANDR" /usr/bin/openbox-session -display ${DISPLAY}' >> /docker-entrypoint.sh \
+	&& echo 'xvfb-run --server-num=${DISPLAY_NUM} --server-args="-screen 0 ${SCREEN_WIDTH}x${SCREEN_HEIGHT}x${SCREEN_DEPTH} -fbdir /var/tmp -dpi ${SCREEN_DPI} -listen tcp -noreset -ac +extension RANDR" openbox-session' >> /docker-entrypoint.sh \
 	# ----- start vnc -----
 	# x11vnc -storepasswd ${VNC_PASSWORD} ${HOME}/.vnc/passwd
 	# no -usepw (without password), no -viewonly
