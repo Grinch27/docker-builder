@@ -95,11 +95,11 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		xfonts-scalable \
 		# xfonts-cyrillic \
 		# fonts-ubuntu \
-		fonts-liberation \
-		fonts-ipafont-gothic \
+		# fonts-liberation \
+		# fonts-ipafont-gothic \
 		fonts-wqy-zenhei \
-		fonts-tlwg-loma-otf \
-		fonts-noto-color-emoji \
+		# fonts-tlwg-loma-otf \
+		# fonts-noto-color-emoji \
 	# ===== baidunetdisk =====
 	&& apt-get install -y ${FILE_baidunetdisk} \
     && rm -f ${FILE_baidunetdisk} \
@@ -110,7 +110,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	&& chmod +x /dev/shm \
 	# ===== Creating Xvfb base directory =====
 	&& mkdir -p /tmp/.X11-unix \
-	# ===== Generating VNC password =====
+	# ----- Generating VNC password -----
 	# && x11vnc -storepasswd $(cat /run/secrets/NOVNC_PASSWD) ${HOME}/.vnc/passwd \
 	&& chmod -R 775 ${HOME} /tmp/.X11-unix \
 	&& chgrp -R 0 ${HOME} /tmp/.X11-unix \
