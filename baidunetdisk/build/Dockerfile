@@ -1,27 +1,5 @@
 ARG base_image=debian:stable-slim
-FROM ${base_image}
-
-# ARG LANGUAGE=zh_CN.UTF-8
-ARG LANGUAGE=C
-
-USER root
-
-ENV	LANGUAGE=${LANGUAGE} \
-    LANG=${LANGUAGE} \
-	LC_ALL=${LANGUAGE} \
-	# ----- xvfb -----
-	SCREEN_WIDTH=1920 \
-    SCREEN_HEIGHT=1080 \
-    SCREEN_DEPTH=24 \
-    SCREEN_DPI=96 \
-	# ----- VNC -----
-	VNC_PORT=5900 \
-	NO_VNC_PORT=7900 \
-	DISPLAY=:99.0 \
-    DISPLAY_NUM=99
-	# LC_ALL=${LANGUAGE} \
-
-# --mount=type=secret,id=NOVNC_PASSWD
+FROM ${base_image} AS noVNC
 RUN export DEBIAN_FRONTEND=noninteractive \
 	# ===== non-apt Install =====
 	&& apt-get update --ignore-missing -y -qq \
@@ -29,8 +7,6 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		ca-certificates \
 		curl \
 		gpg \
-	# ===== System info =====
-    && OS_ARCH=$(dpkg --print-architecture) \
 	# ===== noVNC =====
 	&& URL_noVNC=$(curl -s https://api.github.com/repos/novnc/noVNC/releases/latest | grep 'tarball_url' | cut -d ':' -f 2- | cut -d '"' -f 2) \
     && FILE_noVNC="/noVNC-latest.tar.gz" \
@@ -61,6 +37,38 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	&& rm -rf "${PATH_websockify}/docker" \
 	&& rm -rf "${PATH_websockify}/docs" \
 	&& rm -rf "${PATH_websockify}/tests" \
+
+
+
+ARG base_image=debian:stable-slim
+FROM ${base_image}
+
+ARG LANGUAGE=C
+ENV	LANGUAGE=${LANGUAGE} \
+    LANG=${LANGUAGE} \
+	LC_ALL=${LANGUAGE} \
+	# ----- xvfb -----
+	SCREEN_WIDTH=1920 \
+    SCREEN_HEIGHT=1080 \
+    SCREEN_DEPTH=24 \
+    SCREEN_DPI=96 \
+	# ----- VNC -----
+	VNC_PORT=5900 \
+	NO_VNC_PORT=7900 \
+	DISPLAY=:99.0 \
+    DISPLAY_NUM=99
+
+# --mount=type=secret,id=NOVNC_PASSWD
+COPY --from=noVNC /opt/bin/noVNC /opt/bin/noVNC
+RUN export DEBIAN_FRONTEND=noninteractive \
+	# ===== non-apt Install =====
+	&& apt-get update --ignore-missing -y -qq \
+	&& apt-get install --no-install-recommends --fix-missing -y -qq \
+		ca-certificates \
+		curl \
+		gpg \
+	# ===== System info =====
+    && OS_ARCH=$(dpkg --print-architecture) \
 	# ===== baidunetdisk =====
 	# ----- baidunetdisk: Pre-Setup -----
 	&& APP_VER="4.17.7" \
