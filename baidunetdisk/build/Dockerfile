@@ -7,6 +7,7 @@ USER root
 
 ENV	LANGUAGE=${LANGUAGE} \
     LANG=${LANGUAGE} \
+	LC_ALL=C \
 	# ----- xvfb -----
 	SCREEN_WIDTH=1920 \
     SCREEN_HEIGHT=1080 \
@@ -98,7 +99,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	# ===== Creating Xvfb base directory =====
 	&& mkdir -p /tmp/.X11-unix \
 	# ===== Generating VNC password =====
-	&& x11vnc -storepasswd $(cat /run/secrets/NOVNC_PASSWD) ${HOME}/.vnc/passwd \
+	# && x11vnc -storepasswd $(cat /run/secrets/NOVNC_PASSWD) ${HOME}/.vnc/passwd \
 	&& chmod -R 775 ${HOME} /tmp/.X11-unix \
 	&& chgrp -R 0 ${HOME} /tmp/.X11-unix \
 	&& chmod -R g=u ${HOME} /tmp/.X11-unix \
