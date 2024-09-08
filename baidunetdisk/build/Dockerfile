@@ -1,13 +1,14 @@
 ARG base_image=debian:stable-slim
 FROM ${base_image}
 
-ARG LANGUAGE=zh_CN.UTF-8
+# ARG LANGUAGE=zh_CN.UTF-8
+ARG LANGUAGE=C
 
 USER root
 
 ENV	LANGUAGE=${LANGUAGE} \
     LANG=${LANGUAGE} \
-	LC_ALL=C \
+	LC_ALL=${LANGUAGE} \
 	# ----- xvfb -----
 	SCREEN_WIDTH=1920 \
     SCREEN_HEIGHT=1080 \
