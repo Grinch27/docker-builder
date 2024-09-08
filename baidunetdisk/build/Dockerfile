@@ -1,3 +1,9 @@
+#==============================
+# Inpired by:
+#	https://github.com/jlesage/docker-baseimage-gui
+#	https://github.com/SeleniumHQ/docker-selenium
+#==============================
+
 # ===== Build: noVNC =====
 ARG base_image=debian:stable-slim
 FROM ${base_image} AS noVNC
@@ -119,22 +125,16 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		# x11-xserver-utils \
 		# # ----- Fluxbox -----
 		# fluxbox \
-		# # Lightweight terminal emulator for X Window System
 		# eterm \
-		# # Tool to set wallpaper and root window properties
 		# hsetroot \
-		# # Tool to set wallpaper and root window properties
 		# feh \
 		# ----- Openbox -----
 		openbox \
 		# obconf \
 		# menu \
 		python3-pyxdg \
-		# Tool for configuring the appearance of LXDE desktop environment
 		# lxappearance \
-		# Lightweight taskbar and system tray for Openbox and other window managers
 		# tint2 \
-		# Lightweight composite manager for enabling window transparency and shadows
 		# xcompmgr \
 		# ----- Locale Encoding -----
 		# language-pack-zh-hans \
@@ -168,7 +168,6 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		libxtst6 \
 		libx11-xcb1 \
 	# ===== Setup Locale Encoding =====
-	# abandon with C
 	# && locale-gen ${LANGUAGE} \
 	# && dpkg-reconfigure --frontend noninteractive locales \
 	# ===== noVNC =====
@@ -186,7 +185,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	# ===== Misc =====
 	# ----- fix executable file permissions of /dev/shm for Docker Desktop and WSL2 -----
 	&& chmod +x /dev/shm \
-	# ----- Setup Xvfb base directory -----
+	# ----- Setup Xvfb directory -----
 	&& mkdir -p /tmp/.X11-unix \
 	&& chmod -R 775 ${HOME} /tmp/.X11-unix \
 	&& chgrp -R 0 ${HOME} /tmp/.X11-unix \
@@ -201,27 +200,24 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     && echo "#!/usr/bin/env sh" >> /docker-entrypoint.sh \
 	# ----- sh: start Xvfb & Openbox -----
 	&& sh_xvfb="/start-xvfb.sh" \
-	&& echo "#!/usr/bin/env sh" >> ${sh_xvfb} \
 	&& echo 'rm -f /tmp/.X*lock' >> ${sh_xvfb} \
 	&& echo 'xvfb-run --server-num=${DISPLAY_NUM} --server-args="-screen 0 ${SCREEN_WIDTH}x${SCREEN_HEIGHT}x${SCREEN_DEPTH} -fbdir /var/tmp -dpi ${SCREEN_DPI} -listen tcp -noreset -ac +extension RANDR" openbox-session' >> ${sh_xvfb} \
 	&& chmod +x ${sh_xvfb} \
 	&& echo "${sh_xvfb} &" >> /docker-entrypoint.sh \
 	# ----- start vnc -----
 	&& sh_x11vnc="/start-x11vnc.sh" \
-	&& echo "#!/usr/bin/env sh" >> ${sh_x11vnc} \
 	&& echo 'for i in $(seq 1 10); do { sleep 1; xdpyinfo -display ${DISPLAY} && break || echo "Wait for Xvfb"; }; done' >> ${sh_x11vnc} \
 	&& echo 'x11vnc -forever -shared -rfbport ${VNC_PORT} -display ${DISPLAY}' >> ${sh_x11vnc} \
 	&& chmod +x ${sh_x11vnc} \
 	&& echo "${sh_x11vnc} &" >> /docker-entrypoint.sh \
 	# ----- start novnc -----
 	&& sh_novnc="/start-novnc.sh" \
-	&& echo "#!/usr/bin/env sh" >> ${sh_novnc} \
 	&& echo 'novnc --listen ${NO_VNC_PORT} --vnc localhost:${VNC_PORT}' >> ${sh_novnc} \
 	&& chmod +x ${sh_novnc} \
 	&& echo "${sh_novnc} &" >> /docker-entrypoint.sh \
 	# ----- start app -----
 	&& sh_app="/start-app.sh" \
-	&& echo "baidunetdisk --disable-gpu-sandbox --no-sandbox &" >> ${sh_app} \
+	&& echo "baidunetdisk --disable-gpu-sandbox --no-sandbox" >> ${sh_app} \
 	&& chmod +x ${sh_app} \
 	&& echo "${sh_app} &" >> /docker-entrypoint.sh \
 	# ----- sleep infinity -----
