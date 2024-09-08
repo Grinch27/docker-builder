@@ -33,6 +33,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	&& PATH_noVNC="/opt/bin/noVNC" \
 	# ----- noVNC: Setup -----
 	&& curl -fsSL ${URL_noVNC} -o ${FILE_noVNC} \
+	&& mkdir -p ${PATH_noVNC} \
     && tar xzf ${FILE_noVNC} -C ${PATH_noVNC} --strip-components=1 \
     && cp "${PATH_noVNC}/vnc.html" "${PATH_noVNC}/index.html" \
 	&& ln -s "${PATH_noVNC}/utils/novnc_proxy" /usr/local/bin/novnc \
