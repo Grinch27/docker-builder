@@ -90,7 +90,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		# ----- Openbox -----
 		openbox \
 		obconf \
-		obmenu \
+		# obmenu \
 		lxappearance \
 		tint2 \
 		xcompmgr \
