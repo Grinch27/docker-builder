@@ -95,6 +95,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		tint2 \
 		xcompmgr \
 		menu \
+		python3-pip \
 		# ----- Locale Encoding -----
 		# language-pack-zh-hans \
 		locales \
@@ -108,12 +109,17 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		fonts-wqy-zenhei \
 		# fonts-tlwg-loma-otf \
 		# fonts-noto-color-emoji \
-	# ===== baidunetdisk =====
-	&& apt-get install --no-install-recommends --fix-missing -y -qq ${FILE_baidunetdisk} \
-    && rm -f ${FILE_baidunetdisk} \
 	# ===== Setup Locale Encoding =====
 	&& locale-gen ${LANGUAGE} \
 	&& dpkg-reconfigure --frontend noninteractive locales \
+	# ===== baidunetdisk =====
+	&& apt-get install --no-install-recommends --fix-missing -y -qq ${FILE_baidunetdisk} \
+    && rm -f ${FILE_baidunetdisk} \
+	# ===== openbox =====
+	&& pip3 install pyxdg \
+	&& pip3 cache purge \
+	&& apt-get purge --autoremove -y -qq \
+		python3-pip \
 	# ===== fix executable file permissions of /dev/shm for Docker Desktop and WSL2 =====
 	&& chmod +x /dev/shm \
 	# ===== Creating Xvfb base directory =====
