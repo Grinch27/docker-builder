@@ -137,7 +137,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	&& chmod +x /docker-entrypoint.sh
 
 # ===== Suggest Run as non-privileged user =====
-USER root
+# USER root
 
 # 暴露 noVNC 和 VNC 端口
 EXPOSE 5900 7900
