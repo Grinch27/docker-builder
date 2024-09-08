@@ -182,7 +182,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	&& echo 'rm -f /tmp/.X*lock' >> ${sh_xvfb} \
 	&& echo 'xvfb-run --server-num=${DISPLAY_NUM} --server-args="-screen 0 ${SCREEN_WIDTH}x${SCREEN_HEIGHT}x${SCREEN_DEPTH} -fbdir /var/tmp -dpi ${SCREEN_DPI} -listen tcp -noreset -ac +extension RANDR" openbox-session' >> ${sh_xvfb} \
 	&& chmod +x ${sh_xvfb} \
-	&& echo "${sh_xvfb}" >> /docker-entrypoint.sh \
+	&& echo "${sh_xvfb} &" >> /docker-entrypoint.sh \
 	# ----- start vnc -----
 	&& sh_x11vnc="/start-x11vnc.sh" \
 	&& echo "#!/usr/bin/env sh" >> ${sh_x11vnc} \
@@ -191,21 +191,17 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	&& echo 'for i in $(seq 1 10); do sleep 1 && xdpyinfo -display ${DISPLAY} >/dev/null 2>&1 && break || echo "Wait for Xvfb Starting"; done' >> ${sh_x11vnc} \
 	&& echo 'x11vnc -forever -shared -rfbport ${VNC_PORT} -display ${DISPLAY}' >> ${sh_x11vnc} \
 	&& chmod +x ${sh_x11vnc} \
-	&& echo "${sh_x11vnc}" >> /docker-entrypoint.sh \
+	&& echo "${sh_x11vnc} &" >> /docker-entrypoint.sh \
 	# ----- start novnc -----
 	&& sh_novnc="/start-novnc.sh" \
 	&& echo "#!/usr/bin/env sh" >> ${sh_novnc} \
 	&& echo 'novnc --listen ${NO_VNC_PORT} --vnc localhost:${VNC_PORT}' >> ${sh_novnc} \
 	&& chmod +x ${sh_novnc} \
-	&& echo "${sh_novnc}" >> /docker-entrypoint.sh \
+	&& echo "${sh_novnc} &" >> /docker-entrypoint.sh \
 	# ----- sleep infinity -----
 	&& echo "uname -a\nsleep infinity" >> /docker-entrypoint.sh \
 	&& chmod +x /docker-entrypoint.sh
 
-# ===== Suggest Run as non-privileged user =====
-# USER root
-
-# 暴露 noVNC 和 VNC 端口
 EXPOSE 5900 7900
 
 ENTRYPOINT ["sh", "/docker-entrypoint.sh"]
