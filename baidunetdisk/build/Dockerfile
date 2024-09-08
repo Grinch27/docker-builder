@@ -134,7 +134,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	# ===== noVNC =====
 	&& ln -s "${PATH_noVNC}/utils/novnc_proxy" /usr/local/bin/novnc \
 	# ===== baidunetdisk =====
-	&& apt-get install --no-install-recommends --fix-missing -y -qq \
+	&& apt-get install --fix-missing -y -qq \
 		${FILE_baidunetdisk} \
     && rm -f ${FILE_baidunetdisk} \
 	# ===== Misc =====
