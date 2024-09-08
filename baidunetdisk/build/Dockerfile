@@ -103,7 +103,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		lxappearance \
 		tint2 \
 		xcompmgr \
-		libgbm.so.1 \
+		libgbm1 \
 		# ----- Locale Encoding -----
 		# language-pack-zh-hans \
 		# locales \
