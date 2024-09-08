@@ -1,0 +1,126 @@
+ARG base_image=debian:stable-slim
+FROM ${base_image}
+
+ARG LANGUAGE=zh_CN.UTF-8
+
+USER root
+
+ENV	LANGUAGE=${LANGUAGE} \
+    LANG=${LANGUAGE} \
+	# ----- xvfb -----
+	SCREEN_WIDTH=1920 \
+    SCREEN_HEIGHT=1080 \
+    SCREEN_DEPTH=24 \
+    SCREEN_DPI=96 \
+	# ----- VNC -----
+	VNC_PORT=5900 \
+	NO_VNC_PORT=7900 \
+	DISPLAY=:99.0 \
+    DISPLAY_NUM=99 \
+	# LC_ALL=${LANGUAGE} \
+
+# --mount=type=secret,id=NOVNC_PASSWD
+RUN export DEBIAN_FRONTEND=noninteractive \
+	# ===== non-apt Install =====
+	&& apt-get update --ignore-missing -y -qq \
+	&& apt-get install --no-install-recommends --fix-missing -y -qq \
+		ca-certificates \
+		curl \
+		gpg \
+	# ===== noVNC =====
+	&& URL_noVNC=$(curl -s https://api.github.com/repos/novnc/noVNC/releases/latest | grep 'tarball_url' | cut -d ':' -f 2- | cut -d '"' -f 2) \
+    && FILE_noVNC="/noVNC-latest.tar.gz" \
+	&& PATH_noVNC="/opt/bin/noVNC" \
+	# ----- noVNC: Setup -----
+	&& curl -fsSL ${URL_noVNC} -o ${FILE_noVNC} \
+    && tar xzf ${FILE_noVNC} -C ${PATH_noVNC} --strip-components=1 \
+    && cp "${PATH_noVNC}/vnc.html" "${PATH_noVNC}/index.html" \
+	&& ln -s "${PATH_noVNC}/utils/novnc_proxy" /usr/local/bin/novnc \
+    && rm -f ${FILE_noVNC} \
+	# ----- noVNC: Clean -----
+	&& rm -rf "${PATH_noVNC}/.github" \
+	&& rm -rf "${PATH_noVNC}/docs" \
+	&& rm -rf "${PATH_noVNC}/snap" \
+	&& rm -rf "${PATH_noVNC}/tests" \
+	# ===== websockify =====
+	&& URL_websockify=$(curl -s https://api.github.com/repos/novnc/websockify/releases/latest | grep 'tarball_url' | cut -d ':' -f 2- | cut -d '"' -f 2) \
+    && FILE_websockify="/websockify.tar.gz" \
+	&& PATH_websockify="/opt/bin/noVNC/utils/websockify" \
+	# ----- websockify: Setup -----
+	&& curl -fsSL ${URL_websockify} -o ${FILE_websockify} \
+    && tar xzf ${FILE_websockify} -C ${PATH_websockify} --strip-components=1 \
+	&& rm -rf "${PATH_websockify}/docker" "${PATH_websockify}/tests" \
+	&& rm -f ${FILE_websockify} \
+	# ===== Clean pre-install =====
+    && apt-get purge --autoremove -y -qq \
+        curl \
+        gpg \
+	# ===== main Install =====
+	&& apt-get update --ignore-missing -y -qq \
+	&& apt-get install --no-install-recommends --fix-missing -y -qq \
+		# ----- Xvfb -----
+		xvfb \
+		libxcb1 \
+		xauth \
+		pulseaudio \
+		# ----- VNC -----
+		x11vnc	\
+		x11-utils \
+		# ----- Fluxbox -----
+		fluxbox \
+		eterm \
+		hsetroot \
+		feh \
+		# ----- Locale Encoding -----
+		language-pack-zh-hans \
+		locales \
+		libfontconfig \
+		libfreetype6 \
+		xfonts-scalable \
+		xfonts-cyrillic \
+		fonts-ubuntu \
+		fonts-liberation \
+		fonts-ipafont-gothic \
+		fonts-wqy-zenhei \
+		fonts-tlwg-loma-otf \
+		fonts-noto-color-emoji \
+	# ===== Setup Locale Encoding =====
+	&& locale-gen ${LANGUAGE} \
+	&& dpkg-reconfigure --frontend noninteractive locales \
+	# ===== fix executable file permissions of /dev/shm for Docker Desktop and WSL2 =====
+	&& chmod +x /dev/shm \
+	# ===== Creating Xvfb base directory =====
+	&& mkdir -p /tmp/.X11-unix \
+	# ===== Generating VNC password =====
+	&& x11vnc -storepasswd $(cat /run/secrets/NOVNC_PASSWD) ${HOME}/.vnc/passwd \
+	&& chmod -R 775 ${HOME} /tmp/.X11-unix \
+	&& chgrp -R 0 ${HOME} /tmp/.X11-unix \
+	&& chmod -R g=u ${HOME} /tmp/.X11-unix \
+	# ===== Clean apt =====
+	&& apt-get autoremove -y -qq \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /var/log/*.log \
+    && apt-get clean -y -qq \
+	&& unset DEBIAN_FRONTEND \
+	# ===== docker-entrypoint.sh =====
+    && echo "#!/usr/bin/env sh" >> /docker-entrypoint.sh \
+	# code reference: https://github.com/SeleniumHQ/docker-selenium/
+	# ----- start Xvfb & Fluxbox -----
+	&& echo 'rm -f /tmp/.X*lock' >> /docker-entrypoint.sh \
+	&& echo '/usr/bin/xvfb-run --server-num=${DISPLAY_NUM} --server-args="-screen 0 ${SCREEN_WIDTH}x${SCREEN_HEIGHT}x${SCREEN_DEPTH} -fbdir /var/tmp -dpi ${SCREEN_DPI} -listen tcp -noreset -ac +extension RANDR" /usr/bin/fluxbox -display ${DISPLAY}' >> /docker-entrypoint.sh \
+	# ----- start vnc -----
+	# x11vnc -storepasswd ${VNC_PASSWORD} ${HOME}/.vnc/passwd
+	# no -usepw (without password), no -viewonly
+	&& echo 'for i in $(seq 1 10); do sleep 1 && xdpyinfo -display ${DISPLAY} >/dev/null 2>&1 && break || echo "Wait for Xvfb Starting"; done' >> /docker-entrypoint.sh \
+	&& echo 'x11vnc -forever -shared -rfbport ${VNC_PORT} -display ${DISPLAY}' >> /docker-entrypoint.sh \
+	# ----- start novnc -----
+	&& echo '/opt/bin/noVNC/utils/novnc_proxy --listen ${NO_VNC_PORT} --vnc localhost:${VNC_PORT}' >> /docker-entrypoint.sh \
+	&& chmod +x /docker-entrypoint.sh
+
+# ===== Suggest Run as non-privileged user =====
+USER root
+
+# 暴露 noVNC 和 VNC 端口
+EXPOSE 5900 7900
+
+ENTRYPOINT ["sh", "/docker-entrypoint.sh"]
