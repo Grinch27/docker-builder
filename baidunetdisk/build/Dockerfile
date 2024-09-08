@@ -101,7 +101,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		# fonts-tlwg-loma-otf \
 		# fonts-noto-color-emoji \
 	# ===== baidunetdisk =====
-	&& apt-get install -y ${FILE_baidunetdisk} \
+	&& apt-get install --no-install-recommends --fix-missing -y -qq ${FILE_baidunetdisk} \
     && rm -f ${FILE_baidunetdisk} \
 	# ===== Setup Locale Encoding =====
 	&& locale-gen ${LANGUAGE} \
