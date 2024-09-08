@@ -44,7 +44,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     && FILE_DEB="/expressvpn.deb" \
     && curl -fsSL ${URL_DOWNLOAD} -o ${FILE_DEB} \
     # ===== Clean pre-install =====
-    && apt-get purge --autoremove -y \
+    && apt-get purge --autoremove -y -qq \
         curl \
         gpg \
         lsb-release \
@@ -53,9 +53,10 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     && rm -f ${FILE_HTML} \
     && rm -f ${FILE_DEB} \
     # ===== Clean apt =====
-    && apt clean \
+    && apt-get autoremove -y -qq \
     && rm -rf /var/lib/apt/lists/* \
     && rm -rf /var/log/*.log \
+    && apt-get clean -y -qq \
     && unset DEBIAN_FRONTEND \
     # ===== docker-entrypoint.sh =====
     # /usr/sbin/expressvpnd
