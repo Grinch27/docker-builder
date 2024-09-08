@@ -127,10 +127,12 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	# ===== noVNC =====
 	&& ln -s "${PATH_noVNC}/utils/novnc_proxy" /usr/local/bin/novnc \
 	# ===== openbox =====
-	&& pip3 install pyxdg \
-	&& pip3 cache purge \
-	&& apt-get purge --autoremove -y -qq \
-		python3-pip \
+	# && pip3 install pyxdg \
+	# && pip3 cache purge \
+	# && apt-get purge --autoremove -y -qq \
+	# 	python3-pip \
+	&& apt-get install --no-install-recommends --fix-missing -y -qq \
+        python3-pyxdg \
 	# ===== fix executable file permissions of /dev/shm for Docker Desktop and WSL2 =====
 	&& chmod +x /dev/shm \
 	# ===== Creating Xvfb base directory =====
