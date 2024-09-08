@@ -158,6 +158,8 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	&& echo 'x11vnc -forever -shared -rfbport ${VNC_PORT} -display ${DISPLAY}' >> /docker-entrypoint.sh \
 	# ----- start novnc -----
 	&& echo '/opt/bin/noVNC/utils/novnc_proxy --listen ${NO_VNC_PORT} --vnc localhost:${VNC_PORT}' >> /docker-entrypoint.sh \
+	# ----- sleep infinity -----
+	&& echo "uname -a\nsleep infinity" >> /docker-entrypoint.sh \
 	&& chmod +x /docker-entrypoint.sh
 
 # ===== Suggest Run as non-privileged user =====
