@@ -106,7 +106,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		libgbm.so.1 \
 		# ----- Locale Encoding -----
 		# language-pack-zh-hans \
-		locales \
+		# locales \
 		libfontconfig \
 		libfreetype6 \
 		xfonts-scalable \
@@ -118,8 +118,9 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		# fonts-tlwg-loma-otf \
 		# fonts-noto-color-emoji \
 	# ===== Setup Locale Encoding =====
-	&& locale-gen ${LANGUAGE} \
-	&& dpkg-reconfigure --frontend noninteractive locales \
+	# abandon with C
+	# && locale-gen ${LANGUAGE} \
+	# && dpkg-reconfigure --frontend noninteractive locales \
 	# ===== openbox =====
 	&& apt-get install --no-install-recommends --fix-missing -y -qq \
         python3-pyxdg \
