@@ -55,6 +55,16 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     && update-menus
 
 
+# ===== Build: /usr/bin/xset =====
+ARG base_image=debian:stable-slim
+FROM ${base_image} AS xset
+RUN export DEBIAN_FRONTEND=noninteractive \
+    && apt-get update --ignore-missing -y -qq \
+    && apt-get install --no-install-recommends --fix-missing -y -qq \
+		x11-xserver-utils
+
+
+
 # ===== Main =====
 ARG base_image=debian:stable-slim
 FROM ${base_image}
@@ -76,6 +86,7 @@ ENV	LANGUAGE=${LANGUAGE} \
 ARG PATH_noVNC="/opt/bin/noVNC"
 COPY --from=noVNC ${PATH_noVNC} ${PATH_noVNC}
 COPY --from=menu /var/lib/openbox/debian-menu.xml /var/lib/openbox/debian-menu.xml
+COPY --from=xset /usr/bin/xset /usr/bin/xset
 RUN export DEBIAN_FRONTEND=noninteractive \
 	# ===== non-apt Install =====
 	&& apt-get update --ignore-missing -y -qq \
@@ -106,7 +117,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		# ----- VNC -----
 		x11vnc	\
 		x11-utils \
-		x11-xserver-utils \
+		# x11-xserver-utils \
 		# # ----- Fluxbox -----
 		# fluxbox \
 		# # Lightweight terminal emulator for X Window System
