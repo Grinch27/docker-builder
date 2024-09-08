@@ -51,6 +51,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		obconf \
         menu \
 		python3-pyxdg \
+	# ----- menu generate -----
     && update-menus
 
 
@@ -168,7 +169,12 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	&& apt-get install --no-install-recommends --fix-missing -y -qq \
 		${FILE_baidunetdisk} \
     && rm -f ${FILE_baidunetdisk} \
-	&& ln -s "/opt/baidunetdisk/baidunetdisk" /usr/local/bin/baidunetdisk \
+	&& PATH_baidunetdisk="/opt/baidunetdisk" \
+	&& ln -s "${PATH_baidunetdisk}/baidunetdisk" /usr/local/bin/baidunetdisk \
+	# -----clean baidunetdisk -----
+    && tar -cjvf ${PATH_baidunetdisk}/LICENSES.chromium.html.tar.bz2 ${PATH_baidunetdisk}/LICENSES.chromium.html \
+    && rm ${PATH_baidunetdisk}/LICENSES.chromium.html \
+    && rm -rf ${PATH_baidunetdisk}/resources/app.asar.unpacked/node_modules/@baidu/clipboard-listen-macos/src \
 	# ===== Misc =====
 	# ----- fix executable file permissions of /dev/shm for Docker Desktop and WSL2 -----
 	&& chmod +x /dev/shm \
