@@ -103,6 +103,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		lxappearance \
 		tint2 \
 		xcompmgr \
+		libgbm.so.1 \
 		# ----- Locale Encoding -----
 		# language-pack-zh-hans \
 		locales \
@@ -125,7 +126,8 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	# ===== noVNC =====
 	&& ln -s "${PATH_noVNC}/utils/novnc_proxy" /usr/local/bin/novnc \
 	# ===== baidunetdisk =====
-	&& apt-get install --no-install-recommends --fix-missing -y -qq ${FILE_baidunetdisk} \
+	&& apt-get install --no-install-recommends --fix-missing -y -qq \
+		${FILE_baidunetdisk} \
     && rm -f ${FILE_baidunetdisk} \
 	# ===== fix executable file permissions of /dev/shm for Docker Desktop and WSL2 =====
 	&& chmod +x /dev/shm \
