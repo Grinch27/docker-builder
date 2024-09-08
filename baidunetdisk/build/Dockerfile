@@ -29,6 +29,8 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		ca-certificates \
 		curl \
 		gpg \
+	# ===== System info =====
+    && OS_ARCH=$(dpkg --print-architecture) \
 	# ===== noVNC =====
 	&& URL_noVNC=$(curl -s https://api.github.com/repos/novnc/noVNC/releases/latest | grep 'tarball_url' | cut -d ':' -f 2- | cut -d '"' -f 2) \
     && FILE_noVNC="/noVNC-latest.tar.gz" \
@@ -59,6 +61,12 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	&& rm -rf "${PATH_websockify}/docker" \
 	&& rm -rf "${PATH_websockify}/docs" \
 	&& rm -rf "${PATH_websockify}/tests" \
+	# ===== baidunetdisk =====
+	# ----- baidunetdisk: Pre-Setup -----
+	&& APP_VER="4.17.7" \
+	&& URL_baidunetdisk="https://pkg-ant.baidu.com/issue/netdisk/LinuxGuanjia/${APP_VER}/baidunetdisk_${APP_VER}_${OS_ARCH}.deb" \
+	&& FILE_baidunetdisk="/baidunetdisk.deb" \
+	&& curl -fsSL ${URL_baidunetdisk} -o ${FILE_baidunetdisk} \
 	# ===== Clean pre-install =====
     && apt-get purge --autoremove -y -qq \
         curl \
@@ -92,6 +100,9 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		fonts-wqy-zenhei \
 		fonts-tlwg-loma-otf \
 		fonts-noto-color-emoji \
+	# ===== baidunetdisk =====
+	&& apt-get install -y ${FILE_baidunetdisk} \
+    && rm -f ${FILE_baidunetdisk} \
 	# ===== Setup Locale Encoding =====
 	&& locale-gen ${LANGUAGE} \
 	&& dpkg-reconfigure --frontend noninteractive locales \
