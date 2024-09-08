@@ -93,16 +93,23 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		x11-utils \
 		# # ----- Fluxbox -----
 		# fluxbox \
+		# Lightweight terminal emulator for X Window System
 		eterm \
+		# Tool to set wallpaper and root window properties
 		hsetroot \
+		# Tool to set wallpaper and root window properties
 		feh \
 		# ----- Openbox -----
 		openbox \
 		obconf \
 		menu \
+		# Tool for configuring the appearance of LXDE desktop environment
 		lxappearance \
-		tint2 \
-		xcompmgr \
+		# Lightweight taskbar and system tray for Openbox and other window managers
+		# tint2 \
+		# Lightweight composite manager for enabling window transparency and shadows
+		# xcompmgr \
+		# Generic Buffer Management library for graphics rendering with OpenGL and Vulkan
 		libgbm1 \
 		# ----- Locale Encoding -----
 		# language-pack-zh-hans \
