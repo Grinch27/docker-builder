@@ -87,7 +87,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		xvfb \
 		libxcb1 \
 		xauth \
-		pulseaudio \
+		# pulseaudio \
 		# ----- VNC -----
 		x11vnc	\
 		x11-utils \
@@ -99,12 +99,10 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		# ----- Openbox -----
 		openbox \
 		obconf \
-		# obmenu \
+		menu \
 		lxappearance \
 		tint2 \
 		xcompmgr \
-		menu \
-		# python3-pip \
 		# ----- Locale Encoding -----
 		# language-pack-zh-hans \
 		locales \
