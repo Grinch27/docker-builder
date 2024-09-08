@@ -113,9 +113,9 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		# ----- Locale Encoding -----
 		# language-pack-zh-hans \
 		# locales \
-		libfontconfig \
-		libfreetype6 \
-		xfonts-scalable \
+		# libfontconfig \
+		# libfreetype6 \
+		# xfonts-scalable \
 		# xfonts-cyrillic \
 		# fonts-ubuntu \
 		# fonts-liberation \
@@ -138,7 +138,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		libdbusmenu-gtk3-4 \
 		libappindicator3-1 \
 		# ttf-wqy-zenhei \
-		procps \
+		# procps \
 		libxtst6 \
 		libx11-xcb1 \
 	# ===== Setup Locale Encoding =====
