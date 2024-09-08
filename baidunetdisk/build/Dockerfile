@@ -164,9 +164,11 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	# ----- start vnc -----
 	# x11vnc -storepasswd ${VNC_PASSWORD} ${HOME}/.vnc/passwd
 	# no -usepw (without password), no -viewonly
-	&& echo 'for i in $(seq 1 10); do sleep 1 && xdpyinfo -display ${DISPLAY} >/dev/null 2>&1 && break || echo "Wait for Xvfb Starting"; done' >> /docker-entrypoint.sh \
+	# && echo 'for i in $(seq 1 10); do sleep 1 && xdpyinfo -display ${DISPLAY} >/dev/null 2>&1 && break || echo "Wait for Xvfb Starting"; done' >> /docker-entrypoint.sh \
+	&& echo 'sleep 10' >> /docker-entrypoint.sh \
 	&& echo 'x11vnc -forever -shared -rfbport ${VNC_PORT} -display ${DISPLAY}' >> /docker-entrypoint.sh \
 	# ----- start novnc -----
+	&& echo 'sleep 10' >> /docker-entrypoint.sh \
 	&& echo 'novnc --listen ${NO_VNC_PORT} --vnc localhost:${VNC_PORT}' >> /docker-entrypoint.sh \
 	# ----- sleep infinity -----
 	&& echo "uname -a\nsleep infinity" >> /docker-entrypoint.sh \
