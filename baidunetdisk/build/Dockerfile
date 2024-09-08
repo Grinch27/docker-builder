@@ -104,7 +104,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		tint2 \
 		xcompmgr \
 		menu \
-		python3-pip \
+		# python3-pip \
 		# ----- Locale Encoding -----
 		# language-pack-zh-hans \
 		locales \
