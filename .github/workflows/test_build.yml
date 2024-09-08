@@ -241,6 +241,8 @@ jobs:
               echo "No directory found"
             fi
             
+            sleep 10
+            docker logs ${{ env.container_name }}
             docker stop ${{ env.container_name }}
 
             tar_file="${{ env.app_branch }}_${{ env.tag_repo }}_${{ env.version }}_$(echo ${platform} | tr '/' '_').tar"
