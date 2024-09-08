@@ -88,7 +88,7 @@ ENV	LANGUAGE=${LANGUAGE} \
 	NO_VNC_PORT=7900 \
 	DISPLAY=:99.0 \
     DISPLAY_NUM=99
-# --mount=type=secret,id=NOVNC_PASSWD
+
 ARG PATH_noVNC="/opt/bin/noVNC"
 COPY --from=noVNC ${PATH_noVNC} ${PATH_noVNC}
 COPY --from=menu /var/lib/openbox/debian-menu.xml /var/lib/openbox/debian-menu.xml
