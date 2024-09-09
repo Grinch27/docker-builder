@@ -189,7 +189,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	&& for file in /opt/baidunetdisk/locales/*.pak; do \
         case $(basename "${file}") in \
             en-GB.pak|en-US.pak|zh-CN.pak|zh-TW.pak) ;; \
-            *) rm -f "${file}"; echo "Deleting ${file}";; \
+            *) rm -f "${file}"; echo "Delete ${file}";; \
         esac; \
     done \
 	# ===== Misc =====
