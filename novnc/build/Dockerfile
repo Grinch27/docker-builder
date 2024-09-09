@@ -107,7 +107,7 @@ RUN apk update \
     && apk add --no-cache --quiet \
 		# ----- Xvfb -----
 		xvfb \
-		libxcb1 \
+		libxcb \
 		xauth \
 		# pulseaudio \
 		# ----- VNC -----
@@ -120,9 +120,9 @@ RUN apk update \
 		xwininfo \
 		xdpyinfo \
 		xset \
-		appres \
-		editres \
-		listres \
+		# appres \
+		# editres \
+		# listres \
 		# viewres \
 		# luit \
 		xdriinfo \
