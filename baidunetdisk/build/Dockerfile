@@ -137,6 +137,8 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		# lxappearance \
 		# tint2 \
 		# xcompmgr \
+		# ----- noVNC -----
+		python3-numpy \
 		# ----- Locale Encoding -----
 		# language-pack-zh-hans \
 		# locales \
@@ -155,8 +157,6 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	# && dpkg-reconfigure --frontend noninteractive locales \
 	# ===== noVNC =====
 	&& ln -s "${PATH_noVNC}/utils/novnc_proxy" /usr/local/bin/novnc \
-	&& apt-get install --no-install-recommends --fix-missing -y -qq \
-		python3-numpy \
 	# ===== baidunetdisk =====
 	&& apt-get install --no-install-recommends --fix-missing -y -qq \
 		${FILE_baidunetdisk} \
