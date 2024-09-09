@@ -156,7 +156,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	# ===== noVNC =====
 	&& ln -s "${PATH_noVNC}/utils/novnc_proxy" /usr/local/bin/novnc \
 	# ===== baidunetdisk =====
-	&& apt-get install --no-install-depends --no-install-recommends --no-install-suggests --fix-missing -y -qq \
+	&& dpkg -i -y -qq \
 		${FILE_baidunetdisk} \
 		# ----- Misc -----
 	&& apt-get install --no-install-recommends --fix-missing -y -qq \
@@ -164,15 +164,15 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		libgbm1 \
 		libgtk-3-0 \
 		libnss3 \
-		# libxss1 \
+		libxss1 \
 		desktop-file-utils \
-		# libnotify4 \
+		libnotify4 \
 		xdg-utils \
 		libsecret-common \
 		libsecret-1-0 \
 		libdbusmenu-glib4 \
 		libdbusmenu-gtk3-4 \
-		# libappindicator3-1 \
+		libappindicator3-1 \
 		libxtst6 \
 		libx11-xcb1 \
 		# ttf-wqy-zenhei \
