@@ -88,7 +88,7 @@ ENV	LANGUAGE=${LANGUAGE} \
     DISPLAY_NUM=99
 
 ARG PATH_noVNC="/opt/bin/noVNC"
-COPY --from=novnc ${PATH_noVNC} ${PATH_noVNC}
+# COPY --from=novnc ${PATH_noVNC} ${PATH_noVNC}
 # COPY --from=menu /var/lib/openbox/debian-menu.xml /var/lib/openbox/debian-menu.xml
 # COPY --from=xset /usr/bin/xset /usr/bin/xset
 RUN apk update \
@@ -145,13 +145,14 @@ RUN apk update \
 		# xcompmgr \
 		# ----- noVNC -----
 		# python3-numpy \
+		novnc \
 		# ----- Locale Encoding -----
 		# fonts-wqy-zenhei \
 	# ===== Setup Locale Encoding =====
 	# && locale-gen ${LANGUAGE} \
 	# && dpkg-reconfigure --frontend noninteractive locales \
 	# ===== noVNC =====
-	&& ln -s "${PATH_noVNC}/utils/novnc_proxy" "/usr/local/bin/novnc" \
+	# && ln -s "${PATH_noVNC}/utils/novnc_proxy" "/usr/local/bin/novnc" \
 	# ===== Misc =====
 	# ----- fix executable file permissions of /dev/shm for Docker Desktop and WSL2 -----
 	&& chmod +x /dev/shm \
