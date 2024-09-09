@@ -123,11 +123,11 @@ RUN apk update \
 		appres \
 		editres \
 		listres \
-		viewres \
-		luit \
+		# viewres \
+		# luit \
 		xdriinfo \
 		xev \
-		xfd \
+		# xfd \
 		xfontsel \
 		xkill \
 		# xlsatoms \
@@ -139,12 +139,12 @@ RUN apk update \
 		openbox \
 		# obconf \
 		# menu \
-		python3-pyxdg \
+		# python3-pyxdg \
 		# lxappearance \
 		# tint2 \
 		# xcompmgr \
 		# ----- noVNC -----
-		python3-numpy \
+		# python3-numpy \
 		# ----- Locale Encoding -----
 		# fonts-wqy-zenhei \
 	# ===== Setup Locale Encoding =====
