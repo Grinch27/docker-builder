@@ -122,7 +122,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		# ----- Xvfb -----
 		xvfb \
 		libxcb1 \
-		# xauth \
+		xauth \
 		# pulseaudio \
 		# ----- VNC -----
 		x11vnc	\
