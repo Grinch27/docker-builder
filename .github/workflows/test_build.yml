@@ -173,7 +173,7 @@ jobs:
 
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
-      - name: Test Docker image & Inspect Layers with skopeo & Save to tar
+      - name: Test Docker image & Inspect Layers with skopeo
         id: test
         env:
           container_name: container-test
