@@ -186,9 +186,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	&& apt-get purge --autoremove -y -qq \
         bzip2 \
 	&& rm -rf ${PATH_baidunetdisk}/resources/app.asar.unpacked/node_modules/@baidu/clipboard-listen-macos/src \
-	&& for file in /opt/baidunetdisk/locales/*.pak; do \
-		echo "en-GB.pak en-US.pak zh-CN.pak zh-TW.pak" | grep -q $(basename "$file") || rm -f "$file"; echo "Delete $file"; \
-	done \
+	&& for file in /opt/baidunetdisk/locales/*.pak; do { echo "en-GB.pak en-US.pak zh-CN.pak zh-TW.pak" | grep -q $(basename "$file") || rm -f "$file"; echo "Delete $file"; }; done \
 	# ===== Misc =====
 	# ----- fix executable file permissions of /dev/shm for Docker Desktop and WSL2 -----
 	&& chmod +x /dev/shm \
@@ -213,7 +211,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	&& echo "${sh_xvfb} &" >> /docker-entrypoint.sh \
 	# ----- start vnc -----
 	&& sh_x11vnc="/start-x11vnc.sh" \
-	&& echo 'for i in $(seq 1 10); do { sleep 1; xdpyinfo -display ${DISPLAY} && break || echo "Wait for Xvfb" } done' >> ${sh_x11vnc} \
+	&& echo 'for i in $(seq 1 10); do { sleep 1; xdpyinfo -display ${DISPLAY} && break || echo "Wait for Xvfb"; }; done' >> ${sh_x11vnc} \
 	&& echo 'x11vnc -forever -shared -rfbport ${VNC_PORT} -display ${DISPLAY}' >> ${sh_x11vnc} \
 	&& chmod +x ${sh_x11vnc} \
 	&& echo "${sh_x11vnc} &" >> /docker-entrypoint.sh \
