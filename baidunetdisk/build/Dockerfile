@@ -149,6 +149,14 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		fonts-wqy-zenhei \
 		# fonts-tlwg-loma-otf \
 		# fonts-noto-color-emoji \
+	# ===== Setup Locale Encoding =====
+	# && locale-gen ${LANGUAGE} \
+	# && dpkg-reconfigure --frontend noninteractive locales \
+	# ===== noVNC =====
+	&& ln -s "${PATH_noVNC}/utils/novnc_proxy" /usr/local/bin/novnc \
+	# ===== baidunetdisk =====
+	&& apt-get install --no-install-recommends --fix-missing -y -qq \
+		${FILE_baidunetdisk} \
 		# ----- Misc -----
 		libasound2 \
 		libgbm1 \
@@ -167,14 +175,6 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		libx11-xcb1 \
 		# ttf-wqy-zenhei \
 		# procps \
-	# ===== Setup Locale Encoding =====
-	# && locale-gen ${LANGUAGE} \
-	# && dpkg-reconfigure --frontend noninteractive locales \
-	# ===== noVNC =====
-	&& ln -s "${PATH_noVNC}/utils/novnc_proxy" /usr/local/bin/novnc \
-	# ===== baidunetdisk =====
-	&& apt-get install --no-install-recommends --fix-missing -y -qq \
-		${FILE_baidunetdisk} \
     && rm -f ${FILE_baidunetdisk} \
 	&& PATH_baidunetdisk="/opt/baidunetdisk" \
 	&& ln -s "${PATH_baidunetdisk}/baidunetdisk" /usr/local/bin/baidunetdisk \
