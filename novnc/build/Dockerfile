@@ -130,7 +130,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		# ----- noVNC -----
 		python3-numpy \
 		# ----- Locale Encoding -----
-		fonts-wqy-zenhei \
+		# fonts-wqy-zenhei \
 	# ===== Setup Locale Encoding =====
 	# && locale-gen ${LANGUAGE} \
 	# && dpkg-reconfigure --frontend noninteractive locales \
