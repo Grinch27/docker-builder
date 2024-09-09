@@ -5,13 +5,11 @@
 #==============================
 
 # ===== Build: noVNC =====
-ARG base_image=debian:stable-slim
+ARG base_image=alpine:latest
 FROM ${base_image} AS novnc
 ARG PATH_noVNC="/opt/bin/noVNC"
-RUN export DEBIAN_FRONTEND=noninteractive \
-	# ===== non-apt Install =====
-	&& apt-get update --ignore-missing -y -qq \
-	&& apt-get install --no-install-recommends --fix-missing -y -qq \
+RUN apk update \
+    && apk add --no-cache --quiet \
 		ca-certificates \
 		curl \
 		gpg \
@@ -48,41 +46,31 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 
 
 # ===== Build: /var/lib/openbox/debian-menu.xml =====
-ARG base_image=debian:stable-slim
-FROM ${base_image} AS menu
-RUN export DEBIAN_FRONTEND=noninteractive \
-    && apt-get update --ignore-missing -y -qq \
-    && apt-get install --no-install-recommends --fix-missing -y -qq \
-		openbox \
-		obconf \
-        menu \
-		python3-pyxdg \
-	# ----- menu generate -----
-    && update-menus
+# ARG base_image=alpine:latest
+# FROM ${base_image} AS menu
+# RUN apk update \
+#     && apk add --no-cache --quiet \
+# 		openbox \
+# 		# obconf \
+#         # menu \
+# 		python3 \
+# 		python3-pyxdg \
+# 	# # ----- menu generate -----
+#     # && update-menus
 
 
 
 # ===== Build: /usr/bin/xset =====
-ARG base_image=debian:stable-slim
-FROM ${base_image} AS xset
-RUN export DEBIAN_FRONTEND=noninteractive \
-    && apt-get update --ignore-missing -y -qq \
-    && apt-get install --no-install-recommends --fix-missing -y -qq \
-		x11-xserver-utils
-
-
-# # ===== Build: Fonts =====
-# ARG base_image=debian:stable-slim
-# FROM ${base_image} AS fonts
+# ARG base_image=alpine:latest
+# FROM ${base_image} AS xset
 # RUN export DEBIAN_FRONTEND=noninteractive \
 #     && apt-get update --ignore-missing -y -qq \
 #     && apt-get install --no-install-recommends --fix-missing -y -qq \
-#         fonts-wqy-zenhei
-# COPY --from=fonts /usr/share/fonts/truetype/wqy /usr/share/fonts/truetype/wqy
+# 		x11-xserver-utils
 
 
 # ===== Main =====
-ARG base_image=debian:stable-slim
+ARG base_image=alpine:latest
 FROM ${base_image}
 ARG LANGUAGE=C
 ENV	LANGUAGE=${LANGUAGE} \
@@ -101,24 +89,22 @@ ENV	LANGUAGE=${LANGUAGE} \
 
 ARG PATH_noVNC="/opt/bin/noVNC"
 COPY --from=novnc ${PATH_noVNC} ${PATH_noVNC}
-COPY --from=menu /var/lib/openbox/debian-menu.xml /var/lib/openbox/debian-menu.xml
-COPY --from=xset /usr/bin/xset /usr/bin/xset
-RUN export DEBIAN_FRONTEND=noninteractive \
-	# ===== non-apt Install =====
-	&& apt-get update --ignore-missing -y -qq \
-	&& apt-get install --no-install-recommends --fix-missing -y -qq \
+# COPY --from=menu /var/lib/openbox/debian-menu.xml /var/lib/openbox/debian-menu.xml
+# COPY --from=xset /usr/bin/xset /usr/bin/xset
+RUN apk update \
+    && apk add --no-cache --quiet \
 		ca-certificates \
 		curl \
 		gpg \
 	# ===== System info =====
     && OS_ARCH=$(dpkg --print-architecture) \
 	# ===== Clean pre-install =====
-    && apt-get purge --autoremove -y -qq \
+    && apk del --no-cache --quiet \
         curl \
         gpg \
 	# ===== main Install =====
-	&& apt-get update --ignore-missing -y -qq \
-	&& apt-get install --no-install-recommends --fix-missing -y -qq \
+	&& apk update \
+    && apk add --no-cache --quiet \
 		# ----- Xvfb -----
 		xvfb \
 		libxcb1 \
@@ -126,8 +112,29 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		# pulseaudio \
 		# ----- VNC -----
 		x11vnc	\
-		x11-utils \
-		# x11-xserver-utils \
+		# x11-utils \
+		python3 \
+		# py3-pip \
+		xrandr \
+		xprop \
+		xwininfo \
+		xdpyinfo \
+		xset \
+		appres \
+		editres \
+		listres \
+		viewres \
+		luit \
+		xdriinfo \
+		xev \
+		xfd \
+		xfontsel \
+		xkill \
+		xlsatoms \
+		xlsclients \
+		xlsfonts \
+		xmessage \
+		xvinfo \
 		# ----- Openbox -----
 		openbox \
 		# obconf \
@@ -153,12 +160,9 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	&& chmod -R 775 ${HOME} /tmp/.X11-unix \
 	&& chgrp -R 0 ${HOME} /tmp/.X11-unix \
 	&& chmod -R g=u ${HOME} /tmp/.X11-unix \
-	# ===== Clean apt =====
-	&& apt-get autoremove -y -qq \
-    && rm -rf /var/lib/apt/lists/* \
-    && rm -rf /var/log/*.log \
-    && apt-get clean -y -qq \
-	&& unset DEBIAN_FRONTEND \
+	# ===== Clean apk =====
+	&& rm -rf /var/cache/apk/* \
+    && rm -rf /var/log/*.log
 	# ===== docker-entrypoint.sh =====
     && echo "#!/usr/bin/env sh" >> /docker-entrypoint.sh \
 	# ----- sh: start Xvfb & Openbox -----
