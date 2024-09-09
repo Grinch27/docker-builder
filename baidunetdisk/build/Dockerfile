@@ -181,17 +181,19 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	&& PATH_baidunetdisk="/opt/baidunetdisk" \
 	&& ln -s "${PATH_baidunetdisk}/baidunetdisk" /usr/local/bin/baidunetdisk \
 	# -----clean baidunetdisk -----
+	# compress
     && tar -cjvf ${PATH_baidunetdisk}/LICENSES.chromium.html.tar.bz2 -C ${PATH_baidunetdisk} LICENSES.chromium.html \
     && rm ${PATH_baidunetdisk}/LICENSES.chromium.html \
 	&& apt-get purge --autoremove -y -qq \
         bzip2 \
-	&& rm -rf ${PATH_baidunetdisk}/resources/app.asar.unpacked/node_modules/@baidu/clipboard-listen-macos/src \
+	# delete
 	&& for file in /opt/baidunetdisk/locales/*.pak; do \
         case $(basename "${file}") in \
             en-GB.pak|en-US.pak|zh-CN.pak|zh-TW.pak) ;; \
             *) rm -f "${file}"; echo "Delete ${file}";; \
         esac; \
     done \
+	&& rm -rf ${PATH_baidunetdisk}/resources/app.asar.unpacked/node_modules/@baidu/clipboard-listen-macos/src \
 	# ===== Misc =====
 	# ----- fix executable file permissions of /dev/shm for Docker Desktop and WSL2 -----
 	&& chmod +x /dev/shm \
