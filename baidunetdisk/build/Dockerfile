@@ -156,17 +156,17 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		libnss3 \
 		libxss1 \
 		desktop-file-utils \
-		libnotify4 \
+		# libnotify4 \
 		xdg-utils \
 		libsecret-common \
 		libsecret-1-0 \
 		libdbusmenu-glib4 \
 		libdbusmenu-gtk3-4 \
-		libappindicator3-1 \
-		# ttf-wqy-zenhei \
-		# procps \
+		# libappindicator3-1 \
 		libxtst6 \
 		libx11-xcb1 \
+		# ttf-wqy-zenhei \
+		# procps \
 	# ===== Setup Locale Encoding =====
 	# && locale-gen ${LANGUAGE} \
 	# && dpkg-reconfigure --frontend noninteractive locales \
