@@ -187,11 +187,11 @@ RUN export DEBIAN_FRONTEND=noninteractive \
         bzip2 \
 	&& rm -rf ${PATH_baidunetdisk}/resources/app.asar.unpacked/node_modules/@baidu/clipboard-listen-macos/src \
 	&& for file in /opt/baidunetdisk/locales/*.pak; do \
-        CASE $(basename "${file}") IN \
+        case $(basename "${file}") in \
             en-GB.pak|en-US.pak|zh-CN.pak|zh-TW.pak) ;; \
             *) rm -f "${file}"; echo "Deleting ${file}";; \
-        ESAC; \
-    DONE
+        esac; \
+    done \
 	# ===== Misc =====
 	# ----- fix executable file permissions of /dev/shm for Docker Desktop and WSL2 -----
 	&& chmod +x /dev/shm \
