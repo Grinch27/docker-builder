@@ -149,7 +149,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		# fonts-ubuntu \
 		# fonts-liberation \
 		# fonts-ipafont-gothic \
-		fonts-wqy-zenhei \
+		# fonts-wqy-zenhei \
 		# fonts-tlwg-loma-otf \
 		# fonts-noto-color-emoji \
 	# ===== Setup Locale Encoding =====
@@ -175,6 +175,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		libappindicator3-1 \
 		libxtst6 \
 		libx11-xcb1 \
+		fonts-wqy-zenhei \
 		# ttf-wqy-zenhei \
 		# procps \
 		bzip2 \
