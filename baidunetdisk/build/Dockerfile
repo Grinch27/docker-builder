@@ -186,7 +186,12 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	&& apt-get purge --autoremove -y -qq \
         bzip2 \
 	&& rm -rf ${PATH_baidunetdisk}/resources/app.asar.unpacked/node_modules/@baidu/clipboard-listen-macos/src \
-	&& for file in /opt/baidunetdisk/locales/*.pak; do { echo "en-GB.pak en-US.pak zh-CN.pak zh-TW.pak" | grep -q $(basename "$file") || rm -f "$file"; echo "Delete $file"; }; done \
+	&& for file in /opt/baidunetdisk/locales/*.pak; do
+		case $(basename "${file}") in
+			en-GB.pak|en-US.pak|zh-CN.pak|zh-TW.pak) ;;
+			*) rm -f "${file}"; echo "Deleting ${file}";;
+		esac
+	done \
 	# ===== Misc =====
 	# ----- fix executable file permissions of /dev/shm for Docker Desktop and WSL2 -----
 	&& chmod +x /dev/shm \
