@@ -8,3 +8,4 @@ echo "dir_current=${dir_current}"
 # remove_prefix="warp-cli "
 # version=${version##*$remove_prefix}
 # echo "version=${version}"
+sleep 10
