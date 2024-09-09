@@ -155,6 +155,8 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	# && dpkg-reconfigure --frontend noninteractive locales \
 	# ===== noVNC =====
 	&& ln -s "${PATH_noVNC}/utils/novnc_proxy" /usr/local/bin/novnc \
+	&& apt-get install --no-install-recommends --fix-missing -y -qq \
+		python3-numpy \
 	# ===== baidunetdisk =====
 	&& apt-get install --no-install-recommends --fix-missing -y -qq \
 		libasound2 \
