@@ -124,7 +124,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		x11vnc	\
 		x11-utils \
 		# x11-xserver-utils \
-		# # ----- Fluxbox -----
+		# ----- Fluxbox -----
 		# fluxbox \
 		# eterm \
 		# hsetroot \
@@ -163,7 +163,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		libgbm1 \
 		libgtk-3-0 \
 		libnss3 \
-		libxss1 \
+		# libxss1 \
 		desktop-file-utils \
 		# libnotify4 \
 		xdg-utils \
