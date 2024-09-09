@@ -71,6 +71,15 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		x11-xserver-utils
 
 
+# # ===== Build: Fonts =====
+# ARG base_image=debian:stable-slim
+# FROM ${base_image} AS fonts
+# RUN export DEBIAN_FRONTEND=noninteractive \
+#     && apt-get update --ignore-missing -y -qq \
+#     && apt-get install --no-install-recommends --fix-missing -y -qq \
+#         fonts-wqy-zenhei
+# COPY --from=fonts /usr/share/fonts/truetype/wqy /usr/share/fonts/truetype/wqy
+
 
 # ===== Main =====
 ARG base_image=debian:stable-slim
@@ -113,7 +122,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		# ----- Xvfb -----
 		xvfb \
 		libxcb1 \
-		xauth \
+		# xauth \
 		# pulseaudio \
 		# ----- VNC -----
 		x11vnc	\
