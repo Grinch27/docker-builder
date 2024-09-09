@@ -130,9 +130,9 @@ RUN apk update \
 		xfd \
 		xfontsel \
 		xkill \
-		xlsatoms \
-		xlsclients \
-		xlsfonts \
+		# xlsatoms \
+		# xlsclients \
+		# xlsfonts \
 		xmessage \
 		xvinfo \
 		# ----- Openbox -----
