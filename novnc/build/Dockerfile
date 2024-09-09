@@ -97,7 +97,7 @@ RUN apk update \
 		curl \
 		gpg \
 	# ===== System info =====
-    && OS_ARCH=$(dpkg --print-architecture) \
+    # && OS_ARCH=$(dpkg --print-architecture) \
 	# ===== Clean pre-install =====
     && apk del --no-cache --quiet \
         curl \
