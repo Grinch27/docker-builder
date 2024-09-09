@@ -176,6 +176,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		libx11-xcb1 \
 		# ttf-wqy-zenhei \
 		# procps \
+		bzip2 \
     && rm -f ${FILE_baidunetdisk} \
 	&& PATH_baidunetdisk="/opt/baidunetdisk" \
 	&& ln -s "${PATH_baidunetdisk}/baidunetdisk" /usr/local/bin/baidunetdisk \
@@ -183,6 +184,8 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     && tar -cjvf ${PATH_baidunetdisk}/LICENSES.chromium.html.tar.bz2 -C ${PATH_baidunetdisk} LICENSES.chromium.html \
     && rm ${PATH_baidunetdisk}/LICENSES.chromium.html \
     && rm -rf ${PATH_baidunetdisk}/resources/app.asar.unpacked/node_modules/@baidu/clipboard-listen-macos/src \
+	&& apt-get purge --autoremove -y -qq \
+        bzip2 \
 	# ===== Misc =====
 	# ----- fix executable file permissions of /dev/shm for Docker Desktop and WSL2 -----
 	&& chmod +x /dev/shm \
