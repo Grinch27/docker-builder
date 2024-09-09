@@ -220,7 +220,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	&& echo "${sh_xvfb} &" >> /docker-entrypoint.sh \
 	# ----- start vnc -----
 	&& sh_x11vnc="/start-x11vnc.sh" \
-	&& echo 'for i in $(seq 1 10); do { sleep 1; xdpyinfo -display ${DISPLAY} && break || echo "Wait for Xvfb"; }; done' >> ${sh_x11vnc} \
+	&& echo 'for i in $(seq 1 10); do { sleep 1; xdpyinfo -display ${DISPLAY} > /dev/null 2>&1 && break || echo "Wait for Xvfb"; }; done' >> ${sh_x11vnc} \
 	&& echo 'x11vnc -forever -shared -rfbport ${VNC_PORT} -display ${DISPLAY}' >> ${sh_x11vnc} \
 	&& chmod +x ${sh_x11vnc} \
 	&& echo "${sh_x11vnc} &" >> /docker-entrypoint.sh \
