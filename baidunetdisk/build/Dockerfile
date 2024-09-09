@@ -6,7 +6,7 @@
 
 # ===== Build: noVNC =====
 ARG base_image=debian:stable-slim
-FROM ${base_image} AS noVNC
+FROM ${base_image} AS novnc
 ARG PATH_noVNC="/opt/bin/noVNC"
 RUN export DEBIAN_FRONTEND=noninteractive \
 	# ===== non-apt Install =====
@@ -90,7 +90,7 @@ ENV	LANGUAGE=${LANGUAGE} \
     DISPLAY_NUM=99
 
 ARG PATH_noVNC="/opt/bin/noVNC"
-COPY --from=noVNC ${PATH_noVNC} ${PATH_noVNC}
+COPY --from=novnc ${PATH_noVNC} ${PATH_noVNC}
 COPY --from=menu /var/lib/openbox/debian-menu.xml /var/lib/openbox/debian-menu.xml
 COPY --from=xset /usr/bin/xset /usr/bin/xset
 RUN export DEBIAN_FRONTEND=noninteractive \
@@ -179,9 +179,9 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	&& PATH_baidunetdisk="/opt/baidunetdisk" \
 	&& ln -s "${PATH_baidunetdisk}/baidunetdisk" /usr/local/bin/baidunetdisk \
 	# -----clean baidunetdisk -----
-    && tar -cjvf ${PATH_baidunetdisk}/LICENSES.chromium.html.tar.bz2 ${PATH_baidunetdisk}/LICENSES.chromium.html \
-    && rm ${PATH_baidunetdisk}/LICENSES.chromium.html \
-    && rm -rf ${PATH_baidunetdisk}/resources/app.asar.unpacked/node_modules/@baidu/clipboard-listen-macos/src \
+    # && tar -cjvf ${PATH_baidunetdisk}/LICENSES.chromium.html.tar.bz2 ${PATH_baidunetdisk}/LICENSES.chromium.html \
+    # && rm ${PATH_baidunetdisk}/LICENSES.chromium.html \
+    # && rm -rf ${PATH_baidunetdisk}/resources/app.asar.unpacked/node_modules/@baidu/clipboard-listen-macos/src \
 	# ===== Misc =====
 	# ----- fix executable file permissions of /dev/shm for Docker Desktop and WSL2 -----
 	&& chmod +x /dev/shm \
