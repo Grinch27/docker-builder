@@ -156,9 +156,6 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	# ===== noVNC =====
 	&& ln -s "${PATH_noVNC}/utils/novnc_proxy" /usr/local/bin/novnc \
 	# ===== baidunetdisk =====
-	&& dpkg -i -y -qq \
-		${FILE_baidunetdisk} \
-		# ----- Misc -----
 	&& apt-get install --no-install-recommends --fix-missing -y -qq \
 		libasound2 \
 		libgbm1 \
@@ -178,6 +175,8 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		# ttf-wqy-zenhei \
 		# procps \
 		bzip2 \
+	&& dpkg -i -y -qq \
+		${FILE_baidunetdisk} \
     && rm -f ${FILE_baidunetdisk} \
 	&& PATH_baidunetdisk="/opt/baidunetdisk" \
 	&& ln -s "${PATH_baidunetdisk}/baidunetdisk" /usr/local/bin/baidunetdisk \
