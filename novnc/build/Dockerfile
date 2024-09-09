@@ -162,7 +162,7 @@ RUN apk update \
 	&& chmod -R g=u ${HOME} /tmp/.X11-unix \
 	# ===== Clean apk =====
 	&& rm -rf /var/cache/apk/* \
-    && rm -rf /var/log/*.log
+    && rm -rf /var/log/*.log \
 	# ===== docker-entrypoint.sh =====
     && echo "#!/usr/bin/env sh" >> /docker-entrypoint.sh \
 	# ----- sh: start Xvfb & Openbox -----
