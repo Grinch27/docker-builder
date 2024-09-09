@@ -175,8 +175,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		# ttf-wqy-zenhei \
 		# procps \
 		bzip2 \
-	&& dpkg -i -qq \
-		${FILE_baidunetdisk} \
+	&& dpkg -i ${FILE_baidunetdisk} \
     && rm -f ${FILE_baidunetdisk} \
 	&& PATH_baidunetdisk="/opt/baidunetdisk" \
 	&& ln -s "${PATH_baidunetdisk}/baidunetdisk" /usr/local/bin/baidunetdisk \
