@@ -241,6 +241,7 @@ jobs:
               echo "No directory found"
             fi
             
+            sleep 10
             docker logs ${{ env.container_name }}
             docker stop ${{ env.container_name }}
           done
