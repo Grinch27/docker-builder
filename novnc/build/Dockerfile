@@ -174,9 +174,9 @@ RUN apk update \
 	&& echo "${sh_xvfb} &" >> /docker-entrypoint.sh \
 	# ----- sh: start Openbox -----
 	&& sh_openbox="/start-openbox.sh" \
-	&& echo 'DISPLAY=:$DISPLAY_NUM openbox-session' >> ${sh_openbox} \
+	&& echo 'DISPLAY=:${DISPLAY_NUM} openbox-session' >> ${sh_openbox} \
 	&& chmod +x ${sh_openbox} \
-	&& echo "${sh_openbox} &" >> /docker-entrypoint.sh \
+	&& echo "sh ${sh_openbox} &" >> /docker-entrypoint.sh \
 	# ----- start vnc -----
 	&& sh_x11vnc="/start-x11vnc.sh" \
 	&& echo 'for i in $(seq 1 10); do { sleep 1; xvinfo -display ${DISPLAY} > /dev/null 2>&1 && break || echo "Wait for Xvfb"; }; done' >> ${sh_x11vnc} \
