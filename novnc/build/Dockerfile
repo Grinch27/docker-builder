@@ -84,7 +84,7 @@ ENV	LANGUAGE=${LANGUAGE} \
 	# ----- VNC -----
 	VNC_PORT=5900 \
 	NO_VNC_PORT=7900 \
-	DISPLAY=:99.0 \
+	DISPLAY=:99 \
     DISPLAY_NUM=99
 
 ARG PATH_noVNC="/opt/bin/noVNC"
