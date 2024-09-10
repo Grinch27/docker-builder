@@ -162,7 +162,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	&& unset DEBIAN_FRONTEND \
 	# ===== docker-entrypoint.sh =====
 	&& sh_entrypoint="/docker-entrypoint.sh" \
-    && echo "#!/usr/bin/env bash" >> ${sh_entrypoint} \
+    # && echo "#!/usr/bin/env sh" >> ${sh_entrypoint} \
 	&& echo "env" >> ${sh_entrypoint} \
 	&& echo 'echo "${DISPLAY} ${SCREEN_WIDTH}x${SCREEN_HEIGHT}x${SCREEN_DEPTH} ${SCREEN_DPI}"' >> ${sh_entrypoint} \
 	# ----- sh: start Xvfb & Openbox -----
@@ -188,4 +188,4 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 
 EXPOSE 5900 7900
 
-ENTRYPOINT ["/docker-entrypoint.sh"]
+ENTRYPOINT ["sh", "/docker-entrypoint.sh"]
