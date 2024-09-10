@@ -5,7 +5,7 @@
 #==============================
 
 # ===== Build: noVNC =====
-ARG base_image=alpine:latest
+ARG base_image=alpine:edge
 FROM ${base_image} AS novnc
 ARG PATH_noVNC="/opt/bin/noVNC"
 RUN apk update \
@@ -46,7 +46,7 @@ RUN apk update \
 
 
 # ===== Build: /var/lib/openbox/debian-menu.xml =====
-# ARG base_image=alpine:latest
+# ARG base_image=alpine:edge
 # FROM ${base_image} AS menu
 # RUN apk update \
 #     && apk add --no-cache --quiet \
@@ -61,7 +61,7 @@ RUN apk update \
 
 
 # ===== Build: /usr/bin/xset =====
-# ARG base_image=alpine:latest
+# ARG base_image=alpine:edge
 # FROM ${base_image} AS xset
 # RUN export DEBIAN_FRONTEND=noninteractive \
 #     && apt-get update --ignore-missing -y -qq \
@@ -70,7 +70,7 @@ RUN apk update \
 
 
 # ===== Main =====
-ARG base_image=alpine:latest
+ARG base_image=alpine:edge
 FROM ${base_image}
 ARG LANGUAGE=C
 ENV	LANGUAGE=${LANGUAGE} \
