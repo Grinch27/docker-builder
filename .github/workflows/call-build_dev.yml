@@ -45,7 +45,7 @@ jobs:
             }
     steps:
       - name: Trigger build-docker
-        if: ${{ github.event_name == 'schedule' && github.event.schedule == matrix.schedule_time.time }}
+        if: ${{ github.event.schedule == matrix.schedule_time.time }}
         run: |
           data='{
             "ref": "main",
