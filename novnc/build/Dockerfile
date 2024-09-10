@@ -4,44 +4,44 @@
 #	https://github.com/SeleniumHQ/docker-selenium
 #==============================
 
-# ===== Build: noVNC =====
-ARG base_image=alpine:edge
-FROM ${base_image} AS novnc
-ARG PATH_noVNC="/opt/bin/noVNC"
-RUN apk update \
-    && apk add --no-cache --quiet \
-		ca-certificates \
-		curl \
-		gpg \
-	# ===== noVNC =====
-	&& URL_noVNC=$(curl -s https://api.github.com/repos/novnc/noVNC/releases/latest | grep 'tarball_url' | cut -d ':' -f 2- | cut -d '"' -f 2) \
-    && FILE_noVNC="/noVNC-latest.tar.gz" \
-	# && PATH_noVNC="/opt/bin/noVNC" \
-	# ----- noVNC: Setup -----
-	&& curl -fsSL ${URL_noVNC} -o ${FILE_noVNC} \
-	&& mkdir -p ${PATH_noVNC} \
-    && tar xzf ${FILE_noVNC} -C ${PATH_noVNC} --strip-components=1 \
-    && cp "${PATH_noVNC}/vnc.html" "${PATH_noVNC}/index.html" \
-    && rm -f ${FILE_noVNC} \
-	# ----- noVNC: Clean -----
-	&& rm -rf "${PATH_noVNC}/.github" \
-	&& rm -rf "${PATH_noVNC}/docs" \
-	&& rm -rf "${PATH_noVNC}/snap" \
-	&& rm -rf "${PATH_noVNC}/tests" \
-	# ===== websockify =====
-	&& URL_websockify=$(curl -s https://api.github.com/repos/novnc/websockify/releases/latest | grep 'tarball_url' | cut -d ':' -f 2- | cut -d '"' -f 2) \
-    && FILE_websockify="/websockify.tar.gz" \
-	&& PATH_websockify="${PATH_noVNC}/utils/websockify" \
-	# ----- websockify: Setup -----
-	&& curl -fsSL ${URL_websockify} -o ${FILE_websockify} \
-	&& mkdir -p ${PATH_websockify} \
-    && tar xzf ${FILE_websockify} -C ${PATH_websockify} --strip-components=1 \
-	&& rm -f ${FILE_websockify} \
-	# ----- websockify: Clean -----
-	&& rm -rf "${PATH_websockify}/.github" \
-	&& rm -rf "${PATH_websockify}/docker" \
-	&& rm -rf "${PATH_websockify}/docs" \
-	&& rm -rf "${PATH_websockify}/tests"
+# # ===== Build: noVNC =====
+# ARG base_image=alpine:edge
+# FROM ${base_image} AS novnc
+# ARG PATH_noVNC="/opt/bin/noVNC"
+# RUN apk update \
+#     && apk add --no-cache --quiet \
+# 		ca-certificates \
+# 		curl \
+# 		gpg \
+# 	# ===== noVNC =====
+# 	&& URL_noVNC=$(curl -s https://api.github.com/repos/novnc/noVNC/releases/latest | grep 'tarball_url' | cut -d ':' -f 2- | cut -d '"' -f 2) \
+#     && FILE_noVNC="/noVNC-latest.tar.gz" \
+# 	# && PATH_noVNC="/opt/bin/noVNC" \
+# 	# ----- noVNC: Setup -----
+# 	&& curl -fsSL ${URL_noVNC} -o ${FILE_noVNC} \
+# 	&& mkdir -p ${PATH_noVNC} \
+#     && tar xzf ${FILE_noVNC} -C ${PATH_noVNC} --strip-components=1 \
+#     && cp "${PATH_noVNC}/vnc.html" "${PATH_noVNC}/index.html" \
+#     && rm -f ${FILE_noVNC} \
+# 	# ----- noVNC: Clean -----
+# 	&& rm -rf "${PATH_noVNC}/.github" \
+# 	&& rm -rf "${PATH_noVNC}/docs" \
+# 	&& rm -rf "${PATH_noVNC}/snap" \
+# 	&& rm -rf "${PATH_noVNC}/tests" \
+# 	# ===== websockify =====
+# 	&& URL_websockify=$(curl -s https://api.github.com/repos/novnc/websockify/releases/latest | grep 'tarball_url' | cut -d ':' -f 2- | cut -d '"' -f 2) \
+#     && FILE_websockify="/websockify.tar.gz" \
+# 	&& PATH_websockify="${PATH_noVNC}/utils/websockify" \
+# 	# ----- websockify: Setup -----
+# 	&& curl -fsSL ${URL_websockify} -o ${FILE_websockify} \
+# 	&& mkdir -p ${PATH_websockify} \
+#     && tar xzf ${FILE_websockify} -C ${PATH_websockify} --strip-components=1 \
+# 	&& rm -f ${FILE_websockify} \
+# 	# ----- websockify: Clean -----
+# 	&& rm -rf "${PATH_websockify}/.github" \
+# 	&& rm -rf "${PATH_websockify}/docker" \
+# 	&& rm -rf "${PATH_websockify}/docs" \
+# 	&& rm -rf "${PATH_websockify}/tests"
 
 
 
