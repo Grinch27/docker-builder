@@ -84,7 +84,9 @@ ENV	LANGUAGE=${LANGUAGE} \
 	# ----- VNC -----
 	VNC_PORT=5900 \
 	NO_VNC_PORT=7900 \
-	DISPLAY=":99.0"
+	SCREEN_NUM="0" \
+	DISPLAY_NUM="99" \
+	DISPLAY=":${DISPLAY_NUM}.${SCREEN_NUM}" \
     # DISPLAY_NUM=99
 
 ARG PATH_noVNC="/opt/bin/noVNC"
@@ -169,7 +171,7 @@ RUN apk update \
 	# ----- sh: start Xvfb -----
 	&& sh_xvfb="/start-xvfb.sh" \
 	&& echo 'rm -f /tmp/.X*lock' >> ${sh_xvfb} \
-	&& echo 'Xvfb ${DISPLAY} -screen 0 ${SCREEN_WIDTH}x${SCREEN_HEIGHT}x${SCREEN_DEPTH} -fbdir /var/tmp -dpi ${SCREEN_DPI} -listen tcp -noreset -ac +extension RANDR' >> ${sh_xvfb} \
+	&& echo 'Xvfb ${DISPLAY} -screen ${SCREEN_NUM} ${SCREEN_WIDTH}x${SCREEN_HEIGHT}x${SCREEN_DEPTH} -fbdir /var/tmp -dpi ${SCREEN_DPI} -listen tcp -noreset -ac +extension RANDR' >> ${sh_xvfb} \
 	&& chmod +x ${sh_xvfb} \
 	&& echo "${sh_xvfb} &" >> /docker-entrypoint.sh \
 	# ----- sh: start Openbox -----
