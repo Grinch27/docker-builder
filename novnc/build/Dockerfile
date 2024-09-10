@@ -189,10 +189,10 @@ RUN apk update \
 	&& chmod +x ${sh_novnc} \
 	&& echo "${sh_novnc} &" >> /docker-entrypoint.sh \
 	# ----- sleep infinity -----
-	&& echo "uname -a\nsleep infinity" >> /docker-entrypoint.sh \
+	&& echo -e "uname -a\nsleep infinity" >> /docker-entrypoint.sh \
 	&& chmod +x /docker-entrypoint.sh
 
 EXPOSE 5900 7900
 
-# ENTRYPOINT ["sh", "/docker-entrypoint.sh"]
-ENTRYPOINT ["sh", "-c", "uname -a && sleep infinity"]
+ENTRYPOINT ["sh", "/docker-entrypoint.sh"]
+# ENTRYPOINT ["sh", "-c", "uname -a && sleep infinity"]
