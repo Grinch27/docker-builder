@@ -96,8 +96,9 @@ ENV	LANGUAGE=${LANGUAGE} \
 	# ----- VNC -----
 	VNC_PORT=5900 \
 	NO_VNC_PORT=7900 \
-	DISPLAY=:99.0 \
-    DISPLAY_NUM=99
+	SCREEN_NUM=0 \
+	DISPLAY_NUM=99 \
+	DISPLAY=:99.0
 
 ARG PATH_noVNC="/opt/bin/noVNC"
 COPY --from=novnc ${PATH_noVNC} ${PATH_noVNC}
@@ -167,7 +168,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	# ----- sh: start Xvfb & Openbox -----
 	&& sh_xvfb="/start-xvfb.sh" \
 	&& echo 'rm -f /tmp/.X*lock' >> ${sh_xvfb} \
-	&& echo 'xvfb-run --server-num=${DISPLAY_NUM} --server-args="-screen 0 ${SCREEN_WIDTH}x${SCREEN_HEIGHT}x${SCREEN_DEPTH} -fbdir /var/tmp -dpi ${SCREEN_DPI} -listen tcp -noreset -ac +extension RANDR" openbox-session' >> ${sh_xvfb} \
+	&& echo 'xvfb-run --server-num=${DISPLAY_NUM} --server-args="-screen ${SCREEN_NUM} ${SCREEN_WIDTH}x${SCREEN_HEIGHT}x${SCREEN_DEPTH} -fbdir /var/tmp -dpi ${SCREEN_DPI} -listen tcp -noreset -ac +extension RANDR" openbox-session' >> ${sh_xvfb} \
 	&& chmod +x ${sh_xvfb} \
 	&& echo "${sh_xvfb} &" >> ${sh_entrypoint} \
 	# ----- start vnc -----
