@@ -174,7 +174,8 @@ RUN apk update \
 	&& echo "${sh_xvfb} &" >> /docker-entrypoint.sh \
 	# ----- sh: start Openbox -----
 	&& sh_openbox="/start-openbox.sh" \
-	&& echo '${DISPLAY_NUM} openbox-session' >> ${sh_openbox} \
+	&& echo 'export DISPLAY=:${DISPLAY_NUM}' >> ${sh_openbox} \
+	&& echo 'openbox-session' >> ${sh_openbox} \
 	&& chmod +x ${sh_openbox} \
 	&& echo "${sh_openbox} &" >> /docker-entrypoint.sh \
 	# ----- start vnc -----
