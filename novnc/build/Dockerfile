@@ -84,7 +84,8 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 # ===== Main =====
 ARG base_image=debian:stable-slim
 FROM ${base_image}
-ARG LANGUAGE=C
+ARG LANGUAGE=C \
+	PATH_noVNC="/opt/bin/noVNC"
 ENV	LANGUAGE=${LANGUAGE} \
     LANG=${LANGUAGE} \
 	LC_ALL=${LANGUAGE} \
@@ -100,7 +101,6 @@ ENV	LANGUAGE=${LANGUAGE} \
 	DISPLAY_NUM=99 \
 	DISPLAY=:99.0
 
-ARG PATH_noVNC="/opt/bin/noVNC"
 COPY --from=novnc ${PATH_noVNC} ${PATH_noVNC}
 COPY --from=menu /var/lib/openbox/debian-menu.xml /var/lib/openbox/debian-menu.xml
 COPY --from=xset /usr/bin/xset /usr/bin/xset
