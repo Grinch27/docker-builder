@@ -160,30 +160,31 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     && apt-get clean -y -qq \
 	&& unset DEBIAN_FRONTEND \
 	# ===== docker-entrypoint.sh =====
-    # && echo "#!/usr/bin/env sh" >> /docker-entrypoint.sh \
-	&& echo "env" >> /docker-entrypoint.sh \
-	&& echo 'echo "${DISPLAY} ${SCREEN_WIDTH}x${SCREEN_HEIGHT}x${SCREEN_DEPTH} ${SCREEN_DPI}"' >> /docker-entrypoint.sh \
+	&& sh_entrypoint="/docker-entrypoint.sh" \
+    && echo "#!/usr/bin/env bash" >> ${sh_entrypoint} \
+	&& echo "env" >> ${sh_entrypoint} \
+	&& echo 'echo "${DISPLAY} ${SCREEN_WIDTH}x${SCREEN_HEIGHT}x${SCREEN_DEPTH} ${SCREEN_DPI}"' >> ${sh_entrypoint} \
 	# ----- sh: start Xvfb & Openbox -----
 	&& sh_xvfb="/start-xvfb.sh" \
 	&& echo 'rm -f /tmp/.X*lock' >> ${sh_xvfb} \
 	&& echo 'xvfb-run --server-num=${DISPLAY_NUM} --server-args="-screen 0 ${SCREEN_WIDTH}x${SCREEN_HEIGHT}x${SCREEN_DEPTH} -fbdir /var/tmp -dpi ${SCREEN_DPI} -listen tcp -noreset -ac +extension RANDR" openbox-session' >> ${sh_xvfb} \
 	&& chmod +x ${sh_xvfb} \
-	&& echo "${sh_xvfb} &" >> /docker-entrypoint.sh \
+	&& echo "${sh_xvfb} &" >> ${sh_entrypoint} \
 	# ----- start vnc -----
 	&& sh_x11vnc="/start-x11vnc.sh" \
 	&& echo 'for i in $(seq 1 10); do { sleep 1; xdpyinfo -display ${DISPLAY} > /dev/null 2>&1 && break || echo "Wait for Xvfb"; }; done' >> ${sh_x11vnc} \
 	&& echo 'x11vnc -forever -shared -rfbport ${VNC_PORT} -display ${DISPLAY}' >> ${sh_x11vnc} \
 	&& chmod +x ${sh_x11vnc} \
-	&& echo "${sh_x11vnc} &" >> /docker-entrypoint.sh \
+	&& echo "${sh_x11vnc} &" >> ${sh_entrypoint} \
 	# ----- start novnc -----
 	&& sh_novnc="/start-novnc.sh" \
 	&& echo 'novnc --listen ${NO_VNC_PORT} --vnc localhost:${VNC_PORT}' >> ${sh_novnc} \
 	&& chmod +x ${sh_novnc} \
-	&& echo "${sh_novnc} &" >> /docker-entrypoint.sh \
+	&& echo "${sh_novnc} &" >> ${sh_entrypoint} \
 	# ----- sleep infinity -----
-	&& echo -e "uname -a\nsleep infinity" >> /docker-entrypoint.sh \
-	&& chmod +x /docker-entrypoint.sh
+	&& echo -e "uname -a\nsleep infinity" >> ${sh_entrypoint} \
+	&& chmod +x ${sh_entrypoint}
 
 EXPOSE 5900 7900
 
-ENTRYPOINT ["sh", "/docker-entrypoint.sh"]
+ENTRYPOINT ["/docker-entrypoint.sh"]
