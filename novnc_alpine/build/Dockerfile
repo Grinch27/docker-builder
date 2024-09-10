@@ -199,4 +199,4 @@ RUN apk update \
 
 EXPOSE 5900 7900
 
-ENTRYPOINT ["ash", "/docker-entrypoint.sh"]
+ENTRYPOINT ["sh", "-c", "/docker-entrypoint.sh"]
