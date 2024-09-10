@@ -84,8 +84,8 @@ ENV	LANGUAGE=${LANGUAGE} \
 	# ----- VNC -----
 	VNC_PORT=5900 \
 	NO_VNC_PORT=7900 \
-	DISPLAY=:99 \
-    DISPLAY_NUM=99
+	DISPLAY=99
+    # DISPLAY_NUM=99
 
 ARG PATH_noVNC="/opt/bin/noVNC"
 # COPY --from=novnc ${PATH_noVNC} ${PATH_noVNC}
@@ -169,7 +169,7 @@ RUN apk update \
 	# ----- sh: start Xvfb -----
 	&& sh_xvfb="/start-xvfb.sh" \
 	&& echo 'rm -f /tmp/.X*lock' >> ${sh_xvfb} \
-	&& echo 'Xvfb :${DISPLAY_NUM} -screen 0 ${SCREEN_WIDTH}x${SCREEN_HEIGHT}x${SCREEN_DEPTH} -fbdir /var/tmp -dpi ${SCREEN_DPI} -listen tcp -noreset -ac +extension RANDR' >> ${sh_xvfb} \
+	&& echo 'Xvfb :${DISPLAY} -screen 0 ${SCREEN_WIDTH}x${SCREEN_HEIGHT}x${SCREEN_DEPTH} -fbdir /var/tmp -dpi ${SCREEN_DPI} -listen tcp -noreset -ac +extension RANDR' >> ${sh_xvfb} \
 	&& chmod +x ${sh_xvfb} \
 	&& echo "${sh_xvfb} &" >> /docker-entrypoint.sh \
 	# ----- sh: start Openbox -----
@@ -179,8 +179,8 @@ RUN apk update \
 	&& echo "${sh_openbox} &" >> /docker-entrypoint.sh \
 	# ----- start vnc -----
 	&& sh_x11vnc="/start-x11vnc.sh" \
-	&& echo 'for i in $(seq 1 10); do { sleep 1; xvinfo -display ${DISPLAY} > /dev/null 2>&1 && break || echo "Wait for Xvfb"; }; done' >> ${sh_x11vnc} \
-	&& echo 'x11vnc -forever -shared -rfbport ${VNC_PORT} -display ${DISPLAY}' >> ${sh_x11vnc} \
+	&& echo 'for i in $(seq 1 10); do { sleep 1; xvinfo -display :${DISPLAY} > /dev/null 2>&1 && break || echo "Wait for Xvfb"; }; done' >> ${sh_x11vnc} \
+	&& echo 'x11vnc -forever -shared -rfbport ${VNC_PORT} -display :${DISPLAY}' >> ${sh_x11vnc} \
 	&& chmod +x ${sh_x11vnc} \
 	&& echo "${sh_x11vnc} &" >> /docker-entrypoint.sh \
 	# ----- start novnc -----
