@@ -166,21 +166,26 @@ RUN apk update \
     && rm -rf /var/log/*.log \
 	# ===== docker-entrypoint.sh =====
     && echo "#!/usr/bin/env sh" >> /docker-entrypoint.sh \
-	# ----- sh: start Xvfb & Openbox -----
+	# ----- sh: start Xvfb -----
 	&& sh_xvfb="/start-xvfb.sh" \
 	&& echo 'rm -f /tmp/.X*lock' >> ${sh_xvfb} \
-	&& echo 'xvfb-run --server-num=${DISPLAY_NUM} --server-args="-screen 0 ${SCREEN_WIDTH}x${SCREEN_HEIGHT}x${SCREEN_DEPTH} -fbdir /var/tmp -dpi ${SCREEN_DPI} -listen tcp -noreset -ac +extension RANDR" openbox-session' >> ${sh_xvfb} \
+	&& echo 'Xvfb :${DISPLAY_NUM} -screen 0 ${SCREEN_WIDTH}x${SCREEN_HEIGHT}x${SCREEN_DEPTH} -fbdir /var/tmp -dpi ${SCREEN_DPI} -listen tcp -noreset -ac +extension RANDR' >> ${sh_xvfb} \
 	&& chmod +x ${sh_xvfb} \
 	&& echo "${sh_xvfb} &" >> /docker-entrypoint.sh \
+	# ----- sh: start Openbox -----
+	&& sh_openbox="/start-openbox.sh" \
+	&& echo 'openbox-session' >> ${sh_openbox} \
+	&& chmod +x ${sh_openbox} \
+	&& echo "${sh_openbox} &" >> /docker-entrypoint.sh \
 	# ----- start vnc -----
 	&& sh_x11vnc="/start-x11vnc.sh" \
-	&& echo 'for i in $(seq 1 10); do { sleep 1; xdpyinfo -display ${DISPLAY} > /dev/null 2>&1 && break || echo "Wait for Xvfb"; }; done' >> ${sh_x11vnc} \
+	&& echo 'for i in $(seq 1 10); do { sleep 1; xvinfo -display ${DISPLAY} > /dev/null 2>&1 && break || echo "Wait for Xvfb"; }; done' >> ${sh_x11vnc} \
 	&& echo 'x11vnc -forever -shared -rfbport ${VNC_PORT} -display ${DISPLAY}' >> ${sh_x11vnc} \
 	&& chmod +x ${sh_x11vnc} \
 	&& echo "${sh_x11vnc} &" >> /docker-entrypoint.sh \
 	# ----- start novnc -----
 	&& sh_novnc="/start-novnc.sh" \
-	&& echo 'novnc --listen ${NO_VNC_PORT} --vnc localhost:${VNC_PORT}' >> ${sh_novnc} \
+	&& echo 'novnc_server --listen ${NO_VNC_PORT} --vnc localhost:${VNC_PORT}' >> ${sh_novnc} \
 	&& chmod +x ${sh_novnc} \
 	&& echo "${sh_novnc} &" >> /docker-entrypoint.sh \
 	# ----- sleep infinity -----
@@ -189,5 +194,5 @@ RUN apk update \
 
 EXPOSE 5900 7900
 
-# ENTRYPOINT ["sh", "/docker-entrypoint.sh"]
-ENTRYPOINT ["sh", "-c", "uname -a && sleep infinity"]
+ENTRYPOINT ["sh", "/docker-entrypoint.sh"]
+# ENTRYPOINT ["sh", "-c", "uname -a && sleep infinity"]
