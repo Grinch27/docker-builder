@@ -167,7 +167,7 @@ RUN apk update \
 	&& rm -rf /var/cache/apk/* \
     && rm -rf /var/log/*.log \
 	# ===== docker-entrypoint.sh =====
-    && echo "#!/usr/bin/env sh" >> /docker-entrypoint.sh \
+    # && echo "#!/bin/" >> /docker-entrypoint.sh \
 	&& echo 'echo "${DISPLAY} ${SCREEN_WIDTH}x${SCREEN_HEIGHT}x${SCREEN_DEPTH} ${SCREEN_DPI}"' >> /docker-entrypoint.sh \
 	# ----- sh: start Xvfb -----
 	&& sh_xvfb="/start-xvfb.sh" \
@@ -197,5 +197,5 @@ RUN apk update \
 
 EXPOSE 5900 7900
 
-ENTRYPOINT ["/docker-entrypoint.sh"]
+ENTRYPOINT [".", "/docker-entrypoint.sh"]
 # ENTRYPOINT ["sh", "-c", "uname -a && sleep infinity"]
