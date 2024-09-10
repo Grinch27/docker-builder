@@ -1,0 +1,62 @@
+name: (Dev) Call Build
+
+on:
+  schedule:
+    - cron: "0 1 * * *" # Cloudflare Warp
+    - cron: "0 9 * * *" # AdGuard VPN Release
+    - cron: "1 9 * * *" # AdGuard VPN Beta
+    - cron: "2 9 * * *" # AdGuard VPN Nightly
+  repository_dispatch:
+  workflow_dispatch:
+
+env:
+  TZ: UTC
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        schedule_time:
+          - {
+              time: "0 1 * * *",
+              app_branch: "cloudflare-warp",
+              tag_repo: "latest",
+              force_push: "false",
+            }
+          - {
+              time: "0 9 * * *",
+              app_branch: "adguardvpn-cli",
+              tag_repo: "release",
+              force_push: "false",
+            }
+          - {
+              time: "1 9 * * *",
+              app_branch: "adguardvpn-cli",
+              tag_repo: "beta",
+              force_push: "false",
+            }
+          - {
+              time: "2 9 * * *",
+              app_branch: "adguardvpn-cli",
+              tag_repo: "nightly",
+              force_push: "false",
+            }
+    fail-fast: false
+    if: github.event_name == 'schedule' && github.event.schedule == matrix.schedule_time.time
+    steps:
+      - name: Trigger build-docker
+        run: |
+          data='{
+            "ref": "main",
+            "inputs": {
+              "app_branch": "${{ matrix.schedule_time.app_branch }}",
+              "tag_repo": "${{ matrix.schedule_time.tag_repo }}",
+              "force_push": "${{ matrix.schedule_time.force_push }}"
+            }
+          }'
+          curl -XPOST \
+          -H "Accept: application/vnd.github.v3+json" \
+          -H "Authorization: Bearer ${{ secrets.PAT }}" \
+          https://api.github.com/repos/${{ github.repository }}/actions/workflows/build-docker.yml/dispatches \
+          --data "$data"
