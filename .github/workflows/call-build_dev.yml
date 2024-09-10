@@ -3,9 +3,9 @@ name: (Dev) Call Build
 on:
   schedule:
     - cron: "0 1 * * *" # Cloudflare Warp
-    - cron: "0 9 * * *" # AdGuard VPN Release
-    - cron: "1 9 * * *" # AdGuard VPN Beta
-    - cron: "2 9 * * *" # AdGuard VPN Nightly
+    - cron: "10 21 * * *" # AdGuard VPN Release
+    - cron: "11 21 * * *" # AdGuard VPN Beta
+    - cron: "12 21 * * *" # AdGuard VPN Nightly
   repository_dispatch:
   workflow_dispatch:
 
@@ -25,19 +25,19 @@ jobs:
               force_push: "false",
             }
           - {
-              time: "0 9 * * *",
+              time: "10 21 * * *",
               app_branch: "adguardvpn-cli",
               tag_repo: "release",
               force_push: "false",
             }
           - {
-              time: "1 9 * * *",
+              time: "11 21 * * *",
               app_branch: "adguardvpn-cli",
               tag_repo: "beta",
               force_push: "false",
             }
           - {
-              time: "2 9 * * *",
+              time: "12 21 * * *",
               app_branch: "adguardvpn-cli",
               tag_repo: "nightly",
               force_push: "false",
