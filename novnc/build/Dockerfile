@@ -163,7 +163,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	# ===== docker-entrypoint.sh =====
 	&& sh_entrypoint="/docker-entrypoint.sh" \
     # && echo "#!/usr/bin/env sh" >> ${sh_entrypoint} \
-	&& echo "env" >> ${sh_entrypoint} \
+	&& echo 'env' >> ${sh_entrypoint} \
 	&& echo 'echo "${DISPLAY} ${SCREEN_WIDTH}x${SCREEN_HEIGHT}x${SCREEN_DEPTH} ${SCREEN_DPI}"' >> ${sh_entrypoint} \
 	# ----- sh: start Xvfb & Openbox -----
 	&& sh_xvfb="/start-xvfb.sh" \
@@ -183,7 +183,8 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	&& chmod +x ${sh_novnc} \
 	&& echo "${sh_novnc} &" >> ${sh_entrypoint} \
 	# ----- sleep infinity -----
-	&& echo -e "uname -a\nsleep infinity" >> ${sh_entrypoint} \
+	&& echo "uname -a" >> ${sh_entrypoint} \
+	&& echo "sleep infinity" >> ${sh_entrypoint} \
 	&& chmod +x ${sh_entrypoint}
 
 EXPOSE 5900 7900
