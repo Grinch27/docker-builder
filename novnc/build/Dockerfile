@@ -168,6 +168,7 @@ RUN apk update \
     && rm -rf /var/log/*.log \
 	# ===== docker-entrypoint.sh =====
     && echo "#!/usr/bin/env sh" >> /docker-entrypoint.sh \
+	&& echo "env" >> /docker-entrypoint.sh \
 	&& echo 'echo "${DISPLAY} ${SCREEN_WIDTH}x${SCREEN_HEIGHT}x${SCREEN_DEPTH} ${SCREEN_DPI}"' >> /docker-entrypoint.sh \
 	# ----- sh: start Xvfb -----
 	&& sh_xvfb="/start-xvfb.sh" \
