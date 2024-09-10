@@ -3,9 +3,9 @@ name: (Dev) Call Build
 on:
   schedule:
     - cron: "0 1 * * *" # Cloudflare Warp
-    - cron: "10 * * * *" # AdGuard VPN Release
-    - cron: "11 * * * *" # AdGuard VPN Beta
-    - cron: "12 * * * *" # AdGuard VPN Nightly
+    - cron: "30 * * * *" # AdGuard VPN Release
+    - cron: "31 * * * *" # AdGuard VPN Beta
+    - cron: "32 * * * *" # AdGuard VPN Nightly
   repository_dispatch:
   workflow_dispatch:
 
@@ -16,6 +16,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         schedule_time:
           - {
@@ -25,24 +26,23 @@ jobs:
               force_push: "false",
             }
           - {
-              time: "10 * * * *",
+              time: "30 * * * *",
               app_branch: "adguardvpn-cli",
               tag_repo: "release",
               force_push: "false",
             }
           - {
-              time: "11 * * * *",
+              time: "31 * * * *",
               app_branch: "adguardvpn-cli",
               tag_repo: "beta",
               force_push: "false",
             }
           - {
-              time: "12 * * * *",
+              time: "32 * * * *",
               app_branch: "adguardvpn-cli",
               tag_repo: "nightly",
               force_push: "false",
             }
-    fail-fast: false
     if: github.event_name == 'schedule' && github.event.schedule == matrix.schedule_time.time
     steps:
       - name: Trigger build-docker
