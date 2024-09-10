@@ -1,4 +1,4 @@
-name: (Test) meta-app
+name: (Dev) meta-app
 
 on:
   repository_dispatch:
