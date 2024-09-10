@@ -43,9 +43,9 @@ jobs:
               tag_repo: "nightly",
               force_push: "false",
             }
-    if: github.event_name == 'schedule' && github.event.schedule == matrix.schedule_time.time
     steps:
       - name: Trigger build-docker
+        if: ${{ github.event_name == 'schedule' && github.event.schedule == matrix.schedule_time.time }}
         run: |
           data='{
             "ref": "main",
