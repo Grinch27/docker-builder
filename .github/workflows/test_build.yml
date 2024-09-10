@@ -173,11 +173,9 @@ jobs:
 
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
-      - name: Test Docker image & Inspect Layers with skopeo
-        id: test
-        env:
-          container_name: container-test
-          dir_container: "/tmp"
+      - name: Inspect Layers with skopeo
+        id: inspect
+        # if: ${{ 'true' == 'false' }} # disable
         working-directory: "${{ github.workspace }}/${{ env.app_branch }}"
         run: |
           echo "Current working directory: $(pwd)"
@@ -200,6 +198,22 @@ jobs:
               --format=json \
               --tls-verify=false \
               docker://${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}
+          done
+          echo "status=success" | tee -a ${GITHUB_OUTPUT}
+
+      - name: Test Docker image
+        id: test
+        env:
+          container_name: container-test
+          dir_container: "/tmp"
+        working-directory: "${{ github.workspace }}/${{ env.app_branch }}"
+        run: |
+          echo "Current working directory: $(pwd)"
+
+          IFS=',' read -ra platforms <<< "${{ env.arch_branch }}"
+          for platform in "${platforms[@]}"; do
+            os=$(echo ${platform} | cut -d'/' -f1)
+            arch=$(echo ${platform} | cut -d'/' -f2-)
             
             docker pull --platform $platform ${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}
             docker run \
