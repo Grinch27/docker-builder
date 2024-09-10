@@ -212,9 +212,6 @@ jobs:
 
           IFS=',' read -ra platforms <<< "${{ env.arch_branch }}"
           for platform in "${platforms[@]}"; do
-            os=$(echo ${platform} | cut -d'/' -f1)
-            arch=$(echo ${platform} | cut -d'/' -f2-)
-            
             docker pull --platform $platform ${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}
             docker run \
               --name ${{ env.container_name }} \
@@ -270,14 +267,12 @@ jobs:
 
           IFS=',' read -ra platforms <<< "${{ env.arch_branch }}"
           for platform in "${platforms[@]}"; do
-            os=$(echo ${platform} | cut -d'/' -f1)
-            arch=$(echo ${platform} | cut -d'/' -f2-)
+            tar_file="${{ env.app_branch }}_${{ env.tag_repo }}_${{ env.version }}_$(echo ${platform} | tr '/' '_').tar"
             
             docker pull --platform $platform ${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}
-
-            tar_file="${{ env.app_branch }}_${{ env.tag_repo }}_${{ env.version }}_$(echo ${platform} | tr '/' '_').tar"
             docker tag ${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }} ${{ env.repo_dockerhub }}:${{ env.tag_repo }}
             docker save --output ./${tar_file} ${{ env.repo_dockerhub }}:${{ env.tag_repo }}
+
             echo "Exported $platform image to ${tar_file}"
             ls -lh "${tar_file}"
           done
