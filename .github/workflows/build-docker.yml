@@ -507,7 +507,7 @@ jobs:
 
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
-      - name: Test Docker image & Inspect Layers with skopeo & Save to tar
+      - name: Test Docker image & Inspect Layers with skopeo
         id: test
         env:
           container_name: container-test
@@ -575,12 +575,30 @@ jobs:
               echo "No directory found"
             fi
             
+            docker logs ${{ env.container_name }}
             docker stop ${{ env.container_name }}
+          done
+          echo "status=success" | tee -a ${GITHUB_OUTPUT}
+
+      - name: Save to tar
+        id: tar
+        # if: ${{ 'true' == 'false' }} # disable
+        working-directory: "${{ github.workspace }}/${{ env.app_branch }}"
+        run: |
+          echo "Current working directory: $(pwd)"
+
+          IFS=',' read -ra platforms <<< "${{ env.arch_branch }}"
+          for platform in "${platforms[@]}"; do
+            os=$(echo ${platform} | cut -d'/' -f1)
+            arch=$(echo ${platform} | cut -d'/' -f2-)
+            
+            docker pull --platform $platform ${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}
 
             tar_file="${{ env.app_branch }}_${{ env.tag_repo }}_${{ env.version }}_$(echo ${platform} | tr '/' '_').tar"
             docker tag ${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }} ${{ env.repo_dockerhub }}:${{ env.tag_repo }}
             docker save --output ./${tar_file} ${{ env.repo_dockerhub }}:${{ env.tag_repo }}
             echo "Exported $platform image to ${tar_file}"
+            ls -lh "${tar_file}"
           done
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
@@ -609,7 +627,7 @@ jobs:
             echo "No directory found"
           fi
 
-          if [ "${{ env.consistent }}" == "true" ]; then
+          if [ "${{ env.consistent }}" == "true" ] && [ -n "${tag_version}" ]; then
             tag_array+=("${tag_version}")
           fi
 
