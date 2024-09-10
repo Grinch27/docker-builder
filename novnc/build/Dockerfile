@@ -72,7 +72,10 @@
 # ===== Main =====
 ARG base_image=alpine:edge
 FROM ${base_image}
-ARG LANGUAGE=C
+
+ARG LANGUAGE=C \
+	SCREEN_NUM="0" \
+	DISPLAY_NUM="99" \
 ENV	LANGUAGE=${LANGUAGE} \
     LANG=${LANGUAGE} \
 	LC_ALL=${LANGUAGE} \
@@ -84,10 +87,7 @@ ENV	LANGUAGE=${LANGUAGE} \
 	# ----- VNC -----
 	VNC_PORT=5900 \
 	NO_VNC_PORT=7900 \
-	SCREEN_NUM="0" \
-	DISPLAY_NUM="99" \
-	DISPLAY=":${DISPLAY_NUM}.${SCREEN_NUM}" \
-    # DISPLAY_NUM=99
+	DISPLAY=":${DISPLAY_NUM}.${SCREEN_NUM}"
 
 ARG PATH_noVNC="/opt/bin/noVNC"
 # COPY --from=novnc ${PATH_noVNC} ${PATH_noVNC}
