@@ -627,7 +627,7 @@ jobs:
             echo "No directory found"
           fi
 
-          if [ "${{ env.consistent }}" == "true" ]; then
+          if [ "${{ env.consistent }}" == "true" ] && [ -n "${tag_version}" ]; then
             tag_array+=("${tag_version}")
           fi
 
