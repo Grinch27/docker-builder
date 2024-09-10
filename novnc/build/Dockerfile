@@ -194,5 +194,5 @@ RUN apk update \
 
 EXPOSE 5900 7900
 
-ENTRYPOINT ["sh", "/docker-entrypoint.sh"]
-# ENTRYPOINT ["sh", "-c", "uname -a && sleep infinity"]
+# ENTRYPOINT ["sh", "/docker-entrypoint.sh"]
+ENTRYPOINT ["sh", "-c", "uname -a && sleep infinity"]
