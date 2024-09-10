@@ -207,8 +207,8 @@ jobs:
               --rm \
               --detach \
               --platform $platform \
-              ${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }} \
-              /bin/sh -c "uname -a && sleep infinity"
+              ${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}
+              # /bin/sh -c "uname -a && sleep infinity"
 
             dir_step="test"
             dir_original=$(pwd)
