@@ -160,7 +160,9 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     && apt-get clean -y -qq \
 	&& unset DEBIAN_FRONTEND \
 	# ===== docker-entrypoint.sh =====
-    && echo "#!/usr/bin/env sh" >> /docker-entrypoint.sh \
+    # && echo "#!/usr/bin/env sh" >> /docker-entrypoint.sh \
+	&& echo "env" >> /docker-entrypoint.sh \
+	&& echo 'echo "${DISPLAY} ${SCREEN_WIDTH}x${SCREEN_HEIGHT}x${SCREEN_DEPTH} ${SCREEN_DPI}"' >> /docker-entrypoint.sh \
 	# ----- sh: start Xvfb & Openbox -----
 	&& sh_xvfb="/start-xvfb.sh" \
 	&& echo 'rm -f /tmp/.X*lock' >> ${sh_xvfb} \
