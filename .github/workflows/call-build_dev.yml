@@ -104,7 +104,7 @@ jobs:
 
     steps:
       - name: Trigger build-docker
-        if: ${{ github.event.schedule == matrix.schedule_time.time }}
+        if: ${{ github.event_name == 'schedule' && github.event.schedule == matrix.schedule_time.time }}
         env:
           workflow: "build-docker"
         working-directory: /
@@ -122,4 +122,3 @@ jobs:
           -H "Authorization: Bearer ${{ secrets.PAT }}" \
           https://api.github.com/repos/${{ github.repository }}/actions/workflows/${{ env.workflow }}.yml/dispatches \
           --data "$data"
-          
