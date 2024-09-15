@@ -38,10 +38,10 @@ RUN set -x \
     # ===== Setup steamcmd =====
     # ----- the multiverse repository and x86 packages must be enabled -----
     # && add-apt-repository multiverse \
-    && if [ "${OS_ARCH}" = "amd64" ]; then \
-        dpkg --add-architecture i386; \
-    fi \
-    && apt-get update --ignore-missing -y -qq \
+    # && if [ "${OS_ARCH}" = "amd64" ]; then \
+    #     dpkg --add-architecture i386; \
+    # fi \
+    # && apt-get update --ignore-missing -y -qq \
     # && echo steamcmd steam/question select "I AGREE" | debconf-set-selections \
     # && echo steamcmd steam/license note '' | debconf-set-selections \
     # && apt-get install --no-install-recommends --no-install-suggests --fix-missing -y -qq \
