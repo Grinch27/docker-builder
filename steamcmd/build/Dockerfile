@@ -16,9 +16,13 @@ RUN set -x \
 		# curl \
         lib32stdc++6 \
 		lib32gcc-s1 \
+    # ===== System info =====
+    && OS_ARCH=$(dpkg --print-architecture) \
     # install SteamCMD the multiverse repository and x86 packages must be enabled
     # && add-apt-repository multiverse \
-    && dpkg --add-architecture i386 \
+    && if [ "${OS_ARCH}" = "amd64" ]; then \
+        dpkg --add-architecture i386 \
+    fi \
     && apt-get update --ignore-missing -y -qq \
     && apt-get install --no-install-recommends --no-install-suggests --fix-missing -y -qq \
         steamcmd \
