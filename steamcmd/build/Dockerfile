@@ -60,6 +60,7 @@ RUN set -x \
     && apt-get purge --autoremove -y \
         curl \
     # ----- Download SteamCMD, execute as user -----
+    # ref: https://github.com/CM2Walki/steamcmd/blob/master/bookworm/Dockerfile
     # && mkdir -p "${STEAMCMDDIR}" \
     # && curl -fsSL 'https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz' | tar xvzf - -C "${STEAMCMDDIR}" \
     && "${STEAMCMDDIR}/steamcmd.sh" +quit \
