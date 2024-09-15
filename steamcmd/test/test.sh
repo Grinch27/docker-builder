@@ -10,3 +10,4 @@ echo "dir_current=${dir_current}"
 # echo "version=${version}"
 # ls -lh /home/steam/
 # steamcmd
+apt list
