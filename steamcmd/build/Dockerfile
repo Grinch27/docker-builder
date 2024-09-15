@@ -62,9 +62,9 @@ RUN set -x \
         curl \
     # ----- Download SteamCMD, execute as user -----
     # https://github.com/CM2Walki/steamcmd/blob/master/bookworm/Dockerfile
-    # && mkdir -p "${STEAMCMDDIR}" \
+    && mkdir -p "${STEAMCMDDIR}" \
     # && curl -fsSL 'https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz' | tar xvzf - -C "${STEAMCMDDIR}" \
-    && "${STEAMCMDDIR}/steamcmd.sh" +quit \
+    # && "${STEAMCMDDIR}/steamcmd.sh" +quit \
     && ln -s "${STEAMCMDDIR}/linux32/steamclient.so" "${STEAMCMDDIR}/steamservice.so" \
     && mkdir -p "${HOMEDIR}/.steam/sdk32" \
     && ln -s "${STEAMCMDDIR}/linux32/steamclient.so" "${HOMEDIR}/.steam/sdk32/steamclient.so" \
