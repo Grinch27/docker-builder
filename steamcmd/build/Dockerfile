@@ -87,6 +87,7 @@ RUN set -x \
 	&& unset DEBIAN_FRONTEND \
     # ===== docker-entrypoint.sh =====
     && sh_entrypoint="/docker-entrypoint.sh" \
+    && echo "#!/usr/bin/env bash" >> ${sh_entrypoint} \
     && echo "uname -a" >> ${sh_entrypoint} \
 	&& echo "sleep infinity" >> ${sh_entrypoint} \
 	&& chmod +x ${sh_entrypoint}
@@ -95,4 +96,4 @@ USER ${USER}
 
 WORKDIR ${STEAMCMDDIR}
 
-ENTRYPOINT ["bash", "/docker-entrypoint.sh"]
+ENTRYPOINT ["/docker-entrypoint.sh"]
