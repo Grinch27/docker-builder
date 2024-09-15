@@ -5,7 +5,7 @@ ARG PUID=1000 \
     USER=steam
 
 ENV USER=steam \
-    HOMEDIR="/home/${USER}" \
+    HOMEDIR="/home/${USER}"
     # STEAMCMDDIR="/home/${USER}/steamcmd"
 
 RUN set -x \
