@@ -16,6 +16,7 @@ RUN set -x \
 		# curl \
         lib32stdc++6 \
 		lib32gcc-s1 \
+        debconf \
     # ===== System info =====
     && OS_ARCH=$(dpkg --print-architecture) \
     # install SteamCMD the multiverse repository and x86 packages must be enabled
@@ -24,8 +25,13 @@ RUN set -x \
         dpkg --add-architecture i386; \
     fi \
     && apt-get update --ignore-missing -y -qq \
+    && echo steamcmd steam/question select "I AGREE" | debconf-set-selections \
+    && echo steamcmd steam/license note '' | debconf-set-selections \
     && apt-get install --no-install-recommends --no-install-suggests --fix-missing -y -qq \
         steamcmd \
+    # ===== Clean pre-install =====
+    && apt-get purge --autoremove -y \
+        debconf \
 	# Create unprivileged user
 	&& useradd -u "${PUID}" -m "${USER}" \
 	# ===== Clean apt =====
