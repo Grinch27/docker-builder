@@ -8,6 +8,7 @@ echo "dir_current=${dir_current}"
 # remove_prefix="warp-cli "
 # version=${version##*$remove_prefix}
 # echo "version=${version}"
-# ls -lh /home/steam/
-# steamcmd
+
 apt list
+# ls -lh /home/steam/
+steamcmd
