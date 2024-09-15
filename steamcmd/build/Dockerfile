@@ -14,7 +14,6 @@ ARG USER=steam \
 
 ENV USER=${USER} \
     PUID=${PUID} \
-    DIR_USER="/home/${USER}" \
     LANGUAGE=${LANGUAGE} \
     LANG=${LANGUAGE} \
 	LC_ALL=${LANGUAGE} \
