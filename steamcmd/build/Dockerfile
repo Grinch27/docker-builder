@@ -1,6 +1,8 @@
 ############################################################
 # SteamCMD base on Ubuntu
-# ref: https://github.com/CM2Walki/steamcmd/blob/master/bookworm/Dockerfile
+# ref: 
+#   https://developer.valvesoftware.com/wiki/SteamCMD#Ubuntu
+#   https://github.com/CM2Walki/steamcmd/blob/master/bookworm/Dockerfile
 ############################################################
 
 ARG base_image=ubuntu:latest
@@ -13,10 +15,10 @@ ARG USER=steam \
 ENV USER=${USER} \
     PUID=${PUID} \
     DIR_USER="/home/${USER}" \
-    STEAMCMDDIR="/home/${USER}/steamcmd" \
     LANGUAGE=${LANGUAGE} \
     LANG=${LANGUAGE} \
-	LC_ALL=${LANGUAGE}
+	LC_ALL=${LANGUAGE} \
+    STEAMCMDDIR="/home/${USER}/steamcmd"
 
 RUN set -x \
     # ===== Create unprivileged user =====
@@ -46,22 +48,12 @@ RUN set -x \
     # && echo steamcmd steam/license note '' | debconf-set-selections \
     # && apt-get install --no-install-recommends --no-install-suggests --fix-missing -y -qq \
     #     steamcmd \
-    # # ----- dependencies required to run SteamCMD -----
-    # && mkdir -p "${STEAMCMDDIR}" \
-    # && mkdir -p "${HOMEDIR}/.steam/sdk32" \
-    # && mkdir -p "${HOMEDIR}/.steam/sdk64" \
-    # && PATH_steamcmd="/home/${USER}/steamcmd" \
-    # && URL_steamcmd="https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz" \
-    # && FILE_steamcmd="/tmp/steamcmd_linux.tar.gz" \
-    # && curl -fsSL ${URL_steamcmd} -o ${FILE_steamcmd} \
-    # && tar xzf ${FILE_steamcmd} -C ${PATH_steamcmd} --strip-components=1 \
-    # && rm -f ${FILE_steamcmd} \
+    # ----- dependencies required to run SteamCMD -----
     && mkdir -p ${STEAMCMDDIR} \
     && URL_steamcmd="https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz" \
     && FILE_steamcmd="/tmp/steamcmd_linux.tar.gz" \
     && curl -fsSL ${URL_steamcmd} -o ${FILE_steamcmd} \
-    # --strip-components=1
-    && tar xzf ${FILE_steamcmd} -C ${STEAMCMDDIR} \
+    && tar xzf ${FILE_steamcmd} -C ${STEAMCMDDIR} \ # --strip-components=1
     && ls -lh ${STEAMCMDDIR} \
     && rm -f ${FILE_steamcmd} \
     # ===== Clean pre-install =====
@@ -81,6 +73,8 @@ RUN set -x \
     && ln -s "${STEAMCMDDIR}/steamcmd.sh" "${STEAMCMDDIR}/steam.sh" \
 	# ----- Symlink steamclient.so; So misconfigured dedicated servers can find it -----
  	&& ln -s "${STEAMCMDDIR}/linux64/steamclient.so" "/usr/lib/x86_64-linux-gnu/steamclient.so" \
+    # ----- Clean /root/Steam/logs -----
+    && rm -rf /root/Steam/logs \
     # ===== Clean apt =====
     && apt-get autoremove -y -qq \
     && apt-get clean -y -qq \
@@ -97,4 +91,4 @@ USER ${USER}
 
 WORKDIR ${STEAMCMDDIR}
 
-ENTRYPOINT ["sh", "/docker-entrypoint.sh"]
+ENTRYPOINT ["bash", "/docker-entrypoint.sh"]
