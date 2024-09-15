@@ -229,7 +229,7 @@ jobs:
 
               set +e
               log_container=$(mktemp)
-              docker exec -u root ${{ env.container_name }} mkdir -p ${{ env.dir_container }}
+              # docker exec -u root ${{ env.container_name }} mkdir -p ${{ env.dir_container }}
               
               for script_file in ./*.sh; do
                 container_script="${{ env.dir_container }}/$(basename ${script_file})"
@@ -241,8 +241,8 @@ jobs:
                 } > ${script_temp}
 
                 docker cp ${script_temp} ${{ env.container_name }}:${container_script}
-                docker exec ${{ env.container_name }} chmod +x ${container_script}
-                docker exec ${{ env.container_name }} sh -c "${container_script}" | tee -a ${log_container}
+                docker exec -u root ${{ env.container_name }} chmod +x ${container_script}
+                docker exec -u root ${{ env.container_name }} sh -c "${container_script}" | tee -a ${log_container}
               done
               set -e
 
