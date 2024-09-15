@@ -73,6 +73,8 @@ RUN set -x \
     && ln -s "${STEAMCMDDIR}/steamcmd.sh" "${STEAMCMDDIR}/steam.sh" \
 	# ----- Symlink steamclient.so; So misconfigured dedicated servers can find it -----
  	&& ln -s "${STEAMCMDDIR}/linux64/steamclient.so" "/usr/lib/x86_64-linux-gnu/steamclient.so" \
+    # ----- Symlink steamcmd -----
+    && ln -s "${STEAMCMDDIR}/steamcmd.sh" "/usr/bin/steamcmd" \
     # ----- Clean /root/Steam/logs -----
     && rm -rf /root/Steam/logs \
     # ===== Clean apt =====
