@@ -13,7 +13,7 @@ ARG USER=steam \
 ENV USER=${USER} \
     PUID=${PUID} \
     DIR_USER="/home/${USER}" \
-    STEAMCMDDIR "/home/${USER}/steamcmd" \
+    STEAMCMDDIR="/home/${USER}/steamcmd" \
     LANGUAGE=${LANGUAGE} \
     LANG=${LANGUAGE} \
 	LC_ALL=${LANGUAGE}
