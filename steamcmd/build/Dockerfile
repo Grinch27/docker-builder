@@ -23,7 +23,7 @@ ENV USER=${USER} \
 RUN set -x \
     # ===== Create unprivileged user =====
 	&& useradd -u "${PUID}" -m "${USER}" \
-    # ===== Apt dependencies =====
+    # ===== apt dependencies =====
 	&& export DEBIAN_FRONTEND=noninteractive \
 	&& apt-get update --ignore-missing -y -qq \
     && apt-get install --no-install-recommends --no-install-suggests --fix-missing -y -qq \
@@ -78,7 +78,7 @@ RUN set -x \
     # ----- Symlink steamcmd -----
     && ln -s "${STEAMCMDDIR}/steamcmd.sh" "/usr/bin/steamcmd" \
     # ----- Clean /root/Steam/logs -----
-    && rm -rf /root/Steam/logs \
+    # && rm -rf /root/Steam/logs \
     # ===== Clean apt =====
     && apt-get autoremove -y -qq \
     && apt-get clean -y -qq \
