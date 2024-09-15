@@ -61,7 +61,7 @@ RUN set -x \
     && apt-get purge --autoremove -y \
         curl \
     # ----- Download SteamCMD, execute as user -----
-    # ref: https://github.com/CM2Walki/steamcmd/blob/master/bookworm/Dockerfile
+    # https://github.com/CM2Walki/steamcmd/blob/master/bookworm/Dockerfile
     # && mkdir -p "${STEAMCMDDIR}" \
     # && curl -fsSL 'https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz' | tar xvzf - -C "${STEAMCMDDIR}" \
     && "${STEAMCMDDIR}/steamcmd.sh" +quit \
@@ -76,7 +76,7 @@ RUN set -x \
 	# ----- Symlink steamclient.so; So misconfigured dedicated servers can find it -----
  	&& ln -s "${STEAMCMDDIR}/linux64/steamclient.so" "/usr/lib/x86_64-linux-gnu/steamclient.so" \
     # ----- Symlink steamcmd -----
-    && ln -s "${STEAMCMDDIR}/steamcmd.sh" "/usr/bin/steamcmd" \
+    # && ln -s "${STEAMCMDDIR}/steamcmd.sh" "/usr/bin/steamcmd" \
     # ----- Clean /root/Steam/logs -----
     # && rm -rf /root/Steam/logs \
     # ===== Clean apt =====
