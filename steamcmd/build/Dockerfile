@@ -61,6 +61,7 @@ RUN set -x \
     && FILE_steamcmd="/tmp/steamcmd_linux.tar.gz" \
     && curl -fsSL ${URL_steamcmd} -o ${FILE_steamcmd} \
     && tar xzf ${FILE_steamcmd} -C ${STEAMCMDDIR} --strip-components=1 \
+    && ls -lh ${STEAMCMDDIR} \
     && rm -f ${FILE_steamcmd} \
     # ===== Clean pre-install =====
     && apt-get purge --autoremove -y \
