@@ -2,11 +2,15 @@ ARG base_image=ubuntu:latest
 FROM ${base_image}
 
 ARG PUID=1001 \
-    USER=steam
+    USER=steam \
+    LANGUAGE=en_US.UTF-8
 
 ENV USER=steam \
-    HOMEDIR="/home/${USER}"
+    HOMEDIR="/home/${USER}" \
     # STEAMCMDDIR="/home/${USER}/steamcmd"
+    LANGUAGE=${LANGUAGE} \
+    LANG=${LANGUAGE} \
+	LC_ALL=${LANGUAGE}
 
 RUN set -x \
 	&& export DEBIAN_FRONTEND=noninteractive \
@@ -16,8 +20,12 @@ RUN set -x \
 		# curl \
         lib32stdc++6 \
 		lib32gcc-s1 \
+        locales \
     # ===== System info =====
     && OS_ARCH=$(dpkg --print-architecture) \
+    # ===== Setup Locale Encoding =====
+	&& locale-gen ${LANGUAGE} \
+	&& dpkg-reconfigure --frontend noninteractive locales \
     # install SteamCMD the multiverse repository and x86 packages must be enabled
     # && add-apt-repository multiverse \
     && if [ "${OS_ARCH}" = "amd64" ]; then \
