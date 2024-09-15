@@ -1,7 +1,7 @@
 ARG base_image=ubuntu:latest
 FROM ${base_image}
 
-ARG PUID=1000 \
+ARG PUID=1001 \
     USER=steam
 
 ENV USER=steam \
