@@ -60,7 +60,8 @@ RUN set -x \
     && URL_steamcmd="https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz" \
     && FILE_steamcmd="/tmp/steamcmd_linux.tar.gz" \
     && curl -fsSL ${URL_steamcmd} -o ${FILE_steamcmd} \
-    && tar xzf ${FILE_steamcmd} -C ${STEAMCMDDIR} --strip-components=1 \
+    # --strip-components=1
+    && tar xzf ${FILE_steamcmd} -C ${STEAMCMDDIR} \
     && ls -lh ${STEAMCMDDIR} \
     && rm -f ${FILE_steamcmd} \
     # ===== Clean pre-install =====
