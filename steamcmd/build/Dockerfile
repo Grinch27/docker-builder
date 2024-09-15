@@ -17,7 +17,7 @@ RUN set -x \
         lib32stdc++6 \
 		lib32gcc-s1 \
     # install SteamCMD the multiverse repository and x86 packages must be enabled
-    && add-apt-repository multiverse \
+    # && add-apt-repository multiverse \
     && dpkg --add-architecture i386 \
     && apt-get update --ignore-missing -y -qq \
     && apt-get install --no-install-recommends --no-install-suggests --fix-missing -y -qq \
