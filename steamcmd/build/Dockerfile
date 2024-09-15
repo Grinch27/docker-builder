@@ -26,7 +26,7 @@ RUN set -x \
 	&& apt-get update --ignore-missing -y -qq \
     && apt-get install --no-install-recommends --no-install-suggests --fix-missing -y -qq \
 		ca-certificates \
-		# curl \
+		curl \
         lib32stdc++6 \
 		lib32gcc-s1 \
         locales \
@@ -62,9 +62,15 @@ RUN set -x \
     # && curl -fsSL ${URL_steamcmd} -o ${FILE_steamcmd} \
     # && tar xzf ${FILE_steamcmd} -C ${PATH_steamcmd} --strip-components=1 \
     # && rm -f ${FILE_steamcmd} \
+    && mkdir -p ${STEAMCMDDIR} \
+    && URL_steamcmd="https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz" \
+    && FILE_steamcmd="/tmp/steamcmd_linux.tar.gz" \
+    && curl -fsSL ${URL_steamcmd} -o ${FILE_steamcmd} \
+    && tar xzf ${FILE_steamcmd} -C ${STEAMCMDDIR} --strip-components=1 \
+    && rm -f ${FILE_steamcmd} \
     # ----- Download SteamCMD, execute as user -----
-    && mkdir -p "${STEAMCMDDIR}" \
-    && curl -fsSL 'https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz' | tar xvzf - -C "${STEAMCMDDIR}" \
+    # && mkdir -p "${STEAMCMDDIR}" \
+    # && curl -fsSL 'https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz' | tar xvzf - -C "${STEAMCMDDIR}" \
     && "${STEAMCMDDIR}/steamcmd.sh" +quit \
     && ln -s "${STEAMCMDDIR}/linux32/steamclient.so" "${STEAMCMDDIR}/steamservice.so" \
     && mkdir -p "${HOMEDIR}/.steam/sdk32" \
