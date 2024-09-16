@@ -104,22 +104,23 @@ ENV	LANGUAGE=${LANGUAGE} \
 COPY --from=novnc ${PATH_noVNC} ${PATH_noVNC}
 COPY --from=menu /var/lib/openbox/debian-menu.xml /var/lib/openbox/debian-menu.xml
 COPY --from=xset /usr/bin/xset /usr/bin/xset
-RUN export DEBIAN_FRONTEND=noninteractive \
-	# ===== non-apt Install =====
+RUN set -x \
+	# ===== apt dependencies =====
+	&& export DEBIAN_FRONTEND=noninteractive \
 	&& apt-get update --ignore-missing -y -qq \
-	&& apt-get install --no-install-recommends --fix-missing -y -qq \
+    && apt-get install --no-install-recommends --no-install-suggests --fix-missing -y -qq \
 		ca-certificates \
 		curl \
 		gpg \
 	# ===== System info =====
     && OS_ARCH=$(dpkg --print-architecture) \
 	# ===== Clean pre-install =====
-    && apt-get purge --autoremove -y -qq \
+    && apt-get autoremove --purge -y -qq \
         curl \
         gpg \
 	# ===== main Install =====
 	&& apt-get update --ignore-missing -y -qq \
-	&& apt-get install --no-install-recommends --fix-missing -y -qq \
+    && apt-get install --no-install-recommends --no-install-suggests --fix-missing -y -qq \
 		# ----- Xvfb -----
 		xvfb \
 		libxcb1 \
@@ -155,14 +156,14 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	&& chgrp -R 0 ${HOME} /tmp/.X11-unix \
 	&& chmod -R g=u ${HOME} /tmp/.X11-unix \
 	# ===== Clean apt =====
-	&& apt-get autoremove -y -qq \
+    && apt-get autoremove --purge -y -qq \
+    && apt-get clean -y -qq \
     && rm -rf /var/lib/apt/lists/* \
     && rm -rf /var/log/*.log \
-    && apt-get clean -y -qq \
 	&& unset DEBIAN_FRONTEND \
 	# ===== docker-entrypoint.sh =====
 	&& sh_entrypoint="/docker-entrypoint.sh" \
-    # && echo "#!/usr/bin/env sh" >> ${sh_entrypoint} \
+    && echo "#!/usr/bin/env bash" >> ${sh_entrypoint} \
 	&& echo 'env' >> ${sh_entrypoint} \
 	&& echo 'echo "${DISPLAY} ${SCREEN_WIDTH}x${SCREEN_HEIGHT}x${SCREEN_DEPTH} ${SCREEN_DPI}"' >> ${sh_entrypoint} \
 	# ----- sh: start Xvfb & Openbox -----
@@ -182,11 +183,11 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	&& echo 'novnc --listen ${NO_VNC_PORT} --vnc localhost:${VNC_PORT}' >> ${sh_novnc} \
 	&& chmod +x ${sh_novnc} \
 	&& echo "${sh_novnc} &" >> ${sh_entrypoint} \
-	# ----- sleep infinity -----
+	# ----- end of docker-entrypoint.sh -----
 	&& echo "uname -a" >> ${sh_entrypoint} \
 	&& echo "sleep infinity" >> ${sh_entrypoint} \
 	&& chmod +x ${sh_entrypoint}
 
 EXPOSE 5900 7900
 
-ENTRYPOINT ["sh", "/docker-entrypoint.sh"]
+ENTRYPOINT ["/docker-entrypoint.sh"]
