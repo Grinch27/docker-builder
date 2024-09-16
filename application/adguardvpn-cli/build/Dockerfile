@@ -4,13 +4,15 @@ FROM ${base_image}
 ARG update_channel=release
 ENV update_channel=${update_channel}
 
-RUN apk update \
+RUN set -x \
+    # ===== apk dependencies =====
+    && apk update \
     && apk add --no-cache \
         ca-certificates \
         curl \
         tar \
         gpg \
-    # install.sh
+    # ===== Setup AdGuardVPNCLI =====
     && URL_SH="https://raw.githubusercontent.com/AdguardTeam/AdGuardVPNCLI/master/scripts/${update_channel}/install.sh" \
     && FILE_SH="/install.sh" \
     && curl -fsSL ${URL_SH} -o ${FILE_SH} \
@@ -18,12 +20,20 @@ RUN apk update \
     && chmod +x ${FILE_SH} \
     && sh --verbose ${FILE_SH} \
     && rm -f ${FILE_SH} \
-    # clean
+    # ===== Clean pre-install =====
     && apk del --no-cache \
         curl \
         tar \
         gpg \
+    # ===== Clean apk =====
     && rm -rf /var/cache/apk/* \
-    && rm -rf /var/log/*.log
+    && rm -rf /var/log/*.log \
+    # ===== docker-entrypoint.sh =====
+    && sh_entrypoint="/docker-entrypoint.sh" \
+    && echo "#!/usr/bin/env sh" >> ${sh_entrypoint} \
+    # ----- end of docker-entrypoint.sh -----
+    && echo "uname -a" >> ${sh_entrypoint} \
+	&& echo "sleep infinity" >> ${sh_entrypoint} \
+	&& chmod +x ${sh_entrypoint}
 
-ENTRYPOINT ["sh", "-c", "uname -a && sleep infinity"]
+ENTRYPOINT ["/docker-entrypoint.sh"]
