@@ -1,9 +1,14 @@
 FROM alpine:latest as builder
 WORKDIR /root
-RUN apk add --no-cache git make build-base && \
-    git clone --branch master --single-branch https://github.com/Wind4/vlmcsd.git && \
-    cd vlmcsd/ && \
-    make
+RUN set -x \
+    && apk update \
+    && apk add --no-cache \
+        build-base \
+        git \
+        make \
+    && git clone --branch master --single-branch https://github.com/Wind4/vlmcsd.git \
+    && cd vlmcsd/ \
+    && make
 
 FROM alpine:latest
 WORKDIR /root/
