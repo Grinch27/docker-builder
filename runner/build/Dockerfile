@@ -39,6 +39,8 @@ RUN set -x \
         xsltproc \
         zip \
         zlib1g-dev \
+    # ===== List upgradable =====
+    && apt list --upgradable \
     # ===== Clean apt =====
     && apt-get autoremove --purge -y -qq \
     && apt-get clean -y -qq \
