@@ -22,6 +22,11 @@ on:
         options:
           - "true"
           - "false"
+      custom_env:
+        description: "Custom environment variables (key=value pairs separated by newlines)"
+        type: string
+        required: false
+        default: ""
 
 env:
   app_branch: ${{ inputs.app_branch }}
@@ -104,6 +109,14 @@ jobs:
           fi
 
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
+
+      - name: Load Custom Environment Variables
+        id: env-custom
+        if: ${{ inputs.custom_env != '' }}
+        env:
+          flag_split: ";"
+        run: |
+          echo "${{ inputs.custom_env }}" | tr '${{ env.flag_split }}' '\n' | tee -a $GITHUB_ENV
 
       - name: Setup Docker
         id: docker
