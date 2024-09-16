@@ -15,7 +15,7 @@ on:
         required: true
         default: "latest"
       custom_env:
-        description: "Custom environment variables (key=value pairs separated by newlines)"
+        description: "Custom environment variables (key=value;key=value)"
         type: string
         required: false
         default: ""
@@ -23,6 +23,7 @@ on:
 env:
   app_branch: ${{ inputs.app_branch }}
   tag_repo: ${{ inputs.tag_repo || 'latest' }}
+  custom_env: ${{ inputs.custom_env || '' }}
 
 jobs:
   build:
@@ -76,11 +77,11 @@ jobs:
 
       - name: Load Custom Environment Variables
         id: env-custom
-        if: ${{ inputs.custom_env != '' }}
+        if: ${{ env.custom_env != '' }}
         env:
           flag_split: ";"
         run: |
-          echo "${{ inputs.custom_env }}" | tr '${{ env.flag_split }}' '\n' | tee -a $GITHUB_ENV
+          echo "${{ env.custom_env }}" | tr '${{ env.flag_split }}' '\n' | tee -a $GITHUB_ENV
 
       - name: Initialize environment
         id: init
