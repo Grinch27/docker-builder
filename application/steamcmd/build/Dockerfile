@@ -57,7 +57,7 @@ RUN set -x \
     && ls -lh ${STEAMCMDDIR} \
     && rm -f ${FILE_steamcmd} \
     # ===== Clean pre-install =====
-    && apt-get purge --autoremove -y \
+    && apt-get autoremove --purge -y -qq \
         curl \
     # ----- Download SteamCMD, execute as user -----
     # https://github.com/CM2Walki/steamcmd/blob/master/bookworm/Dockerfile
@@ -79,7 +79,7 @@ RUN set -x \
     # ----- Clean /root/Steam/logs -----
     # && rm -rf /root/Steam/logs \
     # ===== Clean apt =====
-    && apt-get autoremove -y -qq \
+    && apt-get autoremove --purge -y -qq \
     && apt-get clean -y -qq \
     && rm -rf /var/lib/apt/lists/* \
     && rm -rf /var/log/*.log \
@@ -87,6 +87,7 @@ RUN set -x \
     # ===== docker-entrypoint.sh =====
     && sh_entrypoint="/docker-entrypoint.sh" \
     && echo "#!/usr/bin/env bash" >> ${sh_entrypoint} \
+    # ----- end of docker-entrypoint.sh -----
     && echo "uname -a" >> ${sh_entrypoint} \
 	&& echo "sleep infinity" >> ${sh_entrypoint} \
 	&& chmod +x ${sh_entrypoint}
