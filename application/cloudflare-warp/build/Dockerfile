@@ -1,9 +1,11 @@
 ARG base_image=debian:stable-slim
 FROM ${base_image}
 
-RUN export DEBIAN_FRONTEND=noninteractive \
-    && apt-get update --ignore-missing \
-    && apt-get install -y --no-install-recommends \
+RUN set -x \
+    # ===== apt dependencies =====
+    && export DEBIAN_FRONTEND=noninteractive \
+    && apt-get update --ignore-missing -y -qq \
+    && apt-get install --no-install-recommends --no-install-suggests --fix-missing -y -qq \
         ca-certificates \
         curl \
         gpg \
@@ -16,22 +18,32 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     && echo "deb [arch=${OS_ARCH} signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ ${OS_VER} main" > /etc/apt/sources.list.d/cloudflare-client.list \
     && apt-get update \
     # ===== Clean pre-install =====
-    && apt-get purge --autoremove -y \
+    && apt-get autoremove --purge -y -qq \
         curl \
         gpg \
         lsb-release \
     # ===== Install cloudflare-warp =====
-    && apt-get install -y \
+    && apt-get install --no-install-recommends --no-install-suggests --fix-missing -y -qq \
         cloudflare-warp \
     # ===== Clean apt =====
-    && apt-get clean \
+    && apt-get autoremove --purge -y -qq \
+    && apt-get clean -y -qq \
     && rm -rf /var/lib/apt/lists/* \
     && rm -rf /var/log/*.log \
-    && unset DEBIAN_FRONTEND \
+	&& unset DEBIAN_FRONTEND \
     # ===== docker-entrypoint.sh =====
-    # && echo "#!/bin/sh\nservice dbus start\n/bin/warp-svc\nwarp-cli disconnect --accept-tos" > /docker-entrypoint.sh \
-    && echo "#!/bin/sh\n/bin/warp-svc\nwarp-cli disconnect --accept-tos" > /docker-entrypoint.sh \
-    && chmod +x /docker-entrypoint.sh
+    && sh_entrypoint="/docker-entrypoint.sh" \
+    && echo "#!/usr/bin/env bash" >> ${sh_entrypoint} \
+    # ----- sh: /bin/warp-svc -----
+    && sh_warp="/start-warp.sh" \
+	&& echo '/bin/warp-svc' >> ${sh_warp} \
+    && echo 'warp-cli disconnect --accept-tos' >> ${sh_warp} \
+	&& chmod +x ${sh_warp} \
+	&& echo "${sh_warp} &" >> ${sh_entrypoint} \
+    # ----- end of docker-entrypoint.sh -----
+    && echo "uname -a" >> ${sh_entrypoint} \
+	&& echo "sleep infinity" >> ${sh_entrypoint} \
+	&& chmod +x ${sh_entrypoint}
     
 # ENTRYPOINT ["/bin/warp-svc"]
-ENTRYPOINT ["sh", "/docker-entrypoint.sh"]
+ENTRYPOINT ["/docker-entrypoint.sh"]
