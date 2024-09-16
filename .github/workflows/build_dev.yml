@@ -24,6 +24,7 @@ env:
   app_branch: ${{ inputs.app_branch }}
   tag_repo: ${{ inputs.tag_repo || 'latest' }}
   custom_env: ${{ inputs.custom_env || '' }}
+  dir_app: "application/${{ inputs.app_branch }}"
 
 jobs:
   build:
@@ -50,7 +51,7 @@ jobs:
 
       - name: Load Env
         id: env-app
-        working-directory: "${{ github.workspace }}/${{ env.app_branch }}"
+        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
           echo "Current working directory: $(pwd)"
 
@@ -164,7 +165,7 @@ jobs:
 
       - name: Build and push to local registry
         id: build
-        working-directory: "${{ github.workspace }}/${{ env.app_branch }}"
+        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
           echo "Current working directory: $(pwd)"
 
@@ -190,7 +191,7 @@ jobs:
       - name: Inspect Layers with skopeo
         id: inspect
         # if: ${{ 'true' == 'false' }} # disable
-        working-directory: "${{ github.workspace }}/${{ env.app_branch }}"
+        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
           echo "Current working directory: $(pwd)"
 
@@ -220,7 +221,7 @@ jobs:
         env:
           container_name: container-test
           dir_container: "/tmp"
-        working-directory: "${{ github.workspace }}/${{ env.app_branch }}"
+        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
           echo "Current working directory: $(pwd)"
 
@@ -275,7 +276,7 @@ jobs:
       - name: Save to tar
         id: tar
         # if: ${{ 'true' == 'false' }} # disable
-        working-directory: "${{ github.workspace }}/${{ env.app_branch }}"
+        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
           echo "Current working directory: $(pwd)"
 

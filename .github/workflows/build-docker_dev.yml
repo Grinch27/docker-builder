@@ -34,6 +34,7 @@ env:
   force_push: ${{ inputs.force_push || 'false' }}
   custom_env: ${{ inputs.custom_env || '' }}
   registry_push: "docker.io"
+  dir_app: "application/${{ inputs.app_branch }}"
 
 jobs:
   check:
