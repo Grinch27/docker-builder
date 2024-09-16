@@ -26,7 +26,7 @@ RUN set -x \
         lib32readline-dev \
         lib32z1-dev \
         libelf-dev \
-        liblz4-tool \
+        lz4 \
         libsdl1.2-dev \
         libssl-dev \
         libxml2 \
