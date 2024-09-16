@@ -18,8 +18,8 @@ docker buildx build \
     --file ${dockerfile} \
     --tag "${registry_local}/${repo_dockerhub}:${tag_repo}" \
     --build-arg base_image=${base_image} \
+    --build-arg update_channel=${update_channel} \
     --label version=${version} \
     --output type=registry,registry.insecure=true \
     .
 # --output type=tar,dest=${output_tar} \
-# --build-arg update_channel=${tag_repo} \
