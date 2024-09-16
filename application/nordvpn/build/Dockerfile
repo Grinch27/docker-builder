@@ -1,25 +1,27 @@
 ARG base_image=debian:stable-slim
 FROM ${base_image}
 
-RUN export DEBIAN_FRONTEND=noninteractive \
-    && apt-get update --ignore-missing \
-    && apt-get install -y --no-install-recommends \
-        ca-certificates \
-        curl \
+RUN set -x \
+    # ===== apt dependencies =====
+	&& export DEBIAN_FRONTEND=noninteractive \
+	&& apt-get update --ignore-missing -y -qq \
+    && apt-get install --no-install-recommends --no-install-suggests --fix-missing -y -qq \
+		ca-certificates \
+		curl \
         gpg \
         # systemd \
         # sudo \
     # ===== Add nordvpn gpg key =====
     && curl -fsSL https://repo.nordvpn.com/gpg/nordvpn_public.asc | gpg --yes --dearmor --output /usr/share/keyrings/nordvpn_public.gpg \
     && echo "deb [signed-by=/usr/share/keyrings/nordvpn_public.gpg] https://repo.nordvpn.com/deb/nordvpn/debian stable main" > /etc/apt/sources.list.d/nordvpn.list \
-    && apt-get update \
+    && apt-get update --ignore-missing -y -qq \
     # ===== Clean pre-install =====
-    && apt-get purge --autoremove -y \
+    && apt-get autoremove --purge -y -qq \
         curl \
         gpg \
         # sudo \
     # ===== Install nordvpn =====
-    && apt-get install -y \
+    && apt-get install --no-install-recommends --no-install-suggests --fix-missing -y -qq \
         nordvpn \
     # ----- /etc/init.d/nordvpn -----
     && SOCKET_DIR=/run/nordvpn \
@@ -27,15 +29,26 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     && chown root:nordvpn "$SOCKET_DIR" \
     # && useradd -m user \
     # ===== Clean apt =====
-    && apt-get clean \
+    && apt-get autoremove --purge -y -qq \
+    && apt-get clean -y -qq \
     && rm -rf /var/lib/apt/lists/* \
     && rm -rf /var/log/*.log \
-    && unset DEBIAN_FRONTEND \
+	&& unset DEBIAN_FRONTEND \
     # ===== docker-entrypoint.sh =====
-    && echo "#!/bin/sh\nuname -a\n/usr/sbin/nordvpnd\n/usr/lib/nordvpn/norduserd" > /docker-entrypoint.sh \
-    && chmod +x /docker-entrypoint.sh
+    && sh_entrypoint="/docker-entrypoint.sh" \
+    && echo "#!/usr/bin/env bash" >> ${sh_entrypoint} \
+    # ----- sh: /usr/sbin/nordvpnd -----
+    && sh_nordvpn="/start-nordvpn.sh" \
+	&& echo '/usr/sbin/nordvpnd' >> ${sh_nordvpn} \
+    && echo '/usr/lib/nordvpn/norduserd' >> ${sh_nordvpn} \
+	&& chmod +x ${sh_nordvpn} \
+	&& echo "${sh_nordvpn} &" >> ${sh_entrypoint} \
+    # ----- end of docker-entrypoint.sh -----
+    && echo "uname -a" >> ${sh_entrypoint} \
+	&& echo "sleep infinity" >> ${sh_entrypoint} \
+	&& chmod +x ${sh_entrypoint}
 
-ENTRYPOINT ["sh", "/docker-entrypoint.sh"]
+ENTRYPOINT ["/docker-entrypoint.sh"]
 
 # # Plan B: Install deb
 # && OS_ARCH=$(dpkg --print-architecture) \
