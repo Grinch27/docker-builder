@@ -107,6 +107,7 @@ jobs:
 
     steps:
       - name: Trigger build-docker
+        id: trigger
         if: ${{ github.event_name == 'schedule' && github.event.schedule == matrix.schedule_time.time }}
         env:
           workflow: "build-docker"
