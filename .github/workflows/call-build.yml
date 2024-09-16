@@ -46,18 +46,21 @@ jobs:
               app_branch: "adguardvpn-cli",
               tag_repo: "nightly",
               force_push: "false",
+              custom_env: "update_channel=nightly",
             }
           - {
               time: "10 22 * * *",
               app_branch: "adguardvpn-cli",
               tag_repo: "beta",
               force_push: "false",
+              custom_env: "update_channel=beta",
             }
           - {
               time: "10 22 * * *",
               app_branch: "adguardvpn-cli",
               tag_repo: "release",
               force_push: "false",
+              custom_env: "update_channel=release",
             }
           # expressvpn
           - {
@@ -109,16 +112,25 @@ jobs:
           workflow: "build-docker"
         working-directory: /
         run: |
-          data='{
-            "ref": "main",
-            "inputs": {
-              "app_branch": "${{ matrix.schedule_time.app_branch }}",
-              "tag_repo": "${{ matrix.schedule_time.tag_repo }}",
-              "force_push": "${{ matrix.schedule_time.force_push }}"
-            }
-          }'
-          curl -XPOST \
-          -H "Accept: application/vnd.github.v3+json" \
-          -H "Authorization: Bearer ${{ secrets.PAT }}" \
-          https://api.github.com/repos/${{ github.repository }}/actions/workflows/${{ env.workflow }}.yml/dispatches \
-          --data "$data"
+          # Create base JSON using jq
+          data=$(jq -n \
+            --arg app_branch "${{ matrix.schedule_time.app_branch }}" \
+            --arg tag_repo "${{ matrix.schedule_time.tag_repo }}" \
+            --arg force_push "${{ matrix.schedule_time.force_push }}" \
+            '{ ref: "main", inputs: { app_branch: $app_branch, tag_repo: $tag_repo, force_push: $force_push } }')
+
+          # Check if 'custom_env' is defined and not empty, then add it
+          if [[ -n "${{ matrix.schedule_time.custom_env }}" ]]; then
+            data=$(echo "$data" | jq --arg custom_env "${{ matrix.schedule_time.custom_env }}" '.inputs.custom_env = $custom_env')
+          fi
+
+          # Output the final JSON data for debugging (optional)
+          echo "$data" | jq .
+
+          # Use the generated data with curl
+          curl -X POST \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization: Bearer ${{ secrets.PAT }}" \
+            https://api.github.com/repos/${{ github.repository }}/actions/workflows/${{ env.workflow }}.yml/dispatches \
+            --data "$data"
+          
