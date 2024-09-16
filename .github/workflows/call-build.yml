@@ -110,6 +110,7 @@ jobs:
         id: trigger
         if: ${{ github.event_name == 'schedule' && github.event.schedule == matrix.schedule_time.time }}
         env:
+          branch: "main"
           workflow: "build-docker"
         working-directory: /
         run: |
@@ -118,7 +119,7 @@ jobs:
             --arg app_branch "${{ matrix.schedule_time.app_branch }}" \
             --arg tag_repo "${{ matrix.schedule_time.tag_repo }}" \
             --arg force_push "${{ matrix.schedule_time.force_push }}" \
-            '{ ref: "main", inputs: { app_branch: $app_branch, tag_repo: $tag_repo, force_push: $force_push } }')
+            '{ ref: "${{ env.branch }}", inputs: { app_branch: $app_branch, tag_repo: $tag_repo, force_push: $force_push } }')
 
           # Check if 'custom_env' is defined and not empty, then add it
           if [[ -n "${{ matrix.schedule_time.custom_env }}" ]]; then
