@@ -23,7 +23,7 @@ on:
           - "true"
           - "false"
       custom_env:
-        description: "Custom environment variables (key=value pairs separated by newlines)"
+        description: "Custom environment variables (key=value;key=value)"
         type: string
         required: false
         default: ""
@@ -32,6 +32,7 @@ env:
   app_branch: ${{ inputs.app_branch }}
   tag_repo: ${{ inputs.tag_repo || 'latest' }}
   force_push: ${{ inputs.force_push || 'false' }}
+  custom_env: ${{ inputs.custom_env || '' }}
   registry_push: "docker.io"
 
 jobs:
@@ -112,11 +113,11 @@ jobs:
 
       - name: Load Custom Environment Variables
         id: env-custom
-        if: ${{ inputs.custom_env != '' }}
+        if: ${{ env.custom_env != '' }}
         env:
           flag_split: ";"
         run: |
-          echo "${{ inputs.custom_env }}" | tr '${{ env.flag_split }}' '\n' | tee -a $GITHUB_ENV
+          echo "${{ env.custom_env }}" | tr '${{ env.flag_split }}' '\n' | tee -a $GITHUB_ENV
 
       - name: Setup Docker
         id: docker
