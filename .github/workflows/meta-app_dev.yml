@@ -14,10 +14,17 @@ on:
         type: string
         required: true
         default: "latest"
+      custom_env:
+        description: "key=value;key=value"
+        type: string
+        required: false
+        default: ""
 
 env:
   app_branch: ${{ inputs.app_branch }}
   tag_repo: ${{ inputs.tag_repo || 'latest' }}
+  custom_env: ${{ inputs.custom_env || '' }}
+  dir_app: "application/${{ inputs.app_branch }}"
 
 jobs:
   check:
@@ -53,7 +60,7 @@ jobs:
 
       - name: Load Env
         id: env-app
-        working-directory: "${{ github.workspace }}/${{ env.app_branch }}"
+        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
           echo "Current working directory: $(pwd)"
 
@@ -77,6 +84,14 @@ jobs:
           fi
 
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
+
+      - name: Load Custom Environment Variables
+        id: env-custom
+        if: ${{ env.custom_env != '' }}
+        env:
+          flag_split: ";"
+        run: |
+          echo "${{ env.custom_env }}" | tr '${{ env.flag_split }}' '\n' | tee -a $GITHUB_ENV
 
       - name: Setup Docker
         id: docker
@@ -120,7 +135,7 @@ jobs:
           container_name: "container-test"
           category: "platforms"
           dir_container: "/tmp"
-        working-directory: "${{ github.workspace }}/${{ env.app_branch }}"
+        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
           echo "Current working directory: $(pwd)"
 
