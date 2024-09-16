@@ -5,7 +5,10 @@
 ARG base_image=ubuntu:latest
 FROM ${base_image}
 
-ARG packages_install=(
+RUN set -x \
+    # ===== apt dependencies =====
+	&& export DEBIAN_FRONTEND=noninteractive \
+    && packages_install=(
         "bc" 
         "bison" 
         "build-essential" 
@@ -35,11 +38,7 @@ ARG packages_install=(
         "xsltproc" 
         "zip" 
         "zlib1g-dev"
-    )
-
-RUN set -x \
-    # ===== apt dependencies =====
-	&& export DEBIAN_FRONTEND=noninteractive \
+    ) \
 	&& apt-get update --ignore-missing -y -qq \
     && apt-get install --no-install-recommends --no-install-suggests --fix-missing -y -qq \
 		${packages_install[@]} \
