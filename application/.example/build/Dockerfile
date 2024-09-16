@@ -24,6 +24,12 @@ RUN set -x \
     # ===== docker-entrypoint.sh =====
     && sh_entrypoint="/docker-entrypoint.sh" \
     && echo "#!/usr/bin/env bash" >> ${sh_entrypoint} \
+    # ----- sh: /bin/app -----
+    && sh_app="/start-app.sh" \
+	&& echo '/bin/app' >> ${sh_app} \
+	&& chmod +x ${sh_app} \
+	&& echo "${sh_app} &" >> ${sh_entrypoint} \
+    # ----- end of docker-entrypoint.sh -----
     && echo "uname -a" >> ${sh_entrypoint} \
 	&& echo "sleep infinity" >> ${sh_entrypoint} \
 	&& chmod +x ${sh_entrypoint}
