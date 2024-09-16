@@ -24,8 +24,8 @@ RUN set -x \
     # ===== Fix armhf =====
     && if [ "${OS_ARCH}" = "arm64" ]; then \
         dpkg --add-architecture armhf \
-        && apt-get update --ignore-missing \
-        && apt-get install -y --no-install-recommends --fix-missing \
+        && apt-get update --ignore-missing -y -qq \
+        && apt-get install --no-install-recommends --no-install-suggests --fix-missing -y -qq \
             libc6:armhf \
             libstdc++6:armhf \
         && cd /lib \
