@@ -47,6 +47,8 @@ RUN set -x \
     && rm -rf /var/lib/apt/lists/* \
     && rm -rf /var/log/*.log \
 	&& unset DEBIAN_FRONTEND \
+    # ===== fix /dev/shm =====
+    && chmod +x /dev/shm \
     # ===== docker-entrypoint.sh =====
     && sh_entrypoint="/docker-entrypoint.sh" \
     && echo "#!/usr/bin/env bash" >> ${sh_entrypoint} \
