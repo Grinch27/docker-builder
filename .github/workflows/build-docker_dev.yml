@@ -48,8 +48,8 @@ jobs:
       version: ${{ steps.summary.outputs.version }}
       consistent: ${{ steps.summary.outputs.consistent }}
     env:
-      metadata_image_path: "${{ github.workspace }}/${{ inputs.app_branch }}/metadata_image.json"
-      metadata_app_path: "${{ github.workspace }}/${{ inputs.app_branch }}/metadata_app.json"
+      metadata_image_path: "${{ github.workspace }}/${{ inputs.dir_app }}/metadata_image.json"
+      metadata_app_path: "${{ github.workspace }}/${{ inputs.dir_app }}/metadata_app.json"
     steps:
       - name: Checkout ${{ github.repository }}
         uses: actions/checkout@main
@@ -87,7 +87,7 @@ jobs:
 
       - name: Load Env
         id: env-app
-        working-directory: "${{ github.workspace }}/${{ env.app_branch }}"
+        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
           echo "Current working directory: $(pwd)"
 
@@ -234,7 +234,7 @@ jobs:
           container_name: "container-test"
           category: "platforms"
           dir_container: "/tmp"
-        working-directory: "${{ github.workspace }}/${{ env.app_branch }}"
+        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
           echo "Current working directory: $(pwd)"
 
@@ -416,7 +416,7 @@ jobs:
 
       - name: Load Env
         id: env-app
-        working-directory: "${{ github.workspace }}/${{ env.app_branch }}"
+        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
           echo "Current working directory: $(pwd)"
 
@@ -499,7 +499,7 @@ jobs:
 
       - name: Build and push to local registry
         id: build
-        working-directory: "${{ github.workspace }}/${{ env.app_branch }}"
+        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
           echo "Current working directory: $(pwd)"
 
@@ -525,7 +525,7 @@ jobs:
       - name: Inspect Layers with skopeo
         id: inspect
         # if: ${{ 'true' == 'false' }} # disable
-        working-directory: "${{ github.workspace }}/${{ env.app_branch }}"
+        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
           echo "Current working directory: $(pwd)"
 
@@ -555,7 +555,7 @@ jobs:
         env:
           container_name: container-test
           dir_container: "/tmp"
-        working-directory: "${{ github.workspace }}/${{ env.app_branch }}"
+        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
           echo "Current working directory: $(pwd)"
 
@@ -610,7 +610,7 @@ jobs:
       - name: Save to tar
         id: tar
         # if: ${{ 'true' == 'false' }} # disable
-        working-directory: "${{ github.workspace }}/${{ env.app_branch }}"
+        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
           echo "Current working directory: $(pwd)"
 
@@ -631,7 +631,7 @@ jobs:
 
       - name: (Push) Image to ${{ env.registry_push }}
         id: push
-        working-directory: "${{ github.workspace }}/${{ env.app_branch }}"
+        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
           echo "Current working directory: $(pwd)"
           declare -a tag_array=("${{ env.tag_repo }}")
@@ -673,8 +673,8 @@ jobs:
       - name: (README) Generate
         id: readme
         env:
-          readme_md: "${{ github.workspace }}/${{ env.app_branch }}/README.md"
-        working-directory: "${{ github.workspace }}/${{ env.app_branch }}"
+          readme_md: "${{ github.workspace }}/${{ env.dir_app }}/README.md"
+        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
           echo "Current working directory: $(pwd)"
           IFS=',' read -ra registries <<< "${{ env.registry_push }}" >> ${{ env.readme_md }}
@@ -694,9 +694,9 @@ jobs:
         with:
           name: "${{ env.repo_dockerhub }}"
           tag: "${{ env.app_branch }}"
-          artifacts: "${{ github.workspace }}/${{ env.app_branch }}/*.tar"
+          artifacts: "${{ github.workspace }}/${{ env.dir_app }}/*.tar"
           allowUpdates: true
           removeArtifacts: false
           replacesArtifacts: true
           token: "${{ secrets.GITHUB_TOKEN }}"
-          bodyFile: "${{ github.workspace }}/${{ env.app_branch }}/README.md"
+          bodyFile: "${{ github.workspace }}/${{ env.dir_app }}/README.md"
