@@ -9,11 +9,13 @@ FROM ${base_image}
 #     PROTOCOL="lightway_udp" \
 #     CIPHER="chacha20"
 
-RUN export DEBIAN_FRONTEND=noninteractive \
-    && apt-get update --ignore-missing \
-    && apt-get install -y --no-install-recommends \
-        ca-certificates \
-        curl \
+RUN set -x \
+    # ===== apt dependencies =====
+	&& export DEBIAN_FRONTEND=noninteractive \
+	&& apt-get update --ignore-missing -y -qq \
+    && apt-get install --no-install-recommends --no-install-suggests --fix-missing -y -qq \
+		ca-certificates \
+		curl \
         gpg \
         lsb-release \
     # ===== System info =====
@@ -44,23 +46,32 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     && FILE_DEB="/expressvpn.deb" \
     && curl -fsSL ${URL_DOWNLOAD} -o ${FILE_DEB} \
     # ===== Clean pre-install =====
-    && apt-get purge --autoremove -y -qq \
+    && apt-get autoremove --purge -y -qq \
         curl \
         gpg \
         lsb-release \
     # ===== Install expressvpn =====
-    && apt-get install -y ${FILE_DEB} \
+    && apt-get install --no-install-recommends --no-install-suggests --fix-missing -y -qq \
+        ${FILE_DEB} \
     && rm -f ${FILE_HTML} \
     && rm -f ${FILE_DEB} \
     # ===== Clean apt =====
-    && apt-get autoremove -y -qq \
+    && apt-get autoremove --purge -y -qq \
+    && apt-get clean -y -qq \
     && rm -rf /var/lib/apt/lists/* \
     && rm -rf /var/log/*.log \
-    && apt-get clean -y -qq \
-    && unset DEBIAN_FRONTEND \
+	&& unset DEBIAN_FRONTEND \
     # ===== docker-entrypoint.sh =====
-    # /usr/sbin/expressvpnd
-    && echo "#!/bin/sh\nuname -a\n/etc/init.d/expressvpn start\nsleep infinity" > /docker-entrypoint.sh \
-    && chmod +x /docker-entrypoint.sh
+    && sh_entrypoint="/docker-entrypoint.sh" \
+    && echo "#!/usr/bin/env bash" >> ${sh_entrypoint} \
+    # ----- sh: /usr/sbin/expressvpnd -----
+    && sh_expressvpnd="/start-expressvpnd.sh" \
+	&& echo '/etc/init.d/expressvpn start' >> ${sh_expressvpnd} \
+	&& chmod +x ${sh_expressvpnd} \
+	&& echo "${sh_expressvpnd} &" >> ${sh_entrypoint} \
+    # ----- end of docker-entrypoint.sh -----
+    && echo "uname -a" >> ${sh_entrypoint} \
+	&& echo "sleep infinity" >> ${sh_entrypoint} \
+	&& chmod +x ${sh_entrypoint}
 
-ENTRYPOINT ["sh", "/docker-entrypoint.sh"]
+ENTRYPOINT ["/docker-entrypoint.sh"]
