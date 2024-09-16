@@ -8,40 +8,37 @@ FROM ${base_image}
 RUN set -x \
     # ===== apt dependencies =====
 	&& export DEBIAN_FRONTEND=noninteractive \
-    && packages_install=(
-        "bc" 
-        "bison" 
-        "build-essential" 
-        "ccache" 
-        "curl" 
-        "flex"
-        "g++-multilib" 
-        "gcc-multilib" 
-        "git" 
-        "git-lfs" 
-        "gnupg"
-        "gperf" 
-        "imagemagick" 
-        "lib32readline-dev" 
-        "lib32z1-dev"
-        "libelf-dev" 
-        "liblz4-tool" 
-        "libsdl1.2-dev" 
-        "libssl-dev"
-        "libxml2" 
-        "libxml2-utils" 
-        "lzop" 
-        "pngcrush" 
-        "rsync"
-        "schedtool" 
-        "squashfs-tools" 
-        "xsltproc" 
-        "zip" 
-        "zlib1g-dev"
-    ) \
 	&& apt-get update --ignore-missing -y -qq \
     && apt-get install --no-install-recommends --no-install-suggests --fix-missing -y -qq \
-		${packages_install[@]} \
+		bc \
+        bison \
+        build-essential \
+        ccache \
+        curl \
+        flex \
+        g++-multilib \
+        gcc-multilib \
+        git \
+        git-lfs \
+        gnupg \
+        gperf \
+        imagemagick \
+        lib32readline-dev \
+        lib32z1-dev \
+        libelf-dev \
+        liblz4-tool \
+        libsdl1.2-dev \
+        libssl-dev \
+        libxml2 \
+        libxml2-utils \
+        lzop \
+        pngcrush \
+        rsync \
+        schedtool \
+        squashfs-tools \
+        xsltproc \
+        zip \
+        zlib1g-dev \
     # ===== Clean apt =====
     && apt-get autoremove --purge -y -qq \
     && apt-get clean -y -qq \
