@@ -8,10 +8,11 @@
 ARG base_image=debian:stable-slim
 FROM ${base_image} AS novnc
 ARG PATH_noVNC="/opt/bin/noVNC"
-RUN export DEBIAN_FRONTEND=noninteractive \
-	# ===== non-apt Install =====
+RUN set -x \
+    # ===== apt dependencies =====
+	&& export DEBIAN_FRONTEND=noninteractive \
 	&& apt-get update --ignore-missing -y -qq \
-	&& apt-get install --no-install-recommends --fix-missing -y -qq \
+    && apt-get install --no-install-recommends --no-install-suggests --fix-missing -y -qq \
 		ca-certificates \
 		curl \
 		gpg \
@@ -94,10 +95,11 @@ ARG PATH_noVNC="/opt/bin/noVNC"
 COPY --from=novnc ${PATH_noVNC} ${PATH_noVNC}
 COPY --from=menu /var/lib/openbox/debian-menu.xml /var/lib/openbox/debian-menu.xml
 COPY --from=xset /usr/bin/xset /usr/bin/xset
-RUN export DEBIAN_FRONTEND=noninteractive \
-	# ===== non-apt Install =====
+RUN set -x \
+    # ===== apt dependencies =====
+	&& export DEBIAN_FRONTEND=noninteractive \
 	&& apt-get update --ignore-missing -y -qq \
-	&& apt-get install --no-install-recommends --fix-missing -y -qq \
+    && apt-get install --no-install-recommends --no-install-suggests --fix-missing -y -qq \
 		ca-certificates \
 		curl \
 		gpg \
@@ -109,12 +111,12 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	&& FILE_baidunetdisk="/baidunetdisk.deb" \
 	&& curl -fsSL ${URL_baidunetdisk} -o ${FILE_baidunetdisk} \
 	# ===== Clean pre-install =====
-    && apt-get purge --autoremove -y -qq \
+    && apt-get autoremove --purge -y -qq \
         curl \
         gpg \
 	# ===== main Install =====
 	&& apt-get update --ignore-missing -y -qq \
-	&& apt-get install --no-install-recommends --fix-missing -y -qq \
+    && apt-get install --no-install-recommends --no-install-suggests --fix-missing -y -qq \
 		# ----- Xvfb -----
 		xvfb \
 		libxcb1 \
@@ -158,7 +160,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	# ===== noVNC =====
 	&& ln -s "${PATH_noVNC}/utils/novnc_proxy" /usr/local/bin/novnc \
 	# ===== baidunetdisk =====
-	&& apt-get install --no-install-recommends --fix-missing -y -qq \
+	&& apt-get install --no-install-recommends --no-install-suggests --fix-missing -y -qq \
 		${FILE_baidunetdisk} \
 		libasound2 \
 		libgbm1 \
@@ -206,39 +208,41 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	&& chgrp -R 0 ${HOME} /tmp/.X11-unix \
 	&& chmod -R g=u ${HOME} /tmp/.X11-unix \
 	# ===== Clean apt =====
-	&& apt-get autoremove -y -qq \
+    && apt-get autoremove --purge -y -qq \
+    && apt-get clean -y -qq \
     && rm -rf /var/lib/apt/lists/* \
     && rm -rf /var/log/*.log \
-    && apt-get clean -y -qq \
 	&& unset DEBIAN_FRONTEND \
 	# ===== docker-entrypoint.sh =====
-    && echo "#!/usr/bin/env sh" >> /docker-entrypoint.sh \
+	&& sh_entrypoint="/docker-entrypoint.sh" \
+    && echo "#!/usr/bin/env bash" >> ${sh_entrypoint} \
 	# ----- sh: start Xvfb & Openbox -----
 	&& sh_xvfb="/start-xvfb.sh" \
 	&& echo 'rm -f /tmp/.X*lock' >> ${sh_xvfb} \
 	&& echo 'xvfb-run --server-num=${DISPLAY_NUM} --server-args="-screen 0 ${SCREEN_WIDTH}x${SCREEN_HEIGHT}x${SCREEN_DEPTH} -fbdir /var/tmp -dpi ${SCREEN_DPI} -listen tcp -noreset -ac +extension RANDR" openbox-session' >> ${sh_xvfb} \
 	&& chmod +x ${sh_xvfb} \
-	&& echo "${sh_xvfb} &" >> /docker-entrypoint.sh \
+	&& echo "${sh_xvfb} &" >> ${sh_entrypoint} \
 	# ----- start vnc -----
 	&& sh_x11vnc="/start-x11vnc.sh" \
 	&& echo 'for i in $(seq 1 10); do { sleep 1; xdpyinfo -display ${DISPLAY} > /dev/null 2>&1 && break || echo "Wait for Xvfb"; }; done' >> ${sh_x11vnc} \
 	&& echo 'x11vnc -forever -shared -rfbport ${VNC_PORT} -display ${DISPLAY}' >> ${sh_x11vnc} \
 	&& chmod +x ${sh_x11vnc} \
-	&& echo "${sh_x11vnc} &" >> /docker-entrypoint.sh \
+	&& echo "${sh_x11vnc} &" >> ${sh_entrypoint} \
 	# ----- start novnc -----
 	&& sh_novnc="/start-novnc.sh" \
 	&& echo 'novnc --listen ${NO_VNC_PORT} --vnc localhost:${VNC_PORT}' >> ${sh_novnc} \
 	&& chmod +x ${sh_novnc} \
-	&& echo "${sh_novnc} &" >> /docker-entrypoint.sh \
+	&& echo "${sh_novnc} &" >> ${sh_entrypoint} \
 	# ----- start app -----
 	&& sh_app="/start-app.sh" \
 	&& echo "baidunetdisk --disable-gpu-sandbox --no-sandbox" >> ${sh_app} \
 	&& chmod +x ${sh_app} \
-	&& echo "${sh_app} &" >> /docker-entrypoint.sh \
+	&& echo "${sh_app} &" >> ${sh_entrypoint} \
 	# ----- sleep infinity -----
-	&& echo "uname -a\nsleep infinity" >> /docker-entrypoint.sh \
-	&& chmod +x /docker-entrypoint.sh
+	&& echo "uname -a" >> ${sh_entrypoint} \
+	&& echo "sleep infinity" >> ${sh_entrypoint} \
+	&& chmod +x ${sh_entrypoint}
 
 EXPOSE 5900 7900
 
-ENTRYPOINT ["sh", "/docker-entrypoint.sh"]
+ENTRYPOINT ["/docker-entrypoint.sh"]
