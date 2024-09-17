@@ -16,7 +16,7 @@ RUN set -x \
     && apt-get update --ignore-missing -y -qq \
     # ===== get version =====
     && version=$(apt-cache madison protonvpn-stable-release | awk -F '|' '{print $2}' | tr -d ' ' | head -n 1) \
-    && echo "version=${version}" \
+    # && echo "version=${version}" \
     # ===== Clean pre-install =====
     && apt-get autoremove --purge -y -qq \
         curl \
