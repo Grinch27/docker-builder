@@ -15,7 +15,7 @@ RUN set -x \
     && echo "deb [signed-by=${gpg_file}] https://repo.protonvpn.com/debian stable main" > /etc/apt/sources.list.d/protonvpn.list \
     && apt-get update --ignore-missing -y -qq \
     # ===== get version =====
-    && version=$(apt-cache madison protonvpn-stable-release) \
+    && version=$(apt-cache madison protonvpn-stable-release | awk -F '|' '{print $2}' | tr -d ' ' | head -n 1) \
     && echo "version=${version}" \
     # ===== Clean pre-install =====
     && apt-get autoremove --purge -y -qq \
