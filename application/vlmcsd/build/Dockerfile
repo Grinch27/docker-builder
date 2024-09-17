@@ -13,7 +13,6 @@ RUN set -x \
 
 ARG base_image=alpine:latest
 FROM ${base_image}
-# WORKDIR /root/
 COPY --from=builder /root/vlmcsd/bin/vlmcsd /usr/bin/vlmcsd
 RUN set -x \
     # ===== docker-entrypoint.sh =====
@@ -30,6 +29,6 @@ RUN set -x \
 	&& chmod +x ${sh_entrypoint}
 
 EXPOSE 1688/tcp
-
+# WORKDIR /root/
 # CMD [ "/usr/bin/vlmcsd", "-D", "-d" ]
 ENTRYPOINT ["/docker-entrypoint.sh"]
