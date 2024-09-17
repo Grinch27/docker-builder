@@ -1,6 +1,5 @@
 ARG base_image=alpine:latest
 FROM ${base_image} as builder
-# WORKDIR /root
 RUN set -x \
     && apk update \
     && apk add --no-cache \
@@ -9,8 +8,10 @@ RUN set -x \
         curl \
         git \
         make \
-    && git clone https://github.com/Wind4/vlmcsd.git /vlmcsd --branch=master --single-branch \
-    && cd /vlmcsd \
+    # ===== Clone source =====
+    && repo_dir="/vlmcsd" \
+    && git clone https://github.com/Wind4/vlmcsd.git ${repo_dir} --branch=master --single-branch \
+    && cd ${repo_dir} \
     # ----- Following fixes https://github.com/Wind4/vlmcsd/issues/90 -----
     && PATCH_TARGET="src/kms.c" \
     && sed -i '467s/const char\* pid;/& char ePid[PID_BUFFER_SIZE];/' ${PATCH_TARGET} \
