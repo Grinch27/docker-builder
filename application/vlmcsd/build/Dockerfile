@@ -11,7 +11,7 @@ RUN set -x \
         make \
     && git clone https://github.com/Wind4/vlmcsd.git /vlmcsd --branch=master --single-branch \
     && cd /vlmcsd \
-    # ----- fix-dangling-pointer.patch -----
+    # ----- Following fixes https://github.com/Wind4/vlmcsd/issues/90 -----
     && PATCH_TARGET="src/kms.c" \
     && sed -i '467s/const char\* pid;/& char ePid[PID_BUFFER_SIZE];/' ${PATCH_TARGET} \
     && sed -i '473{/char ePid\[PID_BUFFER_SIZE\];/d}' ${PATCH_TARGET} \
