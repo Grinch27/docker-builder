@@ -10,7 +10,7 @@ RUN set -x \
 		curl \
         gpg \
     # ===== Add protonvpn gpg key =====
-    && curl -fsSL https://repo.protonvpn.com/debian/dists/stable/Release.gpg | gpg --yes --dearmor --output /usr/share/keyrings/protonvpn_public.gpg \
+    && curl -fsSL https://repo.protonvpn.com/debian/public_key.asc | gpg --yes --dearmor --output /usr/share/keyrings/protonvpn_public.gpg \
     && echo "deb [signed-by=/usr/share/keyrings/protonvpn_public.gpg] https://repo.protonvpn.com/debian stable main" > /etc/apt/sources.list.d/protonvpn.list \
     && apt-get update --ignore-missing -y -qq \
     # ===== Clean pre-install =====
