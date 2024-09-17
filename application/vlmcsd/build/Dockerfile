@@ -9,7 +9,7 @@ RUN set -x \
         curl \
         git \
         make \
-    && git clone --branch master --single-branch https://github.com/Wind4/vlmcsd.git \
+    && git clone https://github.com/Wind4/vlmcsd.git --branch=master --single-branch \
     && cd vlmcsd/ \
     # ----- fix-dangling-pointer.patch -----
     && PATCH_URL="https://raw.githubusercontent.com/Grinch27/docker-builder/main/application/vlmcsd/build/fix-dangling-pointer.patch" \
