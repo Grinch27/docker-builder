@@ -17,16 +17,14 @@ RUN set -x \
     # ===== get version =====
     && version=$(apt-cache madison protonvpn-stable-release | awk -F '|' '{print $2}' | tr -d ' ' | head -n 1) \
     # && echo "version=${version}" \
+    && URL_deb="https://repo.protonvpn.com/debian/dists/stable/main/binary-all/protonvpn-stable-release_${version}_all.deb" \
+    && FILE_deb="/protonvpn-stable-release.deb" \
+    && curl -fsSL ${URL_deb} -o ${FILE_deb} \
     # ===== Clean pre-install =====
     && apt-get autoremove --purge -y -qq \
         curl \
         gpg \
     # ===== Install protonvpn =====
-    # && apt-get install --no-install-recommends --no-install-suggests --fix-missing -y -qq \
-    #     proton-vpn-gnome-desktop \
-    && URL_deb="https://repo.protonvpn.com/debian/dists/stable/main/binary-all/protonvpn-stable-release_${version}_all.deb" \
-    && FILE_deb="/protonvpn-stable-release.deb" \
-    && curl -fsSL ${URL_deb} -o ${FILE_deb} \
     && apt-get install --no-install-recommends --no-install-suggests --fix-missing -y -qq \
         ${FILE_deb} \
     && rm -f ${FILE_deb} \
