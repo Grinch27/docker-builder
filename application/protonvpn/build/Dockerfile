@@ -20,6 +20,8 @@ RUN set -x \
     && URL_deb="https://repo.protonvpn.com/debian/dists/stable/main/binary-all/protonvpn-stable-release_${version}_all.deb" \
     && FILE_deb="/protonvpn-stable-release.deb" \
     && curl -fsSL ${URL_deb} -o ${FILE_deb} \
+    && rm -f /etc/apt/sources.list.d/protonvpn.list \
+    && apt-get update --ignore-missing -y -qq \
     # ===== Clean pre-install =====
     && apt-get autoremove --purge -y -qq \
         curl \
