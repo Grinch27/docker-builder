@@ -36,7 +36,7 @@ RUN set -x \
         rsync \
         schedtool \
         squashfs-tools \
-        vi \
+        vim \
         xsltproc \
         zip \
         zlib1g-dev \
