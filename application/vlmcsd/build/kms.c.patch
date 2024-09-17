@@ -1,10 +1,6 @@
-diff --git a/src/kms.c b/src/kms.c
-index 9e31a72..46a49fc 100644
 --- a/src/kms.c
 +++ b/src/kms.c
-@@ -465,12 +465,12 @@ static void getEpid(RESPONSE *const baseResponse, const char** EpidSource, const
- {
- #if !defined(NO_RANDOM_EPID) || !defined(NO_CL_PIDS) || !defined(NO_INI_FILE)
+@@ -467,10 +467,10 @@
  	const char* pid;
 +	char ePid[PID_BUFFER_SIZE];
  	if (KmsResponseParameters[index].Epid == NULL)
