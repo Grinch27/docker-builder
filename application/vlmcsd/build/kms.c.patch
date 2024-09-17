@@ -13,4 +13,3 @@
 -			char ePid[PID_BUFFER_SIZE];
  			generateRandomPid(index, ePid, Lcid, HostBuild);
  			pid = ePid;
- 
