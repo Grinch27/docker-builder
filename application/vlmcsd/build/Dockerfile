@@ -1,6 +1,6 @@
 ARG base_image=alpine:latest
 FROM ${base_image} as builder
-WORKDIR /root
+# WORKDIR /root
 RUN set -x \
     && apk update \
     && apk add --no-cache \
@@ -9,8 +9,8 @@ RUN set -x \
         curl \
         git \
         make \
-    && git clone https://github.com/Wind4/vlmcsd.git --branch=master --single-branch \
-    && cd vlmcsd/ \
+    && git clone https://github.com/Wind4/vlmcsd.git /vlmcsd --branch=master --single-branch \
+    && cd /vlmcsd \
     # ----- fix-dangling-pointer.patch -----
     && PATCH_URL="https://raw.githubusercontent.com/Grinch27/docker-builder/main/application/vlmcsd/build/fix-dangling-pointer.patch" \
     && PATCH_FILE="/tmp/fix-dangling-pointer.patch" \
@@ -25,7 +25,7 @@ RUN set -x \
 
 ARG base_image=alpine:latest
 FROM ${base_image}
-COPY --from=builder /root/vlmcsd/bin/vlmcsd /usr/bin/vlmcsd
+COPY --from=builder /vlmcsd/bin/vlmcsd /usr/bin/vlmcsd
 RUN set -x \
     # ===== docker-entrypoint.sh =====
     && sh_entrypoint="/docker-entrypoint.sh" \
