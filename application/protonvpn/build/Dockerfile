@@ -14,6 +14,9 @@ RUN set -x \
     && curl -fsSL https://repo.protonvpn.com/debian/public_key.asc | gpg --yes --dearmor --output ${gpg_file} \
     && echo "deb [signed-by=${gpg_file}] https://repo.protonvpn.com/debian stable main" > /etc/apt/sources.list.d/protonvpn.list \
     && apt-get update --ignore-missing -y -qq \
+    # ===== get version =====
+    && version=$(apt-cache madison protonvpn-stable-release) \
+    && echo "version=${version}" \
     # ===== Clean pre-install =====
     && apt-get autoremove --purge -y -qq \
         curl \
