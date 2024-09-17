@@ -22,8 +22,14 @@ RUN set -x \
         curl \
         gpg \
     # ===== Install protonvpn =====
+    # && apt-get install --no-install-recommends --no-install-suggests --fix-missing -y -qq \
+    #     proton-vpn-gnome-desktop \
+    && URL_deb="https://repo.protonvpn.com/debian/dists/stable/main/binary-all/protonvpn-stable-release_${version}_all.deb" \
+    && FILE_deb="/protonvpn-stable-release.deb" \
+    && curl -fsSL ${URL_deb} -o ${FILE_deb} \
     && apt-get install --no-install-recommends --no-install-suggests --fix-missing -y -qq \
-        proton-vpn-gnome-desktop \
+        ${FILE_deb} \
+    && rm -f ${FILE_deb} \
     # ===== Clean apt =====
     && apt-get autoremove --purge -y -qq \
     && apt-get clean -y -qq \
