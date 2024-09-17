@@ -15,7 +15,7 @@ RUN set -x \
     && PATCH_TARGET="src/kms.c" \
     && sed -i '467s/const char\* pid;/& char ePid[PID_BUFFER_SIZE];/' ${PATCH_TARGET} \
     && sed -i '473{/char ePid\[PID_BUFFER_SIZE\];/d}' ${PATCH_TARGET} \
-    && cat ${PATCH_TARGET} \
+    # && cat ${PATCH_TARGET} \
     # ----- make -----
     && make
 
