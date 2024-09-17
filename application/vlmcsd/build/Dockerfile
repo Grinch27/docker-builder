@@ -1,5 +1,29 @@
 ARG base_image=alpine:latest
+FROM ${base_image} as patcher
+RUN set -x \
+    && cat << 'EOF' > /fix-dangling-pointer.patch
+--- a/src/kms.c
++++ b/src/kms.c
+@@ -467,1 +467,1 @@ const char* pid;
++   char ePid[PID_BUFFER_SIZE];
+    if (KmsResponseParameters[index].Epid == NULL)
+    {
+#ifndef NO_RANDOM_EPID
+        if (RandomizationLevel == 2)
+        {
+-            char ePid[PID_BUFFER_SIZE];
+            generateRandomPid(index, ePid, Lcid, HostBuild);
+            pid = ePid;
+        }
+EOF
+
+
+
+ARG base_image=alpine:latest
 FROM ${base_image} as builder
+ARG PATCH_FILE_ABS_PATH=/fix-dangling-pointer.patch
+COPY --from=patcher ${PATCH_FILE_ABS_PATH} ${PATCH_FILE_ABS_PATH}
+
 WORKDIR /root
 RUN set -x \
     && apk update \
@@ -9,7 +33,10 @@ RUN set -x \
         make \
     && git clone --branch master --single-branch https://github.com/Wind4/vlmcsd.git \
     && cd vlmcsd/ \
+    && patch -p1 < ${PATCH_FILE_ABS_PATH} \
     && make
+
+
 
 ARG base_image=alpine:latest
 FROM ${base_image}
