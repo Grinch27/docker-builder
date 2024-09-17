@@ -14,16 +14,13 @@ RUN set -x \
     && curl -fsSL https://repo.protonvpn.com/debian/public_key.asc | gpg --yes --dearmor --output ${gpg_file} \
     && echo "deb [signed-by=${gpg_file}] https://repo.protonvpn.com/debian stable main" > /etc/apt/sources.list.d/protonvpn.list \
     && apt-get update --ignore-missing -y -qq \
-    && ls -lh /usr/share/keyrings/ \
-    # && echo "deb [signed-by=/usr/share/keyrings/protonvpn-stable-archive-keyring.gpg] https://repo.protonvpn.com/debian/ stable main" > /etc/apt/sources.list.d/protonvpn.list \
-    # && sudo rm ${gpg_file} \
     # ===== Clean pre-install =====
     && apt-get autoremove --purge -y -qq \
         curl \
         gpg \
     # ===== Install protonvpn =====
     && apt-get install --no-install-recommends --no-install-suggests --fix-missing -y -qq \
-        protonvpn-stable-release \
+        protonvpn \
     # ===== Clean apt =====
     && apt-get autoremove --purge -y -qq \
     && apt-get clean -y -qq \
