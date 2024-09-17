@@ -7,10 +7,10 @@ echo "dir_current=${dir_current}"
 default_dockerfile="Dockerfile"
 # 检查环境变量 dockerfile 是否已被定义
 if [ -z "$dockerfile_name" ]; then
-  echo "环境变量 dockerfile 未定义，使用默认值: ${default_dockerfile}"
+  echo "环境变量 dockerfile_name 未定义，使用默认值: ${default_dockerfile}"
   dockerfile_name=${default_dockerfile}
 else
-  echo "环境变量 dockerfile 已定义: ${dockerfile_name}"
+  echo "环境变量 dockerfile_name 已定义: ${dockerfile_name}"
 fi
 
 # 当前目录下搜索 Dockerfile 文件，不区分大小写
