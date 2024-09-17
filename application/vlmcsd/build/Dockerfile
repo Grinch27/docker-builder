@@ -12,11 +12,9 @@ RUN set -x \
     && git clone https://github.com/Wind4/vlmcsd.git /vlmcsd --branch=master --single-branch \
     && cd /vlmcsd \
     # ----- fix-dangling-pointer.patch -----
-    && PATCH_URL="https://raw.githubusercontent.com/Grinch27/docker-builder/main/application/vlmcsd/build/kms.c.patch" \
-    && PATCH_FILE="/tmp/kms.c.patch" \
     && PATCH_TARGET="src/kms.c" \
-    && curl -fsSL ${PATCH_URL} -o ${PATCH_FILE} \
-    && patch -p1 < ${PATCH_FILE} \
+    && sed -i '467s/const char\* pid;/& char ePid[PID_BUFFER_SIZE];/' ${PATCH_TARGET} \
+    && sed -i '473{/char ePid\[PID_BUFFER_SIZE\];/d}' ${PATCH_TARGET} \
     && cat ${PATCH_TARGET} \
     # ----- make -----
     && make
