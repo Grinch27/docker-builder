@@ -4,6 +4,3 @@
    	const char* pid;
 +  	char ePid[PID_BUFFER_SIZE];
    	if (KmsResponseParameters[index].Epid == NULL)
-@@ -471,1 +471,0 @@
--  			char Epid[PID_BUFFER_SIZE];
-   			generateRandomPid(index, ePid, Lcid, HostBuild);
