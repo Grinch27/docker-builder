@@ -1,6 +1,0 @@
---- a/src/kms.c
-+++ b/src/kms.c
-@@ -467,0 +467,1 @@
-   	const char* pid;
-+  	char ePid[PID_BUFFER_SIZE];
-   	if (KmsResponseParameters[index].Epid == NULL)
