@@ -1,10 +1,9 @@
 --- a/src/kms.c
 +++ b/src/kms.c
 @@ -467,0 +467,1 @@
-   const char* pid;
-+  char ePid[PID_BUFFER_SIZE];
-   if (KmsResponseParameters[index].Epid == NULL)
+   	const char* pid;
++  	char ePid[PID_BUFFER_SIZE];
+   	if (KmsResponseParameters[index].Epid == NULL)
 @@ -471,1 +471,0 @@
--  char ePid[PID_BUFFER_SIZE];
-   generateRandomPid(index, ePid, Lcid, HostBuild);
-   
+-  			char Epid[PID_BUFFER_SIZE];
+   			generateRandomPid(index, ePid, Lcid, HostBuild);
