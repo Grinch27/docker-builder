@@ -1,6 +1,7 @@
 --- a/src/kms.c
 +++ b/src/kms.c
-@@ -467,1 +467,1 @@ const char* pid;
+@@ -467,1 +467,1 @@ static void getEpid(RESPONSE *const baseResponse, const char** EpidSource, const
+    const char* pid;
 +   char ePid[PID_BUFFER_SIZE];
     if (KmsResponseParameters[index].Epid == NULL)
     {
