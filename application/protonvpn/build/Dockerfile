@@ -20,7 +20,7 @@ RUN set -x \
         gpg \
     # ===== Install protonvpn =====
     && apt-get install --no-install-recommends --no-install-suggests --fix-missing -y -qq \
-        protonvpn \
+        proton-vpn-gnome-desktop \
     # ===== Clean apt =====
     && apt-get autoremove --purge -y -qq \
     && apt-get clean -y -qq \
