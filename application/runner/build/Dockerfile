@@ -16,6 +16,8 @@ RUN set -x \
         ca-certificates \
         curl \
         flex \
+        g++ \
+        gcc \
         gcc-aarch64-linux-gnu \
         git \
         git-lfs \
