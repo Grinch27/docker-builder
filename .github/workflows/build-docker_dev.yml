@@ -117,6 +117,7 @@ jobs:
         if: ${{ env.custom_env != '' }}
         env:
           flag_split: ";"
+        working-directory: /
         run: |
           echo "${{ env.custom_env }}" | tr '${{ env.flag_split }}' '\n' | tee -a $GITHUB_ENV
 
