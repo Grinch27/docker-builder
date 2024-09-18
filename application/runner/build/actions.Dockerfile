@@ -16,7 +16,6 @@ RUN set -x \
         bison \
         build-essential \
         ca-certificates \
-        ccache \
         curl \
         flex \
         g++-multilib \
@@ -43,6 +42,7 @@ RUN set -x \
         xsltproc \
         zip \
         zlib1g-dev \
+        # ccache \
     # ----- List upgradable -----
     && apt list --upgradable \
     # ===== Setup runner =====
