@@ -5,6 +5,8 @@
 ARG base_image=ubuntu:devel
 FROM ${base_image}
 
+ARG dir_actions="/actions-runner"
+
 RUN set -x \
     # ===== apt dependencies =====
 	&& export DEBIAN_FRONTEND=noninteractive \
@@ -43,10 +45,10 @@ RUN set -x \
     # ----- List upgradable -----
     && apt list --upgradable \
     # ===== Setup runner =====
+    # ----- Get latest version -----
     && version=$(curl -s https://api.github.com/repos/actions/runner/releases/latest | grep 'tag_name' | cut -d ':' -f 2- | cut -d '"' -f 2) \
     && version=${version#v} \
-    # ----- Create a folder -----
-    && dir_actions="/actions-runner" \
+    # ----- Create folder -----
     && mkdir -p ${dir_actions} \
     && cd ${dir_actions} \
     # ----- Download runner -----
@@ -60,7 +62,7 @@ RUN set -x \
     fi \
     && FILE_tar="/actions-runner.tar.gz" \
     && curl -fsSL ${URL_DOWNLOAD} -o ${FILE_tar} \
-    # Extract the installer
+    # ----- Extract runner -----
     && tar xzf ${FILE_tar} -C ${dir_actions} \
     && rm -f ${FILE_tar} \
     # ===== Clean apt =====
@@ -78,6 +80,6 @@ RUN set -x \
 	&& echo "sleep infinity" >> ${sh_entrypoint} \
 	&& chmod +x ${sh_entrypoint}
 
-WORKDIR /actions-runner
+WORKDIR ${dir_actions}
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
