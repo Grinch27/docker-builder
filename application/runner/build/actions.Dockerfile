@@ -6,7 +6,6 @@ ARG base_image=ubuntu:devel
 FROM ${base_image}
 
 ARG dir_actions="/actions-runner"
-
 RUN set -x \
     # ===== apt dependencies =====
 	&& export DEBIAN_FRONTEND=noninteractive \
@@ -83,5 +82,6 @@ RUN set -x \
 	&& chmod +x ${sh_entrypoint}
 
 WORKDIR ${dir_actions}
+ENV RUNNER_ALLOW_RUNASROOT=true
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
