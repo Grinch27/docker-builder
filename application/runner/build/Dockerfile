@@ -2,7 +2,7 @@
 # base on Ubuntu
 ############################################################
 
-ARG base_image=ubuntu:latest
+ARG base_image=ubuntu:devel
 FROM ${base_image}
 
 RUN set -x \
@@ -16,8 +16,7 @@ RUN set -x \
         ca-certificates \
         curl \
         flex \
-        g++-multilib \
-        gcc-multilib \
+        gcc-aarch64-linux-gnu \
         git \
         git-lfs \
         gnupg \
@@ -32,6 +31,7 @@ RUN set -x \
         libxml2 \
         libxml2-utils \
         lzop \
+        make \
         pngcrush \
         rsync \
         schedtool \
@@ -41,6 +41,8 @@ RUN set -x \
         zip \
         zlib1g-dev \
         # ccache \
+        # g++-multilib \
+        # gcc-multilib \
     # ===== List upgradable =====
     && apt list --upgradable \
     # ===== Clean apt =====
