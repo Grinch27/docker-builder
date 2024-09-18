@@ -82,6 +82,6 @@ RUN set -x \
 	&& chmod +x ${sh_entrypoint}
 
 WORKDIR ${dir_actions}
-ENV RUNNER_ALLOW_RUNASROOT=true
+# ENV RUNNER_ALLOW_RUNASROOT=true
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
