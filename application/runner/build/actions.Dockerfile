@@ -54,9 +54,9 @@ RUN set -x \
     # ----- Download runner -----
     && OS_ARCH=$(dpkg --print-architecture) \
     && if [ "${OS_ARCH}" = "amd64" ]; then \
-        URL_DOWNLOAD="https://github.com/actions/runner/releases/download/v${version}/actions-runner-linux-x64-${version}.tar.gz" \
+        URL_DOWNLOAD="https://github.com/actions/runner/releases/download/v${version}/actions-runner-linux-x64-${version}.tar.gz"; \
     elif [ "${OS_ARCH}" = "arm64" ]; then \
-        URL_DOWNLOAD="https://github.com/actions/runner/releases/download/v${version}/actions-runner-linux-arm64-${version}.tar.gz" \
+        URL_DOWNLOAD="https://github.com/actions/runner/releases/download/v${version}/actions-runner-linux-arm64-${version}.tar.gz"; \
     else \
         echo "Unsupported architecture: ${OS_ARCH}"; exit 1; \
     fi \
