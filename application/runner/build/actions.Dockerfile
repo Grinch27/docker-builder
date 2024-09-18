@@ -37,12 +37,12 @@ RUN set -x \
         rsync \
         schedtool \
         squashfs-tools \
-        sudo \
         vim \
         xsltproc \
         zip \
         zlib1g-dev \
         # ccache \
+        # sudo \
     # ----- List upgradable -----
     && apt list --upgradable \
     # ===== Setup runner =====
