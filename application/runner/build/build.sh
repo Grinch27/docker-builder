@@ -16,10 +16,10 @@ fi
 # 当前目录下搜索 Dockerfile 文件，不区分大小写
 dockerfile=$(find "${dir_current}" -type f -iname "${dockerfile_name}")
 if [ -z "$dockerfile" ]; then
-  echo "未找到Dockerfile文件 ${dockerfile_name}"
+  echo "未找到Dockerfile文件 ${dockerfile}"
   exit 1
 else
-  echo "找到Dockerfile文件 ${dockerfile_name}"
+  echo "找到Dockerfile文件 ${dockerfile}"
 fi
 
 # docker buildx
