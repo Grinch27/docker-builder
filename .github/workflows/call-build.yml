@@ -104,6 +104,29 @@ jobs:
               tag_repo: "dev",
               force_push: "false",
             }
+          # steamcmd
+          - {
+              time: "50 22 * * *",
+              app_branch: "steamcmd",
+              tag_repo: "dev",
+              force_push: "false",
+            }
+          # runner
+          - {
+              time: "0 23 * * *",
+              app_branch: "runner",
+              tag_repo: "dev",
+              force_push: "false",
+              custom_env: "",
+            }
+          # runner-actions
+          - {
+              time: "0 23 * * *",
+              app_branch: "runner",
+              tag_repo: "actions",
+              force_push: "false",
+              custom_env: "dockerfile=actions.Dockerfile",
+            }
 
     steps:
       - name: Trigger workflow
@@ -135,4 +158,3 @@ jobs:
             -H "Authorization: Bearer ${{ secrets.PAT }}" \
             https://api.github.com/repos/${{ github.repository }}/actions/workflows/${{ env.workflow }}.yml/dispatches \
             --data "$data"
-          
