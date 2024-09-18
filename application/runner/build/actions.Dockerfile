@@ -2,7 +2,7 @@
 # base on Ubuntu
 ############################################################
 
-ARG base_image=ubuntu:latest
+ARG base_image=ubuntu:devel
 FROM ${base_image}
 
 RUN set -x \
