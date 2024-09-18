@@ -442,6 +442,15 @@ jobs:
 
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
+      - name: Load Custom Environment Variables
+        id: env-custom
+        if: ${{ env.custom_env != '' }}
+        env:
+          flag_split: ";"
+        working-directory: /
+        run: |
+          echo "${{ env.custom_env }}" | tr '${{ env.flag_split }}' '\n' | tee -a $GITHUB_ENV
+
       - name: Setup Docker
         id: docker
         env:
