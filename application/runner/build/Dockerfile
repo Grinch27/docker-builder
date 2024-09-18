@@ -21,18 +21,13 @@ RUN set -x \
         git-lfs \
         gnupg \
         gperf \
-        imagemagick \
-        lib32readline-dev \
-        lib32z1-dev \
         libelf-dev \
         lz4 \
-        libsdl1.2-dev \
         libssl-dev \
         libxml2 \
         libxml2-utils \
         lzop \
         make \
-        pngcrush \
         rsync \
         schedtool \
         squashfs-tools \
@@ -43,6 +38,12 @@ RUN set -x \
         # ccache \
         # g++-multilib \
         # gcc-multilib \
+        # ----- abort -----
+        # imagemagick \
+        # lib32readline-dev \
+        # lib32z1-dev \
+        # libsdl1.2-dev \
+        # pngcrush \
     # ===== List upgradable =====
     && apt list --upgradable \
     # ===== Clean apt =====
