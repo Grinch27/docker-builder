@@ -15,6 +15,7 @@ RUN set -x \
 		bc \
         bison \
         build-essential \
+        ca-certificates \
         ccache \
         curl \
         flex \
