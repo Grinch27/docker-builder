@@ -119,7 +119,7 @@ jobs:
               force_push: "false",
               custom_env: "",
             }
-          # runner-actions
+          # runner:actions
           - {
               time: "0 23 * * *",
               app_branch: "runner",
