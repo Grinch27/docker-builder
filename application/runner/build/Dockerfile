@@ -36,6 +36,7 @@ RUN set -x \
         rsync \
         schedtool \
         squashfs-tools \
+        unzip \
         vim \
         xsltproc \
         zip \
