@@ -28,6 +28,7 @@ RUN set -x \
         libxml2-utils \
         lzop \
         make \
+        python3 \
         rsync \
         schedtool \
         squashfs-tools \
