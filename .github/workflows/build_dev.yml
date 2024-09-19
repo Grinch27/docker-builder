@@ -300,6 +300,7 @@ jobs:
           done
           
           echo "dir_output=${{ env.dir_output }}" | tee -a ${GITHUB_OUTPUT}
+          echo "target_ext=${target_ext}" | tee -a $GITHUB_ENV
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
       - name: (Output) Compress
@@ -323,13 +324,14 @@ jobs:
                 --extreme \
                 --memlimit-compress=12GiB \
                 --check=sha256 \
-                --quiet \
+                --verbose \
                 --keep \
                 "${file}"
             fi
           done
 
           ls -lh ./
+          echo "target_ext=xz" | tee -a $GITHUB_ENV
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
       - name: (Output) Check
@@ -457,7 +459,7 @@ jobs:
         uses: ncipollo/release-action@main
         env:
           dir_output: ${{ steps.output.outputs.dir_output }}
-          target_ext: "xz"
+          target_ext: "${{ env.target_ext }}"
           release_md: ${{ steps.release-md.outputs.release_md }}
         with:
           name: "${{ env.repo_dockerhub }}"
