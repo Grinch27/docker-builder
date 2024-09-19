@@ -300,7 +300,7 @@ jobs:
           done
           ls -lh "${{ env.dir_output }}"
 
-          if ${{ env.compress }}.toLowerCase() != 'true'; then
+          if [ "$(echo ${{ env.compress }} | tr '[:upper:]' '[:lower:]')" != "true" ]; then
             echo "compress=false" | tee -a $GITHUB_ENV
           else
             echo "compress=true" | tee -a $GITHUB_ENV
