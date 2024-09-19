@@ -1,4 +1,4 @@
-name: (Dev) build
+name: (Dev) Build
 
 on:
   repository_dispatch:
@@ -28,7 +28,7 @@ env:
 
 jobs:
   build:
-    name: Test build
+    name: Test Build
     runs-on: ubuntu-24.04
     permissions:
       contents: write
