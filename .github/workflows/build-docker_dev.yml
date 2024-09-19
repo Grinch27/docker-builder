@@ -650,6 +650,7 @@ jobs:
 
           echo "dir_output=${dir_output}" | tee -a $GITHUB_ENV
           echo "target_ext=${target_ext}" | tee -a $GITHUB_ENV
+          echo "target_ext=${target_ext}" | tee -a ${GITHUB_OUTPUT}
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
       - name: (Output) Compress
@@ -657,7 +658,7 @@ jobs:
         if: ${{ env.compress == 'true' }}
         env:
           dir_output: ${{ env.dir_output }}
-          target_ext: "${{ env.target_ext || 'tar' }}"
+          target_ext: "${{ env.target_ext }}"
         working-directory: "${{ env.dir_output }}"
         run: |
           echo -e "Current working directory: $(pwd)"
@@ -701,7 +702,7 @@ jobs:
         env:
           metadata_sum_path: "${{ github.workspace }}/metadata_sum.json"
           category: "files"
-          target_ext: "tar"
+          target_ext: "${{ steps.output-compress.outputs.target_ext }}"
         working-directory: "${{ env.dir_output }}"
         run: |
           echo -e "Current working directory: $(pwd)"
