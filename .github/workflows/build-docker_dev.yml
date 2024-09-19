@@ -620,6 +620,8 @@ jobs:
       - name: Save to tar
         id: tar
         # if: ${{ 'true' == 'false' }} # disable
+        env:
+          target_ext: "tar"
         working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
           echo "Current working directory: $(pwd)"
@@ -631,12 +633,86 @@ jobs:
             
             docker pull --platform $platform ${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}
 
-            tar_file="${{ env.app_branch }}_${{ env.tag_repo }}_${{ env.version }}_$(echo ${platform} | tr '/' '_').tar"
+            target_file="${{ env.app_branch }}_${{ env.tag_repo }}_${{ env.version }}_$(echo ${platform} | tr '/' '_').${{ env.target_ext }}"
             docker tag ${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }} ${{ env.repo_dockerhub }}:${{ env.tag_repo }}
-            docker save --output ./${tar_file} ${{ env.repo_dockerhub }}:${{ env.tag_repo }}
-            echo "Exported $platform image to ${tar_file}"
-            ls -lh "${tar_file}"
+            docker save --output ./${target_file} ${{ env.repo_dockerhub }}:${{ env.tag_repo }}
+            echo "Exported $platform image to ${target_file}"
+            ls -lh "${target_file}"
           done
+          echo "status=success" | tee -a ${GITHUB_OUTPUT}
+
+      - name: Setup output
+        id: output
+        # if: ${{ 'true' == 'false' }} # disable
+        env:
+          metadata_sum_path: "${{ github.workspace }}/metadata_sum.json"
+          category: "files"
+          target_ext: "tar"
+        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
+        run: |
+          echo -e "Current working directory: $(pwd)"
+          ls -al ./
+
+          metadata='{"${{ env.category }}":[]}'
+          for file in ./*.${{ env.target_ext }}; do
+            if [[ ! -d "${file}" ]]; then
+              read -r checksum filename <<< "$(sha256sum "${file}")"
+              filename=$(basename "${filename}")
+              metadata=$(jq \
+                --arg filename "${filename}" \
+                --arg checksum "${checksum}" \
+                '.${{ env.category }} += [{filename: $filename, checksum: $checksum}]' <<< "${metadata}")
+            fi
+          done
+          echo "metadata=${metadata}"
+          echo "${metadata}" | jq . > ${{ env.metadata_sum_path }}
+
+          echo "timestamp=$(date +"%y%mw%V")" | tee -a ${GITHUB_OUTPUT}
+          echo "metadata_sum_path=${metadata_sum_path}" | tee -a ${GITHUB_OUTPUT}
+          echo "status=success" | tee -a ${GITHUB_OUTPUT}
+
+      - name: (release.md) Generate
+        id: release-md
+        env:
+          release_md: "${{ github.workspace }}/${{ env.dir_app }}/release.md"
+          metadata_sum_path: ${{ steps.output.outputs.metadata_sum_path }}
+        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
+        run: |
+          echo "Current working directory: $(pwd)"
+
+          release_md_dir=$(dirname ${{ env.release_md }})
+          mkdir -p ${release_md_dir}
+          : > ${{ env.release_md }}
+
+          record_to_markdown() {
+            local title="$1"
+            local content="$2"
+            local code_block="${3:-}"
+            local format="\n### %s\n%s\n"
+
+            if [[ -n "${code_block}" ]]; then
+              format="\n### %s\n\n<details>\n<summary>%s</summary>\n\n\`\`\`%s\n%s\n\`\`\`\n\n</details>\n"
+              printf "${format}" "${title}" "${title}" "${code_block}" "${content}" | tee -a ${{ env.release_md }}
+            else
+              printf "${format}" "${title}" "${content}" | tee -a ${{ env.release_md }}
+            fi
+          }
+          
+          record_to_markdown "Timestamp" "- [x] $(date +"%Y-%m-%d %H:%M:%S %z")"
+
+          IFS=',' read -ra registries <<< "${{ env.registry_push }}" >> ${{ env.release_md }}
+          for registry_remote in "${registries[@]}"; do
+            echo "Registry: ${registry_remote}" >> ${{ env.release_md }}
+            echo "Repository: ${{ env.repo_dockerhub }}" >> ${{ env.release_md }}
+            echo "docker pull ${registry_remote}/${{ env.repo_dockerhub }}:\*"  >> ${{ env.release_md }}
+            echo "docker load < \*.tar" >> ${{ env.release_md }}
+          done
+
+          sum_json_content=$(jq '.' "${{ env.metadata_sum_path }}")
+          record_to_markdown "sha256sum" "${sum_json_content}" "json"
+
+          cat ${{ env.release_md }}
+          echo "release_md=${release_md}" | tee -a ${GITHUB_OUTPUT}
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
       - name: (Push) Image to ${{ env.registry_push }}
@@ -672,41 +748,24 @@ jobs:
           for registry_remote in "${registries[@]}"; do
             for tag_each in "${tag_array[@]}"; do
               docker buildx imagetools create --tag "${registry_remote}/${{ env.repo_dockerhub }}:${tag_each}" "${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}"
-              # skopeo inspect \
-              #   --format=json \
-              #   docker://${registry_remote}/${{ env.repo_dockerhub }}:${tag_each}
+              # skopeo inspect --format=json docker://${registry_remote}/${{ env.repo_dockerhub }}:${tag_each}
             done
           done
 
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
-      - name: (README) Generate
-        id: readme
-        env:
-          readme_md: "${{ github.workspace }}/${{ env.dir_app }}/README.md"
-        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
-        run: |
-          echo "Current working directory: $(pwd)"
-          IFS=',' read -ra registries <<< "${{ env.registry_push }}" >> ${{ env.readme_md }}
-          for registry_remote in "${registries[@]}"; do
-            echo "Registry: ${registry_remote}" >> ${{ env.readme_md }}
-            echo "Repository: ${{ env.repo_dockerhub }}" >> ${{ env.readme_md }}
-            echo "docker pull ${registry_remote}/${{ env.repo_dockerhub }}:\*"  >> ${{ env.readme_md }}
-            echo "docker load < \*.tar" >> ${{ env.readme_md }}
-          done
-
-          cat ${{ env.readme_md }}
-          echo "status=success" | tee -a ${GITHUB_OUTPUT}
-
       - name: (Upload) to Release
         id: release
         uses: ncipollo/release-action@main
+        env:
+          target_ext: "tar"
+          release_md: ${{ steps.release-md.outputs.release_md }}
         with:
           name: "${{ env.repo_dockerhub }}"
           tag: "${{ env.app_branch }}"
-          artifacts: "${{ github.workspace }}/${{ env.dir_app }}/*.tar"
+          artifacts: "${{ github.workspace }}/${{ env.dir_app }}/*.${{ env.target_ext }}"
           allowUpdates: true
           removeArtifacts: false
           replacesArtifacts: true
           token: "${{ secrets.GITHUB_TOKEN }}"
-          bodyFile: "${{ github.workspace }}/${{ env.dir_app }}/README.md"
+          bodyFile: "${{ env.release_md }}"
