@@ -117,7 +117,15 @@ jobs:
               app_branch: "runner",
               tag_repo: "dev",
               force_push: "false",
-              custom_env: "",
+              custom_env: "compress=true",
+            }
+          # runner
+          - {
+              time: "0 23 * * *",
+              app_branch: "runner",
+              tag_repo: "slim",
+              force_push: "false",
+              custom_env: "dockerfile=slim.Dockerfile;compress=true",
             }
           # runner:actions
           - {
@@ -125,7 +133,7 @@ jobs:
               app_branch: "runner",
               tag_repo: "actions",
               force_push: "false",
-              custom_env: "dockerfile=actions.Dockerfile",
+              custom_env: "dockerfile=actions.Dockerfile;compress=true",
             }
 
     steps:
