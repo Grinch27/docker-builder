@@ -312,7 +312,7 @@ jobs:
         working-directory: "${{ steps.output.outputs.dir_output }}"
         run: |
           echo -e "Current working directory: $(pwd)"
-          ls -al ./
+          ls -lh ./
 
           for file in ${{ env.dir_output }}/*.${{ env.target_ext }}; do
             if [[ ! -d "${file}" ]]; then
@@ -321,7 +321,7 @@ jobs:
             fi
           done
 
-          ls -al ./
+          ls -lh ./
 
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
@@ -336,7 +336,7 @@ jobs:
         working-directory: "${{ steps.output.outputs.dir_output }}"
         run: |
           echo -e "Current working directory: $(pwd)"
-          ls -al ./
+          ls -lh ./
 
           metadata='{"${{ env.category }}":[]}'
           for file in ./*.${{ env.target_ext }}; do
