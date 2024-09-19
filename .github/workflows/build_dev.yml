@@ -49,7 +49,7 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Load Env
+      - name: (Env) Load .env files
         id: env-app
         working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
@@ -76,11 +76,12 @@ jobs:
 
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
-      - name: Load Custom Environment Variables
+      - name: (Env) Load Custom inputs
         id: env-custom
         if: ${{ env.custom_env != '' }}
         env:
           flag_split: ";"
+        working-directory: /
         run: |
           echo "${{ env.custom_env }}" | tr '${{ env.flag_split }}' '\n' | tee -a $GITHUB_ENV
 
@@ -91,20 +92,21 @@ jobs:
         working-directory: /
         run: |
           echo -e "Current working directory: $(pwd)"
+          
           packages_install=(
             "ca-certificates"
             "curl"
             "gpg"
-          )
-          packages_extra=(
             "skopeo"
             "jq"
+            "xz-utils"
           )
-          sudo -E apt-get -qq -y update
-          sudo -E apt-get -y install "${packages_install[@]}"
-          sudo -E apt-get -y install "${packages_extra[@]}"
-          # sudo -E apt-get -qq -y autoremove --purge
-          # sudo -E apt-get -qq clean
+          sudo -E apt-get -y -qq update
+          sudo -E apt-get -y -qq install "${packages_install[@]}"
+          sudo -E apt-get -qq -y autoremove --purge
+          sudo -E apt-get -qq clean
+          sudo -E systemctl daemon-reload
+
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
       - name: Setup Docker
@@ -273,22 +275,190 @@ jobs:
           done
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
-      - name: Save to tar
-        id: tar
+      - name: (Output) Save
+        id: output
         # if: ${{ 'true' == 'false' }} # disable
+        env:
+          target_ext: "tar"
+          dir_output: "${{ github.workspace }}/${{ env.dir_app }}/output"
         working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
           echo "Current working directory: $(pwd)"
 
+          mkdir -p ${{ env.dir_output }}
+
           IFS=',' read -ra platforms <<< "${{ env.arch_branch }}"
           for platform in "${platforms[@]}"; do
-            tar_file="${{ env.app_branch }}_${{ env.tag_repo }}_${{ env.version }}_$(echo ${platform} | tr '/' '_').tar"
+            target_file="${{ env.app_branch }}_${{ env.tag_repo }}_${{ env.version }}_$(echo ${platform} | tr '/' '_').${{ env.target_ext }}"
             
-            docker pull --platform $platform ${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}
+            docker pull --platform ${platform} ${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}
             docker tag ${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }} ${{ env.repo_dockerhub }}:${{ env.tag_repo }}
-            docker save --output ./${tar_file} ${{ env.repo_dockerhub }}:${{ env.tag_repo }}
-
-            echo "Exported $platform image to ${tar_file}"
-            ls -lh "${tar_file}"
+            docker save --output ${{ env.dir_output }}/${target_file} ${{ env.repo_dockerhub }}:${{ env.tag_repo }}
+            
+            echo "Exported ${platform} image to ${target_file}"
+            ls -lh "${{ env.dir_output }}/${target_file}"
           done
+          
+          echo "dir_output=${{ env.dir_output }}" | tee -a ${GITHUB_OUTPUT}
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
+
+      - name: (Output) Compress
+        id: output-compress
+        if: steps.output.outputs.status == 'success' && !cancelled()
+        # if: ${{ 'true' == 'false' }} # disable
+        env:
+          dir_output: ${{ steps.output.outputs.dir_output }}
+          target_ext: "tar"
+        working-directory: "${{ steps.output.outputs.dir_output }}"
+        run: |
+          echo -e "Current working directory: $(pwd)"
+          ls -al ./
+
+          for file in ${{ env.dir_output }}/*.${{ env.target_ext }}; do
+            if [[ ! -d "${file}" ]]; then
+              # xz -z "${file}"
+              xz -z -9 -T0 -v "${file}"
+            fi
+          done
+
+          ls -al ./
+
+          echo "status=success" | tee -a ${GITHUB_OUTPUT}
+
+      - name: (Output) Check
+        id: output-check
+        if: steps.output.outputs.status == 'success' && !cancelled()
+        # if: ${{ 'true' == 'false' }} # disable
+        env:
+          metadata_sum_path: "${{ github.workspace }}/metadata_sum.json"
+          category: "files"
+          target_ext: "*"
+        working-directory: "${{ steps.output.outputs.dir_output }}"
+        run: |
+          echo -e "Current working directory: $(pwd)"
+          ls -al ./
+
+          metadata='{"${{ env.category }}":[]}'
+          for file in ./*.${{ env.target_ext }}; do
+            if [[ ! -d "${file}" ]]; then
+              read -r checksum filename <<< "$(sha256sum "${file}")"
+              filename=$(basename "${filename}")
+              metadata=$(jq \
+                --arg filename "${filename}" \
+                --arg checksum "${checksum}" \
+                '.${{ env.category }} += [{filename: $filename, checksum: $checksum}]' <<< "${metadata}")
+            fi
+          done
+          echo "metadata=${metadata}"
+          echo "${metadata}" | jq . > ${{ env.metadata_sum_path }}
+
+          echo "timestamp=$(date +"%y%mw%V")" | tee -a ${GITHUB_OUTPUT}
+          echo "metadata_sum_path=${metadata_sum_path}" | tee -a ${GITHUB_OUTPUT}
+          echo "status=success" | tee -a ${GITHUB_OUTPUT}
+
+      - name: (release.md) Generate
+        id: release-md
+        if: ${{ 'true' == 'false' }} # disable
+        env:
+          release_md: "${{ github.workspace }}/${{ env.dir_app }}/release.md"
+          metadata_sum_path: ${{ steps.output-check.outputs.metadata_sum_path }}
+        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
+        run: |
+          echo "Current working directory: $(pwd)"
+
+          release_md_dir=$(dirname ${{ env.release_md }})
+          mkdir -p ${release_md_dir}
+          : > ${{ env.release_md }}
+
+          record_to_markdown() {
+            local title="$1"
+            local content="$2"
+            local code_block="${3:-}"
+            local format="\n### %s\n%s\n"
+
+            if [[ -n "${code_block}" ]]; then
+              format="\n### %s\n\n<details>\n<summary>%s</summary>\n\n\`\`\`%s\n%s\n\`\`\`\n\n</details>\n"
+              printf "${format}" "${title}" "${title}" "${code_block}" "${content}" | tee -a ${{ env.release_md }}
+            else
+              printf "${format}" "${title}" "${content}" | tee -a ${{ env.release_md }}
+            fi
+          }
+          
+          record_to_markdown "Timestamp" "- [x] $(date +"%Y-%m-%d %H:%M:%S %z")"
+
+          IFS=',' read -ra registries <<< "${{ env.registry_push }}" >> ${{ env.release_md }}
+          for registry_remote in "${registries[@]}"; do
+            echo -e "### Info\n" >> ${{ env.release_md }}
+            echo "Registry: ${registry_remote}" >> ${{ env.release_md }}
+            echo "Repository: ${{ env.repo_dockerhub }}" >> ${{ env.release_md }}
+            echo "docker pull ${registry_remote}/${{ env.repo_dockerhub }}:\*"  >> ${{ env.release_md }}
+            echo "docker xz -d *.xz" >> ${{ env.release_md }}
+            echo "docker load < \*.tar" >> ${{ env.release_md }}
+          done
+
+          sum_json_content=$(jq '.' "${{ env.metadata_sum_path }}")
+          record_to_markdown "sha256sum" "${sum_json_content}" "json"
+
+          cat ${{ env.release_md }}
+          echo "release_md=${release_md}" | tee -a ${GITHUB_OUTPUT}
+          echo "status=success" | tee -a ${GITHUB_OUTPUT}
+
+      - name: (Push) Image to ${{ env.registry_push }}
+        id: push
+        if: ${{ 'true' == 'false' }} # disable
+        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
+        run: |
+          echo "Current working directory: $(pwd)"
+          declare -a tag_array=("${{ env.tag_repo }}")
+          tag_version="${{ env.tag_repo }}-${{ env.version }}"
+
+          dir_step="push"
+          dir_original=$(pwd)
+          if [ -d "${dir_step}" ]; then
+            cd ./${dir_step}
+            echo "Changed to directory: $(pwd)"
+
+            for script_file in ./*.sh; do
+              chmod +x "${script_file}"
+              source "${script_file}"
+            done
+
+            cd "${dir_original}"
+            echo "Changed back to original directory: $(pwd)"
+          else
+            echo "No directory found"
+          fi
+
+          if [ "${{ env.consistent }}" == "true" ] && [ -n "${tag_version}" ]; then
+            tag_array+=("${tag_version}")
+          fi
+
+          IFS=',' read -ra registries <<< "${{ env.registry_push }}"
+          for registry_remote in "${registries[@]}"; do
+            for tag_each in "${tag_array[@]}"; do
+              docker buildx imagetools create --tag "${registry_remote}/${{ env.repo_dockerhub }}:${tag_each}" "${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}"
+              # skopeo inspect --format=json docker://${registry_remote}/${{ env.repo_dockerhub }}:${tag_each}
+            done
+          done
+
+          echo "status=success" | tee -a ${GITHUB_OUTPUT}
+
+      - name: (Output) Upload to Release
+        id: output-release
+        # if: steps.output.outputs.status == 'success' && !cancelled()
+        if: ${{ 'true' == 'false' }} # disable
+        uses: ncipollo/release-action@main
+        env:
+          dir_output: ${{ steps.output.outputs.dir_output }}
+          target_ext: "xz"
+          release_md: ${{ steps.release-md.outputs.release_md }}
+        with:
+          name: "${{ env.repo_dockerhub }}"
+          tag: "${{ env.app_branch }}"
+          artifacts: "${{ env.dir_output }}/*.${{ env.target_ext }}"
+          allowUpdates: true
+          removeArtifacts: false
+          replacesArtifacts: true
+          token: "${{ secrets.GITHUB_TOKEN }}"
+          bodyFile: "${{ env.release_md }}"
+
