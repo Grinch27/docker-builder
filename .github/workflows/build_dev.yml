@@ -92,7 +92,7 @@ jobs:
         working-directory: /
         run: |
           echo -e "Current working directory: $(pwd)"
-          
+
           packages_install=(
             "ca-certificates"
             "curl"
@@ -336,13 +336,14 @@ jobs:
 
           for file in ${{ env.dir_output }}/*.${{ env.target_ext }}; do
             if [[ ! -d "${file}" ]]; then
-              # For compression level -9, each thread may use approximately 67 MiB to 768 MiB or more of memory.
+              # For compression level -9, each thread may use approximately 67 MiB to 768 MiB or more of memory
+              # check: crc32, sha256, sha512
               xz --compress \
                 --threads=0 \
                 -9 \
                 --extreme \
                 --memlimit-compress=${memlimit} \
-                --check=sha256 \
+                --check=crc32 \
                 --verbose \
                 --keep \
                 "${file}"
@@ -411,7 +412,7 @@ jobs:
               printf "${format}" "${title}" "${content}" | tee -a ${{ env.release_md }}
             fi
           }
-          
+
           record_to_markdown "Timestamp" "- [x] $(date +"%Y-%m-%d %H:%M:%S %z")"
 
           IFS=',' read -ra registries <<< "${{ env.registry_push }}" >> ${{ env.release_md }}
