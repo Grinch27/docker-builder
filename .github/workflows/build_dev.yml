@@ -299,14 +299,20 @@ jobs:
             echo "Exported ${platform} image to ${target_file}"
           done
           ls -lh "${{ env.dir_output }}"
-          
+
+          if ${{ env.compress }}.toLowerCase() != 'true'; then
+            echo "compress=false" | tee -a $GITHUB_ENV
+          else
+            echo "compress=true" | tee -a $GITHUB_ENV
+          fi
+
           echo "dir_output=${{ env.dir_output }}" | tee -a $GITHUB_ENV
           echo "target_ext=${{ env.target_ext }}" | tee -a $GITHUB_ENV
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
       - name: (Output) Compress
         id: output-compress
-        if: ${{ env.compress == 'true' }}  && steps.output.outputs.status == 'success' && !cancelled()
+        if: ${{ env.compress == 'true' }} && steps.output.outputs.status == 'success' && !cancelled()
         # if: ${{ 'true' == 'false' }} # disable
         env:
           dir_output: ${{ env.dir_output }}
