@@ -15,7 +15,7 @@ on:
         required: true
         default: "latest"
       custom_env:
-        description: "key=value;key=value"
+        description: "Custom Env: key=value;key=value"
         type: string
         required: false
         default: ""
