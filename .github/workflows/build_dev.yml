@@ -269,7 +269,7 @@ jobs:
             else
               echo "No directory found"
             fi
-            
+            echo "Sleep for ${{ env.time_sleep }} seconds"
             sleep "${{ env.time_sleep }}"
             docker logs ${{ env.container_name }}
             docker stop ${{ env.container_name }}
