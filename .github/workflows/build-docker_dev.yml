@@ -640,7 +640,7 @@ jobs:
             docker save --output ${{ env.dir_output }}/${target_file} ${{ env.repo_dockerhub }}:${{ env.tag_repo }}
             
             echo "Exported ${platform} image to ${target_file}"
-            ls -lh "${target_file}"
+            ls -lh "${{ env.dir_output }}/${target_file}"
           done
           
           echo "dir_output=${{ env.dir_output }}" | tee -a ${GITHUB_OUTPUT}
