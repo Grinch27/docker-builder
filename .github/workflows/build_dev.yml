@@ -223,6 +223,7 @@ jobs:
         env:
           container_name: container-test
           dir_container: "/tmp"
+          time_sleep: ${{ env.time_sleep || '3' }}
         working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
           echo "Current working directory: $(pwd)"
@@ -269,7 +270,7 @@ jobs:
               echo "No directory found"
             fi
             
-            sleep 10
+            sleep "${{ env.time_sleep }}"
             docker logs ${{ env.container_name }}
             docker stop ${{ env.container_name }}
           done
@@ -296,8 +297,8 @@ jobs:
             docker save --output ${{ env.dir_output }}/${target_file} ${{ env.repo_dockerhub }}:${{ env.tag_repo }}
             
             echo "Exported ${platform} image to ${target_file}"
-            ls -lh "${{ env.dir_output }}/${target_file}"
           done
+          ls -lh "${{ env.dir_output }}"
           
           echo "dir_output=${{ env.dir_output }}" | tee -a $GITHUB_ENV
           echo "target_ext=${{ env.target_ext }}" | tee -a $GITHUB_ENV
