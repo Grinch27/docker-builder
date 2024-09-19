@@ -299,7 +299,7 @@ jobs:
             ls -lh "${{ env.dir_output }}/${target_file}"
           done
           
-          echo "dir_output=${{ env.dir_output }}" | tee -a ${GITHUB_OUTPUT}
+          echo "dir_output=${{ env.dir_output }}" | tee -a $GITHUB_ENV
           echo "target_ext=${{ env.target_ext }}" | tee -a $GITHUB_ENV
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
