@@ -84,7 +84,7 @@ jobs:
 
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
-      - name: Load Env
+      - name: (Env) Load .env files
         id: env-app
         working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
@@ -111,7 +111,7 @@ jobs:
 
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
-      - name: Load Custom Environment Variables
+      - name: (Env) Load Custom inputs
         id: env-custom
         if: ${{ env.custom_env != '' }}
         env:
@@ -415,7 +415,7 @@ jobs:
 
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
-      - name: Load Env
+      - name: (Env) Load .env files
         id: env-app
         working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
@@ -442,7 +442,7 @@ jobs:
 
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
-      - name: Load Custom Environment Variables
+      - name: (Env) Load Custom inputs
         id: env-custom
         if: ${{ env.custom_env != '' }}
         env:
@@ -532,7 +532,7 @@ jobs:
 
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
-      - name: Inspect Layers with skopeo
+      - name: (Inspect) Layers with skopeo
         id: inspect
         # if: ${{ 'true' == 'false' }} # disable
         working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
@@ -560,11 +560,12 @@ jobs:
           done
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
-      - name: Test Docker image
+      - name: (Test) Docker image
         id: test
         env:
           container_name: container-test
           dir_container: "/tmp"
+          time_sleep: ${{ env.time_sleep || '3' }}
         working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
           echo "Current working directory: $(pwd)"
@@ -610,8 +611,8 @@ jobs:
             else
               echo "No directory found"
             fi
-            
-            # sleep 10
+            echo "Sleep for ${{ env.time_sleep }} seconds"
+            sleep "${{ env.time_sleep }}"
             docker logs ${{ env.container_name }}
             docker stop ${{ env.container_name }}
           done
@@ -621,8 +622,8 @@ jobs:
         id: output
         # if: ${{ 'true' == 'false' }} # disable
         env:
-          target_ext: "tar"
           dir_output: "${{ github.workspace }}/${{ env.dir_app }}/output"
+          target_ext: "tar"
         working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
           echo "Current working directory: $(pwd)"
@@ -638,31 +639,59 @@ jobs:
             docker save --output ${{ env.dir_output }}/${target_file} ${{ env.repo_dockerhub }}:${{ env.tag_repo }}
             
             echo "Exported ${platform} image to ${target_file}"
-            ls -lh "${{ env.dir_output }}/${target_file}"
           done
-          
-          echo "dir_output=${{ env.dir_output }}" | tee -a ${GITHUB_OUTPUT}
+          ls -lh "${{ env.dir_output }}"
+
+          if [ "$(echo ${{ env.compress }} | tr '[:upper:]' '[:lower:]')" != "true" ]; then
+            echo "compress=false" | tee -a $GITHUB_ENV
+          else
+            echo "compress=true" | tee -a $GITHUB_ENV
+          fi
+
+          echo "dir_output=${{ env.dir_output }}" | tee -a $GITHUB_ENV
+          echo "target_ext=${{ env.target_ext }}" | tee -a $GITHUB_ENV
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
-      
+
       - name: (Output) Compress
         id: output-compress
-        if: steps.output.outputs.status == 'success' && !cancelled()
-        # if: ${{ 'true' == 'false' }} # disable
+        if: ${{ env.compress == 'true' }}
         env:
-          dir_output: ${{ steps.output.outputs.dir_output }}
-          target_ext: "tar"
-        working-directory: "${{ steps.output.outputs.dir_output }}"
+          dir_output: ${{ env.dir_output }}
+          target_ext: "${{ env.target_ext || 'tar' }}"
+        working-directory: "${{ env.dir_output }}"
         run: |
           echo -e "Current working directory: $(pwd)"
-          ls -al ./
+          ls -lh ./
+
+          free -h
+          available_mem=$(free -m | awk '/^Mem:/{print $7}')
+          echo "Available memory: ${available_mem} MiB"
+          reserve_mem=2048
+          if [ "${available_mem}" -gt 6144 ]; then
+            memlimit=$((${available_mem} - ${reserve_mem}))
+            memlimit="${memlimit}MiB"
+          else
+            memlimit="4GiB"
+          fi
+          echo "Set memlimit: ${memlimit}"
 
           for file in ${{ env.dir_output }}/*.${{ env.target_ext }}; do
             if [[ ! -d "${file}" ]]; then
-              # xz -z "${file}"
-              xz -z -9 -T0 -v "${file}"
+              # For compression level -9, each thread may use approximately 67 MiB to 768 MiB or more of memory.
+              xz --compress \
+                --threads=0 \
+                -9 \
+                --extreme \
+                --memlimit-compress=${memlimit} \
+                --check=sha256 \
+                --verbose \
+                --keep \
+                "${file}"
             fi
           done
 
+          ls -lh ./
+          echo "target_ext=xz" | tee -a $GITHUB_ENV
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
       - name: (Output) Check
@@ -672,11 +701,11 @@ jobs:
         env:
           metadata_sum_path: "${{ github.workspace }}/metadata_sum.json"
           category: "files"
-          target_ext: "*"
-        working-directory: "${{ steps.output.outputs.dir_output }}"
+          target_ext: "tar"
+        working-directory: "${{ env.dir_output }}"
         run: |
           echo -e "Current working directory: $(pwd)"
-          ls -al ./
+          ls -lh ./
 
           metadata='{"${{ env.category }}":[]}'
           for file in ./*.${{ env.target_ext }}; do
@@ -698,6 +727,7 @@ jobs:
 
       - name: (release.md) Generate
         id: release-md
+        # if: ${{ 'true' == 'false' }} # disable
         env:
           release_md: "${{ github.workspace }}/${{ env.dir_app }}/release.md"
           metadata_sum_path: ${{ steps.output-check.outputs.metadata_sum_path }}
@@ -739,11 +769,12 @@ jobs:
           record_to_markdown "sha256sum" "${sum_json_content}" "json"
 
           cat ${{ env.release_md }}
-          echo "release_md=${release_md}" | tee -a ${GITHUB_OUTPUT}
+          echo "release_md=${{ env.release_md }}" | tee -a $GITHUB_ENV
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
       - name: (Push) Image to ${{ env.registry_push }}
         id: push
+        # if: ${{ 'true' == 'false' }} # disable
         working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
           echo "Current working directory: $(pwd)"
@@ -787,9 +818,9 @@ jobs:
         # if: ${{ 'true' == 'false' }} # disable
         uses: ncipollo/release-action@main
         env:
-          dir_output: ${{ steps.output.outputs.dir_output }}
-          target_ext: "xz"
-          release_md: ${{ steps.release-md.outputs.release_md }}
+          dir_output: "${{ env.dir_output }}"
+          target_ext: "${{ env.target_ext }}"
+          release_md: "${{ env.release_md }}"
         with:
           name: "${{ env.repo_dockerhub }}"
           tag: "${{ env.app_branch }}"
