@@ -11,38 +11,102 @@ RUN set -x \
 	&& export DEBIAN_FRONTEND=noninteractive \
 	&& apt-get update --ignore-missing -y -qq \
     && apt-get install --no-install-recommends --no-install-suggests --fix-missing -y -qq \
-		bc \
+		ack \
+        antlr3 \
+        asciidoc \
+        autoconf \
+        automake \
+        autopoint \
+        binutils \
         bison \
         build-essential \
-        ca-certificates \
+        bzip2 \
+        clang \
+        clangd \
+        cmake \
+        cpio \
         curl \
+        device-tree-compiler \
+        ecj \
+        fastjar \
         flex \
-        g++-multilib \
-        gcc-multilib \
+        gawk \
+        g++ \
+        gcc \
+        gcc-aarch64-linux-gnu \
         git \
+        gperf \
+        haveged \
+        help2man \
+        intltool \
+        jq \
+        libelf-dev \
+        libglib2.0-dev \
+        libgmp3-dev \
+        libltdl-dev \
+        libmpc-dev \
+        libmpfr-dev \
+        libncurses5-dev \
+        libreadline-dev \
+        libssl-dev \
+        libtool \
+        lld \
+        lldb \
+        make \
+        mkisofs \
+        ninja-build \
+        p7zip-full \
+        patch \
+        pkgconf \
+        python3 \
+        python3-pip \
+        re2c \
+        rsync \
+        scons \
+        squashfs-tools \
+        subversion \
+        swig \
+        uglifyjs \
+        unzip \
+        vim \
+        wget \
+        zlib1g-dev \
+        \
+        bc \
+        ca-certificates \
         git-lfs \
         gnupg \
-        gperf \
-        imagemagick \
-        lib32readline-dev \
-        lib32z1-dev \
-        libelf-dev \
         lz4 \
-        libsdl1.2-dev \
-        libssl-dev \
         libxml2 \
         libxml2-utils \
         lzop \
-        pngcrush \
-        rsync \
         schedtool \
-        squashfs-tools \
-        vim \
         xsltproc \
         zip \
-        zlib1g-dev \
-        # ccache \
-        # sudo \
+        # ----- abort -----
+        # imagemagick \
+        # lib32readline-dev \
+        # lib32z1-dev \
+        # libsdl1.2-dev \
+        # pngcrush \
+        # "ccache"
+        # "lib32gcc-s1"
+        # "libc6-dev-i386"
+        # "libdb++-dev"
+        # "gcc-multilib"
+        # "g++-multilib"
+        # "libncursesw5"
+        # "libncursesw5-dev"
+        # "lrzsz"
+        # "msmtp"
+        # "nano"
+        # "p7zip"
+        # "python3-docutils"
+        # "python3-ply"
+        # "qemu-utils"
+        # "texinfo"
+        # "xmlto"
+        # "xxd"
     # ----- List upgradable -----
     && apt list --upgradable \
     # ===== Setup runner =====
@@ -82,6 +146,6 @@ RUN set -x \
 	&& chmod +x ${sh_entrypoint}
 
 WORKDIR ${dir_actions}
-# ENV RUNNER_ALLOW_RUNASROOT=true
+ENV RUNNER_ALLOW_RUNASROOT=true
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
