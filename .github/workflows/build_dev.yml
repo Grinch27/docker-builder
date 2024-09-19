@@ -279,7 +279,7 @@ jobs:
         id: output
         # if: ${{ 'true' == 'false' }} # disable
         env:
-          target_ext: "tar"
+          target_ext: "${{ env.target_ext || 'tar' }}"
           dir_output: "${{ github.workspace }}/${{ env.dir_app }}/output"
         working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
@@ -300,7 +300,7 @@ jobs:
           done
           
           echo "dir_output=${{ env.dir_output }}" | tee -a ${GITHUB_OUTPUT}
-          echo "target_ext=${target_ext}" | tee -a $GITHUB_ENV
+          echo "target_ext=${{ env.target_ext }}" | tee -a $GITHUB_ENV
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
       - name: (Output) Compress
