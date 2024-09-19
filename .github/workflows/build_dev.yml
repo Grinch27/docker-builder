@@ -315,6 +315,17 @@ jobs:
           echo -e "Current working directory: $(pwd)"
           ls -lh ./
 
+          free -h
+          available_mem=$(free -m | awk '/^Mem:/{print $7}')
+          echo "Available memory: ${available_mem} MiB"
+          reserve_mem=2048
+          if [ "${available_mem}" -gt 6144 ]; then
+            memlimit=$((${available_mem} - ${reserve_mem}))
+            memlimit="${memlimit}MiB"
+          else
+            memlimit="4GiB"
+          fi
+
           for file in ${{ env.dir_output }}/*.${{ env.target_ext }}; do
             if [[ ! -d "${file}" ]]; then
               # For compression level -9, each thread may use approximately 67 MiB to 768 MiB or more of memory.
@@ -322,7 +333,7 @@ jobs:
                 --threads=0 \
                 -9 \
                 --extreme \
-                --memlimit-compress=12GiB \
+                --memlimit-compress=${memlimit} \
                 --check=sha256 \
                 --verbose \
                 --keep \
