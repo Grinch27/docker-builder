@@ -23,8 +23,8 @@ on:
 env:
   app_branch: ${{ inputs.app_branch }}
   tag_repo: ${{ inputs.tag_repo || 'latest' }}
-  custom_env: ${{ inputs.custom_env || '' }}
   dir_app: "application/${{ inputs.app_branch }}"
+  custom_env: ${{ inputs.custom_env || '' }}
 
 jobs:
   build:
@@ -190,7 +190,7 @@ jobs:
 
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
-      - name: Inspect Layers with skopeo
+      - name: (Inspect) Layers with skopeo
         id: inspect
         # if: ${{ 'true' == 'false' }} # disable
         working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
@@ -218,7 +218,7 @@ jobs:
           done
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
-      - name: Test Docker image
+      - name: (Test) Docker image
         id: test
         env:
           container_name: container-test
