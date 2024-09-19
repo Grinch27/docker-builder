@@ -316,13 +316,17 @@ jobs:
 
           for file in ${{ env.dir_output }}/*.${{ env.target_ext }}; do
             if [[ ! -d "${file}" ]]; then
-              # xz -z "${file}"
-              xz -z -9 -T0 -v "${file}"
+              # For compression level -9, each thread may use approximately 67 MiB to 768 MiB or more of memory.
+              xz --compress \
+                --threads=0 \
+                -9 \
+                --memlimit-compress=12GiB \
+                --quiet \
+                "${file}"
             fi
           done
 
           ls -lh ./
-
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
       - name: (Output) Check
