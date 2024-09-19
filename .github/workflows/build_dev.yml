@@ -320,8 +320,11 @@ jobs:
               xz --compress \
                 --threads=0 \
                 -9 \
+                --extreme \
                 --memlimit-compress=12GiB \
+                --check=sha256 \
                 --quiet \
+                --keep \
                 "${file}"
             fi
           done
@@ -336,7 +339,7 @@ jobs:
         env:
           metadata_sum_path: "${{ github.workspace }}/metadata_sum.json"
           category: "files"
-          target_ext: "*"
+          target_ext: "tar"
         working-directory: "${{ steps.output.outputs.dir_output }}"
         run: |
           echo -e "Current working directory: $(pwd)"
