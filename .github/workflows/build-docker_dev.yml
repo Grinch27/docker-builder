@@ -648,8 +648,8 @@ jobs:
             echo "compress=true" | tee -a $GITHUB_ENV
           fi
 
-          echo "dir_output=${{ env.dir_output }}" | tee -a $GITHUB_ENV
-          echo "target_ext=${{ env.target_ext }}" | tee -a $GITHUB_ENV
+          echo "dir_output=${dir_output}" | tee -a $GITHUB_ENV
+          echo "target_ext=${target_ext}" | tee -a $GITHUB_ENV
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
       - name: (Output) Compress
@@ -769,7 +769,7 @@ jobs:
           record_to_markdown "sha256sum" "${sum_json_content}" "json"
 
           cat ${{ env.release_md }}
-          echo "release_md=${{ env.release_md }}" | tee -a $GITHUB_ENV
+          echo "release_md=${release_md}" | tee -a $GITHUB_ENV
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
       - name: (Push) Image to ${{ env.registry_push }}
