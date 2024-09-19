@@ -305,7 +305,7 @@ jobs:
 
       - name: (Output) Compress
         id: output-compress
-        if: ${{ env.compress && env.compress != '' }} && steps.output.outputs.status == 'success' && !cancelled()
+        if: ${{ env.compress }} == 'true' && steps.output.outputs.status == 'success' && !cancelled()
         # if: ${{ 'true' == 'false' }} # disable
         env:
           dir_output: ${{ env.dir_output }}
