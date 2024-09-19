@@ -280,7 +280,7 @@ jobs:
         # if: ${{ 'true' == 'false' }} # disable
         env:
           dir_output: "${{ github.workspace }}/${{ env.dir_app }}/output"
-          target_ext: "${{ env.target_ext || 'tar' }}"
+          target_ext: "tar"
         working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
           echo "Current working directory: $(pwd)"
@@ -325,6 +325,7 @@ jobs:
           else
             memlimit="4GiB"
           fi
+          echo "Set memlimit: ${memlimit}"
 
           for file in ${{ env.dir_output }}/*.${{ env.target_ext }}; do
             if [[ ! -d "${file}" ]]; then
@@ -352,7 +353,7 @@ jobs:
         env:
           metadata_sum_path: "${{ github.workspace }}/metadata_sum.json"
           category: "files"
-          target_ext: "${{ env.target_ext || 'tar' }}"
+          target_ext: "tar"
         working-directory: "${{ env.dir_output }}"
         run: |
           echo -e "Current working directory: $(pwd)"
