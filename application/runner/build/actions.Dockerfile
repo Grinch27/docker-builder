@@ -27,6 +27,7 @@ RUN set -x \
         cpio \
         curl \
         device-tree-compiler \
+        dwarves \
         ecj \
         fastjar \
         flex \
