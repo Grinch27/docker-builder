@@ -22,9 +22,15 @@ on:
     - cron: "40 22 * * *"
   repository_dispatch:
   workflow_dispatch:
+    inputs:
+      force_push:
+        description: 'Force push'
+        required: false
+        default: 'false'
 
 env:
   TZ: UTC
+  force_push: ${{ inputs.force_push || 'false' }}
 
 jobs:
   build:
@@ -145,9 +151,21 @@ jobs:
             }
 
     steps:
+      - name: Time Check
+        id: time
+        shell: bash
+        working-directory: /
+        run: |
+          if [ "${{ env.force_push }}" = "true" ] || { [ "${{ github.event_name }}" = "schedule" ] && [ "${{ github.event.schedule }}" = "${{ matrix.schedule_time.time }}" ]; }; then
+            echo "status=success" | tee -a ${GITHUB_OUTPUT}
+          else
+            echo "status=failure" | tee -a ${GITHUB_OUTPUT}
+          fi
+
       - name: Trigger workflow
         id: trigger
-        if: ${{ github.event_name == 'schedule' && github.event.schedule == matrix.schedule_time.time }}
+        if: steps.time.outputs.status == 'success' && !cancelled()
+        # if: ${{ github.event_name == 'schedule' && github.event.schedule == matrix.schedule_time.time }}
         env:
           branch: "main"
           workflow: "build-docker"
