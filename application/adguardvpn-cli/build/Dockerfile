@@ -21,7 +21,7 @@ RUN set -x \
         'armv7l') cpu='armv7' ;; \
         'mips') cpu=$(hexdump -o <<<I | awk '{print substr($2, 6, 1)}' | grep -q 1 && echo 'mipsel' || echo 'mips') ;; \
         *) echo "Unsupported CPU architecture: $(uname --machine)" && exit 1 ;; \
-    esac \
+    esac; \
     # ===== Setup AdGuardVPNCLI =====
     # https://api.github.com/repos/AdguardTeam/AdGuardVPNCLI/tags
     && tag_download=$(curl -s "https://api.github.com/repos/AdguardTeam/AdGuardVPNCLI/tags" | jq -r --arg tag_target "${update_channel}" '.[] | select(.tag_name | contains($tag_target)) | .tag_name' | head -n 1) \
