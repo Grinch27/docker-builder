@@ -34,7 +34,7 @@ RUN set -x \
     && PATH_adguardvpn_cli="/opt/adguardvpn_cli" \
     && mkdir -p ${PATH_adguardvpn_cli} \
     && curl -fsSL ${URL_download} -o ${FILE_download} \
-    && tar xzf ${FILE_download} -C ${PATH_adguardvpn_cli} \
+    && tar xzf ${FILE_download} -C ${PATH_adguardvpn_cli} --strip-components=1 \
     && ls -lh ${PATH_adguardvpn_cli} \
     && ln -sf "${PATH_adguardvpn_cli}/adguardvpn-cli" "/usr/local/bin/adguardvpn-cli" \
     && rm -f ${FILE_download} \
