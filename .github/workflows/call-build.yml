@@ -23,6 +23,14 @@ on:
   repository_dispatch:
   workflow_dispatch:
     inputs:
+      force_build:
+        description: 'Force build'
+        type: choice
+        required: false
+        default: "false"
+        options:
+          - "true"
+          - "false"
       force_push:
         description: 'Force push'
         type: choice
@@ -34,6 +42,7 @@ on:
 
 env:
   TZ: UTC
+  force_build: ${{ inputs.force_build || 'false' }}
   force_push: ${{ inputs.force_push || 'false' }}
 
 jobs:
@@ -42,7 +51,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        schedule_time:
+        schedule_build:
           # cloudflare-warp
           - {
               time: "0 22 * * *",
@@ -160,7 +169,7 @@ jobs:
         shell: bash
         working-directory: /
         run: |
-          if [ "${{ env.force_push }}" = "true" ] || { [ "${{ github.event_name }}" = "schedule" ] && [ "${{ github.event.schedule }}" = "${{ matrix.schedule_time.time }}" ]; }; then
+          if [ "${{ env.force_build }}" = "true" ] || { [ "${{ github.event_name }}" = "schedule" ] && [ "${{ github.event.schedule }}" = "${{ matrix.schedule_build.time }}" ]; }; then
             echo "status=success" | tee -a ${GITHUB_OUTPUT}
           else
             echo "status=failure" | tee -a ${GITHUB_OUTPUT}
@@ -169,7 +178,7 @@ jobs:
       - name: Trigger workflow
         id: trigger
         if: steps.time.outputs.status == 'success' && !cancelled()
-        # if: ${{ github.event_name == 'schedule' && github.event.schedule == matrix.schedule_time.time }}
+        # if: ${{ github.event_name == 'schedule' && github.event.schedule == matrix.schedule_build.time }}
         env:
           branch: "main"
           workflow: "build-docker"
@@ -177,14 +186,14 @@ jobs:
         run: |
           # Create base JSON using jq
           data=$(jq -n \
-            --arg app_branch "${{ matrix.schedule_time.app_branch }}" \
-            --arg tag_repo "${{ matrix.schedule_time.tag_repo }}" \
-            --arg force_push "${{ matrix.schedule_time.force_push }}" \
+            --arg app_branch "${{ matrix.schedule_build.app_branch }}" \
+            --arg tag_repo "${{ matrix.schedule_build.tag_repo }}" \
+            --arg force_push "${{ matrix.schedule_build.force_push }}" \
             '{ ref: "${{ env.branch }}", inputs: { app_branch: $app_branch, tag_repo: $tag_repo, force_push: $force_push } }')
 
           # Check if 'custom_env' is defined and not empty, then add it
-          if [[ -n "${{ matrix.schedule_time.custom_env }}" ]]; then
-            data=$(echo "$data" | jq --arg custom_env "${{ matrix.schedule_time.custom_env }}" '.inputs.custom_env = $custom_env')
+          if [[ -n "${{ matrix.schedule_build.custom_env }}" ]]; then
+            data=$(echo "$data" | jq --arg custom_env "${{ matrix.schedule_build.custom_env }}" '.inputs.custom_env = $custom_env')
           fi
 
           # Output the final JSON data for debugging (optional)
