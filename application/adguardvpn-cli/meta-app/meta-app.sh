@@ -8,17 +8,41 @@ apk update -q
 apk add --no-cache -q \
     ca-certificates \
     curl \
-    grep
-# install.sh
-export URL_SH="https://raw.githubusercontent.com/AdguardTeam/AdGuardVPNCLI/master/scripts/${tag_repo}/install.sh"
-export FILE_SH="/install.sh"
-curl -fsSL ${URL_SH} -o ${FILE_SH}
+    gpg \
+    grep \
+    jq
+# ----- install.sh -----
+# export URL_SH="https://raw.githubusercontent.com/AdguardTeam/AdGuardVPNCLI/master/scripts/${tag_repo}/install.sh"
+# export FILE_SH="/install.sh"
+# curl -fsSL ${URL_SH} -o ${FILE_SH}
 
-version=$(grep -oP "version='.*?'" ${FILE_SH} | head -1)
-version=$(echo ${version} | awk -F"'" '{print $2}')
+# version=$(grep -oP "version='.*?'" ${FILE_SH} | head -1)
+# version=$(echo ${version} | awk -F"'" '{print $2}')
+# echo "version=${version}"
+
+
+# ----- Github release -----
+cpu='x86_64'
+case "$(uname --machine)" in
+    'x86_64'|'amd64') cpu='x86_64' ;;
+    'aarch64'|'arm64') cpu='aarch64' ;;
+    'armv7l') cpu='armv7' ;;
+    # 'mips') cpu=$(hexdump -o <<<I | awk '{print substr($2, 6, 1)}' | grep -q 1 && echo 'mipsel' || echo 'mips') ;;
+    *) echo "Unsupported CPU architecture: $(uname --machine)" ; exit 1 ;;
+esac
+
+tag_target=${update_channel}
+# https://api.github.com/repos/AdguardTeam/AdGuardVPNCLI/tags
+tag_download=$(curl -s "https://api.github.com/repos/AdguardTeam/AdGuardVPNCLI/tags" | \
+    jq -r --arg tag_target "$tag_target" '.[] | select(.name | contains($tag_target)) | .name' | head -n 1)
+# # https://api.github.com/repos/AdguardTeam/AdGuardVPNCLI/releases/tags/v1.0.0
+# URL_download=$(curl -s "https://api.github.com/repos/AdguardTeam/AdGuardVPNCLI/releases/tags/${tag_download}" | \
+#     jq -r --arg cpu "$cpu" '.assets[] | select(.name | contains($cpu)) | .browser_download_url' | head -n 1)
+
+version=${tag_download}
+remove_prefix="v"
+version=${version##*$remove_prefix}
 echo "version=${version}"
-
-
 
 # apk update
 # apk add --no-cache -q \
