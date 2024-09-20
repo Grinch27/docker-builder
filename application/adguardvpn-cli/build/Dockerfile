@@ -23,10 +23,13 @@ RUN set -x \
         *) echo "Unsupported CPU architecture: $(uname --machine)" ; exit 1 ;; \
     esac \
     # ===== Setup AdGuardVPNCLI =====
+    && tag_target=${update_channel} \
     # https://api.github.com/repos/AdguardTeam/AdGuardVPNCLI/tags
-    && tag_download=$(curl -s "https://api.github.com/repos/AdguardTeam/AdGuardVPNCLI/tags" | jq -r --arg tag_target "${update_channel}" '.[] | select(.tag_name | contains($tag_target)) | .tag_name' | head -n 1) \
+    && tag_download=$(curl -s "https://api.github.com/repos/AdguardTeam/AdGuardVPNCLI/tags" | \
+        jq -r --arg tag_target "$tag_target" '.[] | select(.tag_name | contains($tag_target)) | .tag_name' | head -n 1) \
     # https://api.github.com/repos/AdguardTeam/AdGuardVPNCLI/releases/tags/v1.0.0
-    && URL_download=$(curl -s "https://api.github.com/repos/AdguardTeam/AdGuardVPNCLI/releases/tags/${tag_download}" | jq -r --arg cpu "${cpu}" '.assets[] | select(.name | contains($cpu)) | .browser_download_url' | head -n 1)  \
+    && URL_download=$(curl -s "https://api.github.com/repos/AdguardTeam/AdGuardVPNCLI/releases/tags/${tag_download}" | \
+        jq -r --arg cpu "$cpu" '.assets[] | select(.name | contains($cpu)) | .browser_download_url' | head -n 1)  \
     && FILE_download="/tmp/adguardvpn-cli.tar.gz" \
     && PATH_adguardvpn-cli="/opt/adguardvpn_cli" \
     && mkdir -p ${PATH_adguardvpn-cli} \
