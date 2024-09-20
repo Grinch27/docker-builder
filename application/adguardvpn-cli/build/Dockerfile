@@ -26,7 +26,7 @@ RUN set -x \
     && tag_target=${update_channel} \
     # https://api.github.com/repos/AdguardTeam/AdGuardVPNCLI/tags
     && tag_download=$(curl -s "https://api.github.com/repos/AdguardTeam/AdGuardVPNCLI/tags" | \
-        jq -r --arg tag_target "$tag_target" '.[] | select(.tag_name | contains($tag_target)) | .tag_name' | head -n 1) \
+        jq -r --arg tag_target "$tag_target" '.[] | select(.name | contains($tag_target)) | .name' | head -n 1) \
     # https://api.github.com/repos/AdguardTeam/AdGuardVPNCLI/releases/tags/v1.0.0
     && URL_download=$(curl -s "https://api.github.com/repos/AdguardTeam/AdGuardVPNCLI/releases/tags/${tag_download}" | \
         jq -r --arg cpu "$cpu" '.assets[] | select(.name | contains($cpu)) | .browser_download_url' | head -n 1)  \
