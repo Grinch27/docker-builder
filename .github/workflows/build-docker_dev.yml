@@ -704,7 +704,7 @@ jobs:
         env:
           metadata_sum_path: "${{ github.workspace }}/metadata_sum.json"
           category: "files"
-          target_ext: "${{ steps.output-compress.outputs.target_ext }}"
+          target_ext: "${{ steps.output.outputs.target_ext }}"
         working-directory: "${{ env.dir_output }}"
         run: |
           echo -e "Current working directory: $(pwd)"
