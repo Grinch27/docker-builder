@@ -31,11 +31,11 @@ RUN set -x \
     && URL_download=$(curl -s "https://api.github.com/repos/AdguardTeam/AdGuardVPNCLI/releases/tags/${tag_download}" | \
         jq -r --arg cpu "$cpu" '.assets[] | select(.name | contains($cpu)) | .browser_download_url' | head -n 1)  \
     && FILE_download="/tmp/adguardvpn-cli.tar.gz" \
-    && PATH_adguardvpn-cli="/opt/adguardvpn_cli" \
-    && mkdir -p ${PATH_adguardvpn-cli} \
+    && PATH_adguardvpn_cli="/opt/adguardvpn_cli" \
+    && mkdir -p ${PATH_adguardvpn_cli} \
     && curl -fsSL ${URL_download} -o ${FILE_download} \
-    && tar xzf ${FILE_download} -C ${PATH_adguardvpn-cli} \
-    && ln -sf "${PATH_adguardvpn-cli}/adguardvpn-cli" "/usr/local/bin/adguardvpn-cli" \
+    && tar xzf ${FILE_download} -C ${PATH_adguardvpn_cli} \
+    && ln -sf "${PATH_adguardvpn_cli}/adguardvpn-cli" "/usr/local/bin/adguardvpn-cli" \
     && rm -f ${FILE_download} \
     # ===== Clean pre-install =====
     && apk del --no-cache \
