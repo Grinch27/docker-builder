@@ -1,4 +1,4 @@
-name: Build Docker
+name: (Dev) Build Docker
 
 on:
   repository_dispatch:
@@ -32,9 +32,10 @@ env:
   app_branch: ${{ inputs.app_branch }}
   tag_repo: ${{ inputs.tag_repo || 'latest' }}
   force_push: ${{ inputs.force_push || 'false' }}
-  custom_env: ${{ inputs.custom_env || '' }}
   registry_push: "docker.io"
   dir_app: "application/${{ inputs.app_branch }}"
+  compress: "true"
+  custom_env: ${{ inputs.custom_env || '' }}
 
 jobs:
   check:
@@ -685,7 +686,7 @@ jobs:
                 -9 \
                 --extreme \
                 --memlimit-compress=${memlimit} \
-                --check=crc32 \
+                --check=sha256 \
                 --verbose \
                 --keep \
                 "${file}"
