@@ -41,7 +41,6 @@ on:
           - "false"
 
 env:
-  TZ: UTC
   force_build: ${{ inputs.force_build || 'false' }}
   force_push: ${{ inputs.force_push || 'false' }}
 
@@ -57,28 +56,24 @@ jobs:
               time: "0 22 * * *",
               app_branch: "cloudflare-warp",
               tag_repo: "latest",
-              force_push: "false",
             }
           # adguardvpn-cli
           - {
               time: "10 22 * * *",
               app_branch: "adguardvpn-cli",
               tag_repo: "nightly",
-              force_push: "false",
               custom_env: "update_channel=nightly",
             }
           - {
               time: "10 22 * * *",
               app_branch: "adguardvpn-cli",
               tag_repo: "beta",
-              force_push: "false",
               custom_env: "update_channel=beta",
             }
           - {
               time: "10 22 * * *",
               app_branch: "adguardvpn-cli",
               tag_repo: "release",
-              force_push: "false",
               custom_env: "update_channel=release",
             }
           # expressvpn
@@ -86,56 +81,48 @@ jobs:
               time: "20 22 * * *",
               app_branch: "expressvpn",
               tag_repo: "latest",
-              force_push: "false",
             }
           # nordvpn
           - {
               time: "20 22 * * *",
               app_branch: "nordvpn",
               tag_repo: "latest",
-              force_push: "false",
             }
           # squid
           - {
               time: "30 22 * * *",
               app_branch: "squid",
               tag_repo: "latest",
-              force_push: "false",
             }
           # vlmcsd
           - {
               time: "30 22 * * *",
               app_branch: "vlmcsd",
               tag_repo: "latest",
-              force_push: "false",
             }
           # novnc
           - {
               time: "40 22 * * *",
               app_branch: "novnc",
               tag_repo: "latest",
-              force_push: "false",
             }
           # baidunetdisk
           - {
               time: "40 22 * * *",
               app_branch: "baidunetdisk",
               tag_repo: "dev",
-              force_push: "false",
             }
           # steamcmd
           - {
               time: "50 22 * * *",
               app_branch: "steamcmd",
               tag_repo: "dev",
-              force_push: "false",
             }
           # runner
           - {
               time: "0 23 * * *",
               app_branch: "runner",
               tag_repo: "dev",
-              force_push: "false",
               custom_env: "compress=true",
             }
           # runner:slim
@@ -143,7 +130,6 @@ jobs:
               time: "0 23 * * *",
               app_branch: "runner",
               tag_repo: "slim",
-              force_push: "false",
               custom_env: "dockerfile=slim.Dockerfile;compress=true",
             }
           # runner:actions
@@ -151,7 +137,6 @@ jobs:
               time: "0 23 * * *",
               app_branch: "runner",
               tag_repo: "actions",
-              force_push: "false",
               custom_env: "dockerfile=actions.Dockerfile;compress=true",
             }
           # runner:actions
@@ -159,7 +144,6 @@ jobs:
               time: "0 23 * * *",
               app_branch: "runner",
               tag_repo: "actions-slim",
-              force_push: "false",
               custom_env: "dockerfile=actions-slim.Dockerfile;compress=true",
             }
 
@@ -188,7 +172,7 @@ jobs:
           data=$(jq -n \
             --arg app_branch "${{ matrix.schedule_build.app_branch }}" \
             --arg tag_repo "${{ matrix.schedule_build.tag_repo }}" \
-            --arg force_push "${{ matrix.schedule_build.force_push }}" \
+            --arg force_push "${{ env.force_push }}" \
             '{ ref: "${{ env.branch }}", inputs: { app_branch: $app_branch, tag_repo: $tag_repo, force_push: $force_push } }')
 
           # Check if 'custom_env' is defined and not empty, then add it
