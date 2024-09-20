@@ -35,6 +35,7 @@ RUN set -x \
     && mkdir -p ${PATH_adguardvpn_cli} \
     && curl -fsSL ${URL_download} -o ${FILE_download} \
     && tar xzf ${FILE_download} -C ${PATH_adguardvpn_cli} \
+    && ls -lh ${PATH_adguardvpn_cli} \
     && ln -sf "${PATH_adguardvpn_cli}/adguardvpn-cli" "/usr/local/bin/adguardvpn-cli" \
     && rm -f ${FILE_download} \
     # ===== Clean pre-install =====
