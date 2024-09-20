@@ -41,8 +41,12 @@ tag_download=$(curl -s "https://api.github.com/repos/AdguardTeam/AdGuardVPNCLI/t
 
 version=${tag_download}
 remove_prefix="v"
+remove_suffix="-"
 version=${version##*$remove_prefix}
+version=${version%%$remove_suffix*}
 echo "version=${version}"
+
+
 
 # apk update
 # apk add --no-cache -q \
