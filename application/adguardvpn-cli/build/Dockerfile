@@ -19,7 +19,7 @@ RUN set -x \
         'x86_64'|'amd64') cpu='x86_64' ;; \
         'aarch64'|'arm64') cpu='aarch64' ;; \
         'armv7l') cpu='armv7' ;; \
-        'mips') cpu=$(hexdump -o <<<I | awk '{print substr($2, 6, 1)}' | grep -q 1 && echo 'mipsel' || echo 'mips') ;; \
+        # 'mips') cpu=$(hexdump -o <<<I | awk '{print substr($2, 6, 1)}' | grep -q 1 && echo 'mipsel' || echo 'mips') ;; \
         *) echo "Unsupported CPU architecture: $(uname --machine)" && exit 1 ;; \
     esac; \
     # ===== Setup AdGuardVPNCLI =====
