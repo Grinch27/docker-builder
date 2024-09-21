@@ -230,11 +230,22 @@ jobs:
 
       - name: (MetaData) image data merge
         id: meta-image
+        env:
+          category_image: "repository"
         run: |
-          merged_metadata=$(jq -s '.[0] * .[1]' ${{ env.metadata_image_path }}.base ${{ env.metadata_image_path }}.repo)
+          # 使用 jq 分别读取 base 和 repo 两个 metadata 文件
+          base_metadata=$(jq . "${{ env.metadata_image_path }}.base")
+          repo_metadata=$(jq . "${{ env.metadata_image_path }}.repo")
 
+          # 使用 jq 合并两个 "repository" 数组
+          merged_repository=$(jq -n --argjson base "$base_metadata" --argjson repo "$repo_metadata" '$base.repository + $repo.repository')
+          
+          # 创建合并后的 JSON 对象
+          merged_metadata=$(jq -n --argjson repository "$merged_repository" '{repository: $repository}')
+
+          # 输出合并后的 metadata
           echo "metadata=${merged_metadata}"
-          echo "${merged_metadata}" | jq . > ${{ env.metadata_image_path }}
+          echo "${merged_metadata}" | jq . > "${{ env.metadata_image_path }}"
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
       # - name: (MetaData) from DockerHub
