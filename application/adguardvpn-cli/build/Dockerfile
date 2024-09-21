@@ -17,6 +17,7 @@ RUN set -x \
     done \
     && set -a \
     && . /etc/environment \
+    && unset build_arg \
     && set +a \
     && printenv \
     # ===== apk dependencies =====
