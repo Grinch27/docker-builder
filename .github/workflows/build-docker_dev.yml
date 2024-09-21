@@ -259,10 +259,10 @@ jobs:
           IFS=',' read -ra platforms <<< "${{ env.arch_branch }}"
           for platform in "${platforms[@]}"; do
             base_json=$(echo "${metadata_image}" | jq --arg platform "${platform}" --arg repo "${{ env.base_image }}" '
-              .repository[] | select(.platform == $platform and .name == $repo) | .data
+              .${{ env.category_image }}[] | select(.platform == $platform and .name == $repo) | .data
             ')
             repo_json=$(echo "${metadata_image}" | jq --arg platform "${platform}" --arg repo "${{ env.repo_dockerhub }}:${{ env.tag_repo }}" '
-              .repository[] | select(.platform == $platform and .name == $repo) | .data
+              .${{ env.category_image }}[] | select(.platform == $platform and .name == $repo) | .data
             ')
             echo -e "========== Base image: ${{ env.base_image }} ${platform} ==========\n${base_json}"
             echo -e "========== Repo image: ${{ env.repo_dockerhub }}:${{ env.tag_repo }} ${platform} ==========\n${repo_json}"
