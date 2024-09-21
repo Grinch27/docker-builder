@@ -15,7 +15,6 @@ RUN set -x \
             echo "$key=$value" >> /etc/environment; \
         fi; \
     done \
-    # ----- source /etc/environment -----
     && set -a \
     && . /etc/environment \
     && set +a \
