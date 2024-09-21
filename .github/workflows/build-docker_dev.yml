@@ -237,53 +237,13 @@ jobs:
           base_metadata=$(jq . "${{ env.metadata_image_path }}.base")
           repo_metadata=$(jq . "${{ env.metadata_image_path }}.repo")
 
-          # 使用 jq 合并两个 "repository" 数组
-          merged_repository=$(jq -n --argjson base "$base_metadata" --argjson repo "$repo_metadata" '$base.repository + $repo.repository')
-          
-          # 创建合并后的 JSON 对象
-          merged_metadata=$(jq -n --argjson repository "$merged_repository" '{repository: $repository}')
+          # 使用 jq 合并两个 "repository" 数组并创建合并后的 JSON 对象
+          merged_metadata=$(jq -n --argjson base "$base_metadata" --argjson repo "$repo_metadata" '{repository: $base.repository + $repo.repository}')
 
           # 输出合并后的 metadata
           echo "metadata=${merged_metadata}"
           echo "${merged_metadata}" | jq . > "${{ env.metadata_image_path }}"
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
-
-      # - name: (MetaData) from DockerHub
-      #   id: meta-image
-      #   env:
-      #     category: "repository"
-      #   run: |
-      #     metadata='{"${{ env.category }}":[]}'
-      #     declare -a repo_array=("${{ env.base_image }}" "${{ env.repo_dockerhub }}:${{ env.tag_repo }}")
-      #     for repo in "${repo_array[@]}"; do
-      #       IFS=',' read -ra platforms <<< "${{ env.arch_branch }}"
-      #       for platform in "${platforms[@]}"; do
-      #         os=$(echo ${platform} | cut -d'/' -f1)
-      #         arch=$(echo ${platform} | cut -d'/' -f2-)
-              
-      #         variant=""
-      #         if echo "${arch}" | grep -q "arm/v"; then
-      #           variant=$(echo ${arch} | cut -d'/' -f2)
-      #           arch=$(echo ${arch} | cut -d'/' -f1)
-      #         fi
-              
-      #         data_json=$(skopeo inspect \
-      #           --override-os=${os} \
-      #           --override-arch=${arch} \
-      #           ${variant:+--override-variant=${variant}} \
-      #           --format=json \
-      #           docker://docker.io/${repo} | jq .)
-
-      #         metadata=$(jq \
-      #           --argjson data "${data_json}" \
-      #           --arg platform "${platform}" \
-      #           --arg repo "${repo}" \
-      #           '.${{ env.category }} += [{name: $repo, platform: $platform, data: $data}]' <<< "${metadata}")
-      #       done
-      #     done
-      #     echo "metadata=${metadata}"
-      #     echo "${metadata}" | jq . > ${{ env.metadata_image_path }}
-      #     echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
       - name: (Check) Layer ${{ env.base_image }} in ${{ env.repo_dockerhub }}:${{ env.tag_repo }}
         id: check-layer
