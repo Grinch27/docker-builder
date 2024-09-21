@@ -12,27 +12,28 @@ else
   echo "找到 Dockerfile 文件: ${dockerfile}"
 fi
 
-# docker buildx
+# ===== docker buildx =====
 docker buildx build \
-    --platform ${arch_branch} \
-    --file ${dockerfile} \
-    --tag "${registry_local}/${repo_dockerhub}:${tag_repo}" \
-    --build-arg base_image=${base_image} \
-    --build-arg update_channel=${update_channel} \
-    --label version=${version} \
-    --output type=registry,registry.insecure=true \
-    .
+  --platform ${arch_branch} \
+  --file ${dockerfile} \
+  --tag "${registry_local}/${repo_dockerhub}:${tag_repo}" \
+  --build-arg base_image=${base_image} \
+  ${build_arg:+--build-arg build_arg=${build_arg}} \
+  --label version=${version} \
+  --output type=registry,registry.insecure=true \
+  .
+
+# ----- 以下为备份代码 -----
+
+# docker buildx build \
+#   --platform ${arch_branch} \
+#   --file ${dockerfile} \
+#   --tag "${registry_local}/${repo_dockerhub}:${tag_repo}" \
+#   --build-arg base_image=${base_image} \
+#   --build-arg update_channel=${update_channel} \
+#   --label version=${version} \
+#   --output type=registry,registry.insecure=true \
+#   .
 # --output type=tar,dest=${output_tar} \
 
-# variant=""
-# if echo "${arch}" | grep -q "arm/v"; then
-#   variant=$(echo ${arch} | cut -d'/' -f2)
-#   arch=$(echo ${arch} | cut -d'/' -f1)
-# fi
-
-# data_json=$(skopeo inspect \
-#   --override-os=${os} \
-#   --override-arch=${arch} \
-#   ${variant:+--override-variant=${variant}} \
-#   --format=json \
-#   docker://docker.io/${repo} | jq .)
+# ${variant:+--override-variant=${variant}} \
