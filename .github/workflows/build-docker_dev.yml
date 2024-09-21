@@ -150,7 +150,7 @@ jobs:
         with:
           platforms: ${{ env.arch_branch }}
 
-      - name: (MetaData) inspect DockerHub (no login) - ${{ env.base_image }}
+      - name: (MetaData) inspect DockerHub (without login) - ${{ env.base_image }}
         id: meta-image-base
         env:
           category: "repository"
@@ -247,7 +247,7 @@ jobs:
           echo "${merged_metadata}" | jq . > "${{ env.metadata_image_path }}"
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
-      - name: (Check) Layer ${{ env.base_image }} in ${{ env.repo_dockerhub }}:${{ env.tag_repo }}
+      - name: (Check) Layer MetaData ${{ env.base_image }} in ${{ env.repo_dockerhub }}:${{ env.tag_repo }}
         id: check-layer
         if: steps.meta-image.outputs.status == 'success' && !cancelled()
         env:
