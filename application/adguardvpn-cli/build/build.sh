@@ -23,3 +23,16 @@ docker buildx build \
     --output type=registry,registry.insecure=true \
     .
 # --output type=tar,dest=${output_tar} \
+
+# variant=""
+# if echo "${arch}" | grep -q "arm/v"; then
+#   variant=$(echo ${arch} | cut -d'/' -f2)
+#   arch=$(echo ${arch} | cut -d'/' -f1)
+# fi
+
+# data_json=$(skopeo inspect \
+#   --override-os=${os} \
+#   --override-arch=${arch} \
+#   ${variant:+--override-variant=${variant}} \
+#   --format=json \
+#   docker://docker.io/${repo} | jq .)
