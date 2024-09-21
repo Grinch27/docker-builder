@@ -892,7 +892,7 @@ jobs:
           bodyFile: "${{ env.release_md }}"
 
       - name: (Upload) to artifacts
-        id: upload-release
+        id: upload-artifact
         if: ${{ 'true' == 'false' }} # disable
         uses: actions/upload-artifact@main
         with:
