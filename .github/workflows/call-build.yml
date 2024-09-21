@@ -62,19 +62,19 @@ jobs:
               time: "10 22 * * *",
               app_branch: "adguardvpn-cli",
               tag_repo: "nightly",
-              custom_env: "update_channel=nightly",
+              custom_env: "build_arg='update_channel=nightly'",
             }
           - {
               time: "10 22 * * *",
               app_branch: "adguardvpn-cli",
               tag_repo: "beta",
-              custom_env: "update_channel=beta",
+              custom_env: "build_arg='update_channel=beta'",
             }
           - {
               time: "10 22 * * *",
               app_branch: "adguardvpn-cli",
               tag_repo: "release",
-              custom_env: "update_channel=release",
+              custom_env: "build_arg='update_channel=release'",
             }
           # expressvpn
           - {
@@ -130,21 +130,21 @@ jobs:
               time: "0 23 * * *",
               app_branch: "runner",
               tag_repo: "slim",
-              custom_env: "dockerfile=slim.Dockerfile;compress=true",
+              custom_env: "dockerfile=slim.Dockerfile",
             }
           # runner:actions
           - {
               time: "0 23 * * *",
               app_branch: "runner",
               tag_repo: "actions",
-              custom_env: "dockerfile=actions.Dockerfile;compress=true",
+              custom_env: "dockerfile=actions.Dockerfile",
             }
           # runner:actions
           - {
               time: "0 23 * * *",
               app_branch: "runner",
               tag_repo: "actions-slim",
-              custom_env: "dockerfile=actions-slim.Dockerfile;compress=true",
+              custom_env: "dockerfile=actions-slim.Dockerfile",
             }
 
     steps:
