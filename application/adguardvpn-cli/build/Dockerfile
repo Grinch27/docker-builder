@@ -5,9 +5,10 @@ ARG update_channel=release
 ENV update_channel=${update_channel}
 
 ARG build_arg="" \
-    flag_split="|"
+    flag_split=","
 RUN set -x \
     # ===== Set environment variable =====
+    && build_arg=$(echo "${build_arg}" | sed 's/^[\'\"]*//;s/[\'\"]*$//') \
     && echo "${build_arg}" | tr "${flag_split}" '\n' | while IFS='=' read -r key value; do \
         if [ -n "$key" ] && [ -n "$value" ]; then \
             export "$key=$value"; \
