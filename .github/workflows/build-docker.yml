@@ -820,7 +820,8 @@ jobs:
             echo "Registry: ${registry_remote}" >> ${{ env.release_md }}
             echo "Repository: ${{ env.repo_dockerhub }}" >> ${{ env.release_md }}
             echo "docker pull ${registry_remote}/${{ env.repo_dockerhub }}:\*"  >> ${{ env.release_md }}
-            echo "docker xz --decompress --verbose *.xz" >> ${{ env.release_md }}
+            echo "docker load < \*.xz" >> ${{ env.release_md }}
+            echo "xz --decompress --verbose *.xz" >> ${{ env.release_md }}
             echo "docker load < \*.tar" >> ${{ env.release_md }}
           done
 
