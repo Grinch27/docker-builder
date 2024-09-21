@@ -237,8 +237,11 @@ jobs:
           base_metadata=$(jq . "${{ env.metadata_image_path }}.base")
           repo_metadata=$(jq . "${{ env.metadata_image_path }}.repo")
 
-          # 使用 jq 合并两个 "repository" 数组并创建合并后的 JSON 对象
-          merged_metadata=$(jq -n --argjson base "$base_metadata" --argjson repo "$repo_metadata" '{repository: $base.repository + $repo.repository}')
+          # 使用 jq 合并两个数组，指定合并的 key 为 category_image
+          merged_data=$(jq -n --argjson base "$base_metadata" --argjson repo "$repo_metadata" '$base.${{ env.category_image }} + $repo.${{ env.category_image }}')
+          
+          # 创建合并后的 JSON 对象
+          merged_metadata=$(jq -n --argjson data "$merged_data" '{${{ env.category_image }}: $data}')
 
           # 输出合并后的 metadata
           echo "metadata=${merged_metadata}"
