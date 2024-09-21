@@ -15,7 +15,7 @@ RUN set -x \
             echo "$key=$value" >> /etc/environment; \
         fi; \
     done \
-    # ----- 手动加载 /etc/environment 以使其立即生效 -----
+    # ----- source /etc/environment -----
     && set -a \
     && . /etc/environment \
     && set +a \
