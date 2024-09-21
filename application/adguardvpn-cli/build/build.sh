@@ -10,6 +10,7 @@ echo "dir_current=${dir_current}"
 dockerfile=$(find "${dir_current}" -type f -iname 'dockerfile')
 if [ -z "$dockerfile" ]; then
   echo "未找到 Dockerfile 文件"
+  exit 1
 else
   echo "找到 Dockerfile 文件: ${dockerfile}"
 fi
@@ -24,18 +25,3 @@ docker buildx build \
   --label version=${version} \
   --output type=registry,registry.insecure=true \
   .
-
-# ----- 以下为备份代码 -----
-
-# docker buildx build \
-#   --platform ${arch_branch} \
-#   --file ${dockerfile} \
-#   --tag "${registry_local}/${repo_dockerhub}:${tag_repo}" \
-#   --build-arg base_image=${base_image} \
-#   --build-arg update_channel=${update_channel} \
-#   --label version=${version} \
-#   --output type=registry,registry.insecure=true \
-#   .
-# --output type=tar,dest=${output_tar} \
-
-# ${variant:+--override-variant=${variant}} \
