@@ -23,7 +23,7 @@ on:
           - "true"
           - "false"
       custom_env:
-        description: "key=value;key=value"
+        description: "Custom env: key=value;key=value"
         type: string
         required: false
         default: ""
@@ -239,12 +239,12 @@ jobs:
             --slurpfile base "${{ env.metadata_image_path }}.base" \
             --slurpfile repo "${{ env.metadata_image_path }}.repo" \
             '$base[0][$category] + $repo[0][$category]')
-          
+
           # 创建合并后的 JSON 对象，key 为 category_image
           merged_metadata=$(jq -n \
             --arg category "${{ env.category_image }}" \
             --argjson data "$merged_data" '{$category: $data}')
-          
+
           # 输出合并后的 metadata
           echo "metadata=${merged_metadata}"
           echo "${merged_metadata}" | jq . > "${{ env.metadata_image_path }}"
@@ -872,8 +872,8 @@ jobs:
 
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
-      - name: (Output) Upload to Release
-        id: output-release
+      - name: (Upload) to Release
+        id: upload-release
         if: steps.output.outputs.status == 'success' && !cancelled()
         # if: ${{ 'true' == 'false' }} # disable
         uses: ncipollo/release-action@main
@@ -890,3 +890,11 @@ jobs:
           replacesArtifacts: true
           token: "${{ secrets.GITHUB_TOKEN }}"
           bodyFile: "${{ env.release_md }}"
+
+      - name: (Upload) to artifacts
+        id: upload-release
+        if: ${{ 'true' == 'false' }} # disable
+        uses: actions/upload-artifact@main
+        with:
+          name: "${{ env.app_branch }}"
+          path: "${{ env.dir_output }}/*.${{ env.target_ext }}"
