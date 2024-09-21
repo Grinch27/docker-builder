@@ -12,7 +12,7 @@ RUN set -x \
     && echo "${build_arg}" \
     && echo "${build_arg}" | tr "${flag_split}" '\n' | while IFS='=' read -r key value; do \
         if [ -n "$key" ] && [ -n "$value" ]; then \
-            eval "export $key=$value"; \
+            echo "$key=$value" >> /etc/environment; \
         fi; \
     done \
     && printenv \
