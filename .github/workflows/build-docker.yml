@@ -150,104 +150,141 @@ jobs:
         with:
           platforms: ${{ env.arch_branch }}
 
-      - name: (MetaData) inspect DockerHub (without login) - ${{ env.base_image }}
-        id: meta-image-base
-        env:
-          category: "repository"
-        run: |
-          metadata='{"${{ env.category }}":[]}'
-          base_image="${{ env.base_image }}"
-          IFS=',' read -ra platforms <<< "${{ env.arch_branch }}"
-          for platform in "${platforms[@]}"; do
-            os=$(echo ${platform} | cut -d'/' -f1)
-            arch=$(echo ${platform} | cut -d'/' -f2-)
+      # - name: (MetaData) inspect DockerHub (without login) - ${{ env.base_image }}
+      #   id: meta-image-base
+      #   env:
+      #     category: "repository"
+      #   run: |
+      #     metadata='{"${{ env.category }}":[]}'
+      #     base_image="${{ env.base_image }}"
+      #     IFS=',' read -ra platforms <<< "${{ env.arch_branch }}"
+      #     for platform in "${platforms[@]}"; do
+      #       os=$(echo ${platform} | cut -d'/' -f1)
+      #       arch=$(echo ${platform} | cut -d'/' -f2-)
 
-            variant=""
-            if echo "${arch}" | grep -q "arm/v"; then
-              variant=$(echo ${arch} | cut -d'/' -f2)
-              arch=$(echo ${arch} | cut -d'/' -f1)
-            fi
+      #       variant=""
+      #       if echo "${arch}" | grep -q "arm/v"; then
+      #         variant=$(echo ${arch} | cut -d'/' -f2)
+      #         arch=$(echo ${arch} | cut -d'/' -f1)
+      #       fi
 
-            data_json=$(skopeo inspect \
-              --override-os=${os} \
-              --override-arch=${arch} \
-              ${variant:+--override-variant=${variant}} \
-              --format=json \
-              docker://docker.io/${base_image} | jq .)
+      #       data_json=$(skopeo inspect \
+      #         --override-os=${os} \
+      #         --override-arch=${arch} \
+      #         ${variant:+--override-variant=${variant}} \
+      #         --format=json \
+      #         docker://docker.io/${base_image} | jq .)
 
-            metadata=$(jq \
-              --argjson data "${data_json}" \
-              --arg platform "${platform}" \
-              --arg repo "${base_image}" \
-              '.${{ env.category }} += [{name: $repo, platform: $platform, data: $data}]' <<< "${metadata}")
-          done
-          echo "metadata=${metadata}"
-          echo "${metadata}" | jq . > ${{ env.metadata_image_path }}.base
-          echo "status=success" | tee -a ${GITHUB_OUTPUT}
+      #       metadata=$(jq \
+      #         --argjson data "${data_json}" \
+      #         --arg platform "${platform}" \
+      #         --arg repo "${base_image}" \
+      #         '.${{ env.category }} += [{name: $repo, platform: $platform, data: $data}]' <<< "${metadata}")
+      #     done
+      #     echo "metadata=${metadata}"
+      #     echo "${metadata}" | jq . > ${{ env.metadata_image_path }}.base
+      #     echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
-      - name: (Log in) to Docker Hub
-        id: dockerhub-login
-        uses: docker/login-action@master
-        with:
-          registry: docker.io
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
+      # - name: (Log in) to Docker Hub
+      #   id: dockerhub-login
+      #   uses: docker/login-action@master
+      #   with:
+      #     registry: docker.io
+      #     username: ${{ secrets.DOCKER_USERNAME }}
+      #     password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: (MetaData) inspect DockerHub (login) - ${{ env.repo_dockerhub }}:${{ env.tag_repo }}
-        id: meta-image-repo
-        env:
-          category: "repository"
-        run: |
-          metadata='{"${{ env.category }}":[]}'
-          repo="${{ env.repo_dockerhub }}:${{ env.tag_repo }}"
-          IFS=',' read -ra platforms <<< "${{ env.arch_branch }}"
-          for platform in "${platforms[@]}"; do
-            os=$(echo ${platform} | cut -d'/' -f1)
-            arch=$(echo ${platform} | cut -d'/' -f2-)
+      # - name: (MetaData) inspect DockerHub (login) - ${{ env.repo_dockerhub }}:${{ env.tag_repo }}
+      #   id: meta-image-repo
+      #   env:
+      #     category: "repository"
+      #   run: |
+      #     metadata='{"${{ env.category }}":[]}'
+      #     repo="${{ env.repo_dockerhub }}:${{ env.tag_repo }}"
+      #     IFS=',' read -ra platforms <<< "${{ env.arch_branch }}"
+      #     for platform in "${platforms[@]}"; do
+      #       os=$(echo ${platform} | cut -d'/' -f1)
+      #       arch=$(echo ${platform} | cut -d'/' -f2-)
 
-            variant=""
-            if echo "${arch}" | grep -q "arm/v"; then
-              variant=$(echo ${arch} | cut -d'/' -f2)
-              arch=$(echo ${arch} | cut -d'/' -f1)
-            fi
+      #       variant=""
+      #       if echo "${arch}" | grep -q "arm/v"; then
+      #         variant=$(echo ${arch} | cut -d'/' -f2)
+      #         arch=$(echo ${arch} | cut -d'/' -f1)
+      #       fi
 
-            data_json=$(skopeo inspect \
-              --override-os=${os} \
-              --override-arch=${arch} \
-              ${variant:+--override-variant=${variant}} \
-              --format=json \
-              docker://docker.io/${repo} | jq .)
+      #       data_json=$(skopeo inspect \
+      #         --override-os=${os} \
+      #         --override-arch=${arch} \
+      #         ${variant:+--override-variant=${variant}} \
+      #         --format=json \
+      #         docker://docker.io/${repo} | jq .)
 
-            metadata=$(jq \
-              --argjson data "${data_json}" \
-              --arg platform "${platform}" \
-              --arg repo "${repo}" \
-              '.${{ env.category }} += [{name: $repo, platform: $platform, data: $data}]' <<< "${metadata}")
-          done
-          echo "metadata=${metadata}"
-          echo "${metadata}" | jq . > ${{ env.metadata_image_path }}.repo
-          echo "status=success" | tee -a ${GITHUB_OUTPUT}
+      #       metadata=$(jq \
+      #         --argjson data "${data_json}" \
+      #         --arg platform "${platform}" \
+      #         --arg repo "${repo}" \
+      #         '.${{ env.category }} += [{name: $repo, platform: $platform, data: $data}]' <<< "${metadata}")
+      #     done
+      #     echo "metadata=${metadata}"
+      #     echo "${metadata}" | jq . > ${{ env.metadata_image_path }}.repo
+      #     echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
-      - name: (MetaData) image data merge
+      # - name: (MetaData) image data merge
+      #   id: meta-image
+      #   env:
+      #     category_image: "repository"
+      #   run: |
+      #     # 使用 jq 的 --slurpfile 选项加载 base 和 repo metadata 文件内容
+      #     merged_data=$(jq -n \
+      #       --arg category "${{ env.category_image }}" \
+      #       --slurpfile base "${{ env.metadata_image_path }}.base" \
+      #       --slurpfile repo "${{ env.metadata_image_path }}.repo" \
+      #       '$base[0][$category] + $repo[0][$category]')
+
+      #     # 创建合并后的 JSON 对象，key 为 category_image
+      #     merged_metadata=$(jq -n \
+      #       --arg category "${{ env.category_image }}" \
+      #       --argjson data "$merged_data" '{$category: $data}')
+
+      #     # 输出合并后的 metadata
+      #     echo "metadata=${merged_metadata}"
+      #     echo "${merged_metadata}" | jq . > "${{ env.metadata_image_path }}"
+      #     echo "status=success" | tee -a ${GITHUB_OUTPUT}
+
+      - name: (MetaData) from DockerHub
         id: meta-image
         env:
-          category_image: "repository"
+          category: "repository"
         run: |
-          # 使用 jq 的 --slurpfile 选项加载 base 和 repo metadata 文件内容
-          merged_data=$(jq -n \
-            --arg category "${{ env.category_image }}" \
-            --slurpfile base "${{ env.metadata_image_path }}.base" \
-            --slurpfile repo "${{ env.metadata_image_path }}.repo" \
-            '$base[0][$category] + $repo[0][$category]')
+          metadata='{"${{ env.category }}":[]}'
+          declare -a repo_array=("${{ env.base_image }}" "${{ env.repo_dockerhub }}:${{ env.tag_repo }}")
+          for repo in "${repo_array[@]}"; do
+            IFS=',' read -ra platforms <<< "${{ env.arch_branch }}"
+            for platform in "${platforms[@]}"; do
+              os=$(echo ${platform} | cut -d'/' -f1)
+              arch=$(echo ${platform} | cut -d'/' -f2-)
+              
+              variant=""
+              if echo "${arch}" | grep -q "arm/v"; then
+                variant=$(echo ${arch} | cut -d'/' -f2)
+                arch=$(echo ${arch} | cut -d'/' -f1)
+              fi
+              
+              data_json=$(skopeo inspect \
+                --override-os=${os} \
+                --override-arch=${arch} \
+                ${variant:+--override-variant=${variant}} \
+                --format=json \
+                docker://docker.io/${repo} | jq .)
 
-          # 创建合并后的 JSON 对象，key 为 category_image
-          merged_metadata=$(jq -n \
-            --arg category "${{ env.category_image }}" \
-            --argjson data "$merged_data" '{$category: $data}')
-
-          # 输出合并后的 metadata
-          echo "metadata=${merged_metadata}"
-          echo "${merged_metadata}" | jq . > "${{ env.metadata_image_path }}"
+              metadata=$(jq \
+                --argjson data "${data_json}" \
+                --arg platform "${platform}" \
+                --arg repo "${repo}" \
+                '.${{ env.category }} += [{name: $repo, platform: $platform, data: $data}]' <<< "${metadata}")
+            done
+          done
+          echo "metadata=${metadata}"
+          echo "${metadata}" | jq . > ${{ env.metadata_image_path }}
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
       - name: (Check) Layer MetaData ${{ env.base_image }} in ${{ env.repo_dockerhub }}:${{ env.tag_repo }}
