@@ -13,6 +13,11 @@ RUN set -x \
     # ===== docker-entrypoint.sh =====
     && sh_entrypoint="/docker-entrypoint.sh" \
     && echo "#!/usr/bin/env sh" >> ${sh_entrypoint} \
+    # ----- start privoxy -----
+	# && sh_privoxy="/start-privoxy.sh" \
+	# && echo 'privoxy /etc/privoxy.conf' >> ${sh_privoxy} \
+	# && chmod +x ${sh_privoxy} \
+	# && echo "${sh_privoxy} &" >> ${sh_entrypoint} \
     # ----- end of docker-entrypoint.sh -----
     && echo "uname -a" >> ${sh_entrypoint} \
 	&& echo "sleep infinity" >> ${sh_entrypoint} \
