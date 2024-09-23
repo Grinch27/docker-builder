@@ -10,14 +10,17 @@ RUN set -x \
     # ===== Clean apk =====
     && rm -rf /var/cache/apk/* \
     && rm -rf /var/log/*.log \
+    # ===== privoxy configuration =====
+    && dir_privoxy="/etc/privoxy" \
+    && cp -f "${dir_privoxy}/config.new" "${dir_privoxy}/privoxy.conf" \
     # ===== docker-entrypoint.sh =====
     && sh_entrypoint="/docker-entrypoint.sh" \
     && echo "#!/usr/bin/env sh" >> ${sh_entrypoint} \
     # ----- start privoxy -----
-	# && sh_privoxy="/start-privoxy.sh" \
-	# && echo 'privoxy /etc/privoxy.conf' >> ${sh_privoxy} \
-	# && chmod +x ${sh_privoxy} \
-	# && echo "${sh_privoxy} &" >> ${sh_entrypoint} \
+	&& sh_privoxy="/start-privoxy.sh" \
+	&& echo "privoxy ${dir_privoxy}/privoxy.conf" >> ${sh_privoxy} \
+	&& chmod +x ${sh_privoxy} \
+	&& echo "${sh_privoxy} &" >> ${sh_entrypoint} \
     # ----- end of docker-entrypoint.sh -----
     && echo "uname -a" >> ${sh_entrypoint} \
 	&& echo "sleep infinity" >> ${sh_entrypoint} \
