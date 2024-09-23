@@ -1,5 +1,24 @@
 # Privoxy 配置参数 - 根据原始配置文档进行补充修正markdown表格
 
+## 4. ACCESS CONTROL AND SECURITY - 访问控制和安全参数
+
+此配置文件部分控制 Privoxy 配置中与安全相关的方面。
+
+| 参数名 | 默认值 | 示例 | 描述 |
+|-|-|-|-|
+| `listen-address` | `127.0.0.1:8118` | `listen-address 192.168.0.1:8118` | 指定 Privoxy 将监听客户端请求的地址和 TCP 端口。可以使用多次此语句，使 Privoxy 监听多个端口或 IP 地址。 |
+| `toggle` | 1 | `toggle 0` | 指定 "toggle" 状态的初始状态。设置为 0 时，Privoxy 将以 "toggled off" 模式启动，即禁用广告拦截和内容过滤。 |
+| `enable-remote-toggle` | 0 | `enable-remote-toggle 1` | 指定是否可以使用基于 Web 的切换功能。启用后，任何可以访问 Privoxy 的人都可以切换其状态。 |
+| `enable-remote-http-toggle` | 0 | `enable-remote-http-toggle 1` | 指定 Privoxy 是否识别特殊的 HTTP 头以改变其行为。当前支持的特殊头是 "X-Filter: No"，用于禁用当前请求的过滤。 |
+| `enable-edit-actions` | 0 | `enable-edit-actions 1` | 指定是否可以使用基于 Web 的动作文件编辑器。启用后，任何可以访问 Privoxy 的人都可以修改其配置。 |
+| `enforce-blocks` | 0 | `enforce-blocks 1` | 指定用户是否可以忽略阻止并继续访问被阻止的页面。启用后，Privoxy 将隐藏 "go there anyway" 链接，并记录绕过尝试。 |
+| `permit-access` | 未设置 | `permit-access 127.0.0.1` | 指定哪些客户端 IP 地址可以访问 Privoxy。可以使用多次此语句，允许多个地址或子网。 |
+| `deny-access` | 未设置 | `deny-access 192.168.1.1` | 指定哪些客户端 IP 地址不能访问 Privoxy。可以使用多次此语句，拒绝多个地址或子网。 |
+| `buffer-limit` | 4096 | `buffer-limit 8192` | 指定内容过滤的缓冲区最大大小（以 KB 为单位）。当文档缓冲区大小达到此限制时，缓冲区将被刷新到客户端且不再尝试过滤文档的其余部分。 |
+| `enable-proxy-authentication-forwarding` | 0 | `enable-proxy-authentication-forwarding 1` | 指定是否允许通过 Privoxy 进行代理身份验证。启用后，Privoxy 将转发 Proxy-Authorization 和 Proxy-Authenticate 头。 |
+| `trusted-cgi-referer` | 未设置 | `trusted-cgi-referer http://www.example.org/local-privoxy-control-page` | 指定可以访问敏感 CGI 页面的受信任网站或网页。 |
+| `cors-allowed-origin` | 未设置 | `cors-allowed-origin http://www.example.org/` | 指定可以通过 JavaScript 访问 Privoxy CGI 页面的受信任网站。 |
+
 ## 5. FORWARDING - 转发参数
 
 该功能允许通过多个代理链路路由 HTTP 请求。
