@@ -1,11 +1,11 @@
 ############################################################
-# SteamCMD base on Ubuntu
+# SteamCMD base on Debian/Ubuntu
 # ref: 
 #   https://developer.valvesoftware.com/wiki/SteamCMD#Ubuntu
 #   https://github.com/CM2Walki/steamcmd/blob/master/bookworm/Dockerfile
 ############################################################
 
-ARG base_image=ubuntu:latest
+ARG base_image=debian:testing-slim
 FROM ${base_image}
 
 ARG USER=steam \
