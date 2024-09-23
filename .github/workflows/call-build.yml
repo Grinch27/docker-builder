@@ -24,7 +24,7 @@ on:
   workflow_dispatch:
     inputs:
       force_build:
-        description: 'Force build'
+        description: "Force build"
         type: choice
         required: false
         default: "false"
@@ -32,7 +32,7 @@ on:
           - "true"
           - "false"
       force_push:
-        description: 'Force push'
+        description: "Force push"
         type: choice
         required: false
         default: "false"
@@ -83,47 +83,23 @@ jobs:
               tag_repo: "latest",
             }
           # nordvpn
-          - {
-              time: "20 22 * * *",
-              app_branch: "nordvpn",
-              tag_repo: "latest",
-            }
+          - { time: "20 22 * * *", app_branch: "nordvpn", tag_repo: "latest" }
           # squid
-          - {
-              time: "30 22 * * *",
-              app_branch: "squid",
-              tag_repo: "latest",
-            }
+          - { time: "30 22 * * *", app_branch: "squid", tag_repo: "latest" }
           # vlmcsd
-          - {
-              time: "30 22 * * *",
-              app_branch: "vlmcsd",
-              tag_repo: "latest",
-            }
+          - { time: "30 22 * * *", app_branch: "vlmcsd", tag_repo: "latest" }
           # novnc
-          - {
-              time: "40 22 * * *",
-              app_branch: "novnc",
-              tag_repo: "latest",
-            }
+          - { time: "40 22 * * *", app_branch: "novnc", tag_repo: "latest" }
           # baidunetdisk
-          - {
-              time: "40 22 * * *",
-              app_branch: "baidunetdisk",
-              tag_repo: "dev",
-            }
+          - { time: "40 22 * * *", app_branch: "baidunetdisk", tag_repo: "dev" }
           # steamcmd
-          - {
-              time: "50 22 * * *",
-              app_branch: "steamcmd",
-              tag_repo: "dev",
-            }
+          - { time: "50 22 * * *", app_branch: "steamcmd", tag_repo: "dev" }
           # runner
           - {
               time: "0 23 * * *",
               app_branch: "runner",
               tag_repo: "dev",
-              custom_env: "compress=true",
+              custom_env: "",
             }
           # runner:slim
           - {
