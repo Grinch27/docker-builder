@@ -1,5 +1,21 @@
 # Privoxy 配置参数 - 根据原始配置文档进行补充修正markdown表格
 
+## 5. FORWARDING - 转发参数
+
+该功能允许通过多个代理链路路由 HTTP 请求。
+转发可以用于将 Privoxy 与缓存代理链接起来，以加快浏览速度。如果运行 Privoxy 的机器没有直接的互联网访问权限，使用父代理也是必要的。
+请注意，父代理可能会严重降低您的隐私级别。例如，父代理可能会将您的 IP 地址添加到请求头中，如果它是一个缓存代理，它可能会在重新验证请求中再次添加 "Etag" 头，即使您配置了 Privoxy 以删除它。它还可能忽略 Privoxy 的头部时间随机化，并使用原始值，这些值可能会被服务器用作 cookie 替代品，以在访问之间跟踪您的步骤。
+此外，这里还指定了 SOCKS 代理。Privoxy 支持 SOCKS 4 和 SOCKS 4A 协议。
+
+| 参数名 | 默认值 | 示例 | 描述 |
+|-|-|-|-|
+| `forward` | 未设置 | `forward / parent-proxy.example.org:8080` | 指定特定请求应路由到哪个父 HTTP 代理。`target_pattern` 是一个 URL 模式，指定此转发规则应适用于哪些请求（即 URL）。使用 `/` 表示“所有 URL”。`http_parent[:port]` 是父 HTTP 代理的 DNS 名称或 IP 地址，后跟其监听端口（默认：8000）。使用 `.` 表示“不转发”。 |
+| `forward-socks4` | 未设置 | `forward-socks4 / socks-gw.example.com:1080 .` | 指定特定请求应通过哪个 SOCKS 4 代理（以及可选的父 HTTP 代理）进行路由。`target_pattern` 是一个 URL 模式，指定此转发规则应适用于哪些请求。`http_parent` 和 `socks_proxy` 是 IP 地址或有效的 DNS 名称，端口是 TCP 端口。 |
+| `forward-socks4a` | 未设置 | `forward-socks4a / socks-gw.example.com:1080 www-cache.isp.example.net:8080` | 指定特定请求应通过哪个 SOCKS 4A 代理（以及可选的父 HTTP 代理）进行路由。与 SOCKS 4 不同，SOCKS 4A 协议中目标主机名的 DNS 解析发生在 SOCKS 服务器上。 |
+| `forward-socks5` | 未设置 | `forward-socks5 / user:pass@socks-gw.example.com:1080 .` | 指定特定请求应通过哪个 SOCKS 5 代理（以及可选的父 HTTP 代理）进行路由。SOCKS 5 协议支持用户名/密码认证，DNS 解析在远程服务器上进行。 |
+| `forward-socks5t` | 未设置 | `forward-socks5t / 127.0.0.1:9050 .` | 指定特定请求应通过哪个 SOCKS 5 代理（以及可选的父 HTTP 代理）进行路由，并使用 Tor 特定的 SOCKS 扩展。 |
+| `forwarded-connect-retries` | 0 | `forwarded-connect-retries 1` | 指定如果转发的连接请求失败，Privoxy 重试的次数。主要用于 socks4a 连接，Privoxy 无法检测连接失败的原因。 |
+
 ## 6. MISCELLANEOUS - 杂项参数
 
 | 参数名 | 默认值 | 示例 | 描述 |
@@ -25,6 +41,8 @@
 | `receive-buffer-size` | 5000 | `receive-buffer-size 32768` | 指定 Privoxy 用于从服务器接收数据的缓冲区大小（以字节为单位）。增加缓冲区大小会增加 Privoxy 的内存使用量，但可以减少上下文切换次数，从而降低 CPU 使用率并可能提高吞吐量。 |
 
 ## 7. HTTPS INSPECTION - HTTPS 检查参数
+
+HTTPS 检查允许过滤加密的请求和响应。只有在 Privoxy 使用 FEATURE_HTTPS_INSPECTION 构建时才支持此功能。如果您不确定您的版本是否支持此功能，请访问 http://config.privoxy.org/show-status 查看。
 
 | 参数名 | 默认值 | 示例 | 描述 |
 |-|-|-|-|
