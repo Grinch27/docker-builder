@@ -1,4 +1,29 @@
-# Privoxy 配置参数 - 根据原始配置文档进行补充修正markdown表格
+# Privoxy 配置参数 - 根据原始配置文档config.new进行补充修正markdown表格
+
+## 1. LOCAL SET-UP DOCUMENTATION - 本地设置文档
+
+| 参数名 | 默认值 | 示例 | 描述 |
+|-|-|-|-|
+| `user-manual` | 未设置 | `user-manual /usr/share/doc/privoxy/user-manual/` | 指定 Privoxy 用户手册的位置。未设置时，将使用 https://www.privoxy.org/version/user-manual/，其中 version 是 Privoxy 的版本。 |
+| `trust-info-url` | 未设置 | `trust-info-url http://www.example.com/why_we_block.html` | 指定在用户访问未受信任页面被拒绝时显示在错误页面上的 URL。 |
+| `admin-address` | 未设置 | `admin-address privoxy-admin@example.com` | 指定联系 Privoxy 管理员的电子邮件地址。未设置时，错误页面和 CGI 用户界面上不会显示电子邮件地址。 |
+| `proxy-info-url` | 未设置 | `proxy-info-url http://www.example.com/proxy-service.html` | 指定有关本地 Privoxy 设置、配置或策略的文档 URL。未设置时，错误页面和 CGI 用户界面上不会显示本地文档链接。 |
+
+## 2. CONFIGURATION AND LOG FILE LOCATIONS - 配置和日志文件位置
+
+Privoxy 可以（通常会）使用多个文件来进行额外的配置、提供帮助和记录日志。本配置文件部分用于告知 Privoxy 如何找到这些文件。
+运行 Privoxy 的用户必须对所有配置文件拥有读取权限，并对任何将被修改的文件（如日志文件和操作文件）拥有写入权限。
+
+| 参数名 | 默认值 | 示例 | 描述 |
+|-|-|-|-|
+| `confdir` | `/etc/privoxy` (Unix) 或 Privoxy 安装目录 (Windows) | `confdir /etc/privoxy` | 指定其他配置文件所在的目录。 |
+| `templdir` | 未设置 | `templdir /path/to/templates` | 指定加载模板的备用目录。如果未设置，模板将假定位于 confdir/template 中。 |
+| `temporary-directory` | 未设置 | `temporary-directory /tmp` | 指定 Privoxy 可以创建临时文件的目录。如果未设置，将不会创建临时文件，外部过滤器将无法工作。 |
+| `logdir` | `/var/log/privoxy` (Unix) 或 Privoxy 安装目录 (Windows) | `logdir /var/log/privoxy` | 指定所有日志记录的目录（即日志文件所在的位置）。 |
+| `actionsfile` | `match-all.action`, `default.action`, `user.action` | `actionsfile match-all.action` | 指定要使用的动作文件。可以使用多次此语句，推荐使用多个动作文件。 |
+| `filterfile` | `default.filter` (Unix) 或 `default.filter.txt` (Windows) | `filterfile default.filter` | 指定要使用的过滤文件。可以使用多次此语句。 |
+| `logfile` | 未设置 | `logfile privoxy.log` | 指定要使用的日志文件。如果未设置，将不会写入日志文件。 |
+| `trustfile` | 未设置 | `trustfile trust` | 指定要使用的信任文件。如果未设置，整个信任机制将被禁用。 |
 
 ## 3. DEBUGGING - 调试参数
 
