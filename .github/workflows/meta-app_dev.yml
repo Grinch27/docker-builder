@@ -91,7 +91,7 @@ jobs:
         env:
           flag_split: ";"
         run: |
-          echo "${{ env.custom_env }}" | tr '${{ env.flag_split }}' '\n' | tee -a $GITHUB_ENV
+          echo "${{ env.custom_env }}" | tr "${flag_split}" '\n' | tee -a $GITHUB_ENV
 
       - name: Setup Docker
         id: docker
@@ -157,14 +157,20 @@ jobs:
 
             if [ ${{ env.custom_env != '' }} ]; then
               env_temp=$(mktemp)
+              env_file="/etc/environment"
+              flag_split=";"
+
+              set +e
               docker cp ${{ env.container_name }}:/etc/profile ${env_temp}
-              echo "${{ env.custom_env }}" | tr '${{ env.flag_split }}' '\n' | tee -a ${env_temp}
+              set -e
+
+              echo "${{ env.custom_env }}" | tr "${flag_split}" '\n' | sed 's/^/export /' | tee -a ${env_temp}
               echo "----- check env_temp -----"
               cat ${env_temp}
 
               docker cp ${env_temp} ${{ env.container_name }}:/tmp/env_temp
-              docker exec ${{ env.container_name }} sh -c 'cat /tmp/env_temp | tee -a /etc/environment'
-              docker exec ${{ env.container_name }} sh -c '. /etc/environment'
+              docker exec ${{ env.container_name }} sh -c "cat /tmp/env_temp | tee -a ${env_file}"
+              docker exec ${{ env.container_name }} sh -c ". ${env_file}"
               docker exec ${{ env.container_name }} printenv
               docker exec ${{ env.container_name }} rm -f /tmp/env_temp
             fi
