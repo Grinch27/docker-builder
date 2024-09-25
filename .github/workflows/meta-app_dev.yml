@@ -166,7 +166,7 @@ jobs:
                 script_temp=$(mktemp)
                 if [ ${{ env.custom_env != '' }} ]; then
                   flag_split=";"
-                  echo "${{ env.custom_env }}" | tr "${flag_split}" '\n' | sed 's/^/export /' | sed 'y/\'/\"/' | tee -a ${script_temp}
+                  echo "${{ env.custom_env }}" | tr "${flag_split}" '\n' | tee -a ${script_temp}
                 fi
                 {
                   echo "#!/bin/sh"
