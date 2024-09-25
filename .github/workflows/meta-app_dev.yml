@@ -153,7 +153,8 @@ jobs:
               /bin/sh -c "uname -a && sleep infinity"
 
             log_container=$(mktemp)
-            echo "${{ env.custom_env }}" | tr '${{ env.flag_split }}' '\n' | tee -a ${{ env.container_name }}:/etc/environment
+            # echo "${{ env.custom_env }}" | tr '${{ env.flag_split }}' '\n' | tee -a ${{ env.container_name }}:/etc/environment
+            echo "${{ env.custom_env }}" | tr '${{ env.flag_split }}' '\n' | docker exec -i ${{ env.container_name }} sh -c 'cat >> /etc/environment'
             docker exec ${{ env.container_name }} mkdir -p ${{ env.dir_container }}
 
             dir_step="meta-app"
