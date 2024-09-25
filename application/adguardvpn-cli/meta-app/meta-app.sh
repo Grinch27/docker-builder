@@ -32,7 +32,7 @@ case "$(uname --machine)" in
 esac
 
 # ----- load build_arg -----
-flag_split=","
+export flag_split=","
 export build_arg=$(echo "${build_arg}" | sed 's|^[\"]*||;s|[\"]*$||' | sed "s|^[\']*||;s|[\']*$||")
 echo "${build_arg}"
 echo "${build_arg}" | tr "${flag_split}" '\n' | while IFS='=' read -r key value; do
@@ -40,6 +40,9 @@ echo "${build_arg}" | tr "${flag_split}" '\n' | while IFS='=' read -r key value;
         echo "$key=$value" >> /etc/environment;
     fi;
 done
+echo "check /etc/environment"
+cat /etc/environment
+
 set -a
 . /etc/environment
 unset build_arg
