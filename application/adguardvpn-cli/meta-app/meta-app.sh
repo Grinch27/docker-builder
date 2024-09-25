@@ -31,6 +31,21 @@ case "$(uname --machine)" in
     *) echo "Unsupported CPU architecture: $(uname --machine)" ; exit 1 ;;
 esac
 
+# ----- load build_arg -----
+flag_split=","
+export build_arg=$(echo "${build_arg}" | sed 's|^[\"]*||;s|[\"]*$||' | sed "s|^[\']*||;s|[\']*$||")
+echo "${build_arg}"
+echo "${build_arg}" | tr "${flag_split}" '\n' | while IFS='=' read -r key value; do
+    if [ -n "$key" ] && [ -n "$value" ]; then
+        echo "$key=$value" >> /etc/environment;
+    fi;
+done
+set -a
+. /etc/environment
+unset build_arg
+set +a
+printenv
+
 tag_target=${update_channel}
 # https://api.github.com/repos/AdguardTeam/AdGuardVPNCLI/tags
 tag_download=$(curl -s "https://api.github.com/repos/AdguardTeam/AdGuardVPNCLI/tags" | \
