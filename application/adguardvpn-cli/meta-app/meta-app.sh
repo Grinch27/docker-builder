@@ -35,7 +35,7 @@ esac
 # ----- load build_arg -----
 set -x
 export flag_split=","
-echo "${build_arg}"
+echo "$build_arg"
 export build_arg=$(echo "${build_arg}" | sed "s|^[\']*||;s|[\']*$||")
 echo "${build_arg}"
 export build_arg=$(echo "${build_arg}" | sed "s|^[\']*||;s|[\']*$||")
