@@ -35,7 +35,9 @@ esac
 # ----- load build_arg -----
 set -x
 export flag_split=","
-export build_arg=$(echo "${build_arg}" | sed 's|^[\"]*||;s|[\"]*$||' | sed "s|^[\']*||;s|[\']*$||")
+export build_arg=$(echo "${build_arg}" | sed "s|^[\']*||;s|[\']*$||")
+echo "${build_arg}"
+export build_arg=$(echo "${build_arg}" | sed "s|^[\']*||;s|[\']*$||")
 echo "${build_arg}"
 echo "${build_arg}" | tr "${flag_split}" '\n' | while IFS='=' read -r key value; do
     if [ -n "$key" ] && [ -n "$value" ]; then
