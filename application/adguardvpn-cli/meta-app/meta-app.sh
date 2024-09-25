@@ -9,8 +9,9 @@ apk add --no-cache -q \
     ca-certificates \
     curl \
     gpg \
+    jq \
     grep \
-    jq
+    sed 
 # ----- install.sh -----
 # export URL_SH="https://raw.githubusercontent.com/AdguardTeam/AdGuardVPNCLI/master/scripts/${tag_repo}/install.sh"
 # export FILE_SH="/install.sh"
