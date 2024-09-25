@@ -32,6 +32,7 @@ case "$(uname --machine)" in
 esac
 
 # ----- load build_arg -----
+set -x
 export flag_split=","
 export build_arg=$(echo "${build_arg}" | sed 's|^[\"]*||;s|[\"]*$||' | sed "s|^[\']*||;s|[\']*$||")
 echo "${build_arg}"
@@ -40,7 +41,7 @@ echo "${build_arg}" | tr "${flag_split}" '\n' | while IFS='=' read -r key value;
         echo "$key=$value" >> /etc/environment;
     fi;
 done
-echo "check /etc/environment"
+echo "----- check /etc/environment -----"
 cat /etc/environment
 
 set -a
@@ -48,6 +49,8 @@ set -a
 unset build_arg
 set +a
 printenv
+
+set +x
 
 tag_target=${update_channel}
 # https://api.github.com/repos/AdguardTeam/AdGuardVPNCLI/tags
