@@ -160,7 +160,7 @@ jobs:
               echo "${{ env.custom_env }}" | tr '${{ env.flag_split }}' '\n' | tee -a ${env_temp}
               docker cp ${env_temp} ${{ env.container_name }}:/tmp/env_temp
               docker exec ${{ env.container_name }} sh -c 'cat /tmp/env_temp | tee -a /etc/environment'
-              docker exec ${{ env.container_name }} sh -c 'source /etc/environment'
+              docker exec ${{ env.container_name }} sh -c '. /etc/environment'
               docker exec ${{ env.container_name }} printenv
               docker exec ${{ env.container_name }} rm -f /tmp/env_temp
             fi
