@@ -64,18 +64,18 @@ jobs:
               tag_repo: "nightly",
               custom_env: "build_arg='update_channel=nightly'",
             }
-          - {
-              time: "10 22 * * *",
-              app_branch: "adguardvpn-cli",
-              tag_repo: "beta",
-              custom_env: "build_arg='update_channel=beta'",
-            }
-          - {
-              time: "10 22 * * *",
-              app_branch: "adguardvpn-cli",
-              tag_repo: "release",
-              custom_env: "build_arg='update_channel=release'",
-            }
+          # - {
+          #     time: "10 22 * * *",
+          #     app_branch: "adguardvpn-cli",
+          #     tag_repo: "beta",
+          #     custom_env: "build_arg='update_channel=beta'",
+          #   }
+          # - {
+          #     time: "10 22 * * *",
+          #     app_branch: "adguardvpn-cli",
+          #     tag_repo: "release",
+          #     custom_env: "build_arg='update_channel=release'",
+          #   }
           # expressvpn
           - {
               time: "20 22 * * *",
