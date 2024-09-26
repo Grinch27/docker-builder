@@ -161,13 +161,17 @@ jobs:
               cd ./${dir_step}
               echo "Changed to directory: $(pwd)"
 
+              env_temp=$(mktemp)
+              if [ ${{ env.custom_env != '' }} ]; then
+                flag_split=";"
+                # | sed "s|='|=\"|g" | sed "s|'$|\"|g" | sed "s|^|export '|" | sed "s|$|'|"
+                echo "${{ env.custom_env }}" | tr "${flag_split}" '\n' | tee -a ${env_temp}
+                docker cp ${env_temp} ${{ env.container_name }}:/tmp/build.env
+              fi
+
               for script_file in ./*.sh; do
                 container_script="${{ env.dir_container }}/$(basename ${script_file})"
                 script_temp=$(mktemp)
-                if [ ${{ env.custom_env != '' }} ]; then
-                  flag_split=";"
-                  echo "${{ env.custom_env }}" | tr "${flag_split}" '\n' | sed "s|='|=\"|g" | sed "s|'$|\"|g" | sed "s|^|export '|" | sed "s|$|'|" | tee -a ${script_temp}
-                fi
                 {
                   echo "#!/bin/sh"
                   printenv | awk -F= '/^[a-zA-Z_][a-zA-Z0-9_]*=/ {printf "%s=\"%s\"\n", $1, $2}'
