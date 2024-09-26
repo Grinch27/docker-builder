@@ -1,5 +1,7 @@
 #!/bin/sh
 
+set -x
+
 # Get current directory
 dir_current=$(dirname "$(readlink -f "$0")")
 echo "dir_current=${dir_current}"
@@ -34,9 +36,9 @@ esac
 
 # ----- load build_arg -----
 env_build="/tmp/build.env"
-env_temp="/etc/environment"
+env_docker="/etc/environment"
 flag_split=","
-set -x
+
 # echo "$build_arg"
 # export build_arg=$(echo "${build_arg}" | sed "s|^[\']*||;s|[\']*$||")
 # echo "${build_arg}"
@@ -54,21 +56,20 @@ cat ${env_build}
 # done < ${env_build}
 build_arg=$(grep "^build_arg=" ${env_build} | sed -r "s|^build_arg=['\"](.*)['\"]|\1|")
 echo ${build_arg}
-# echo "${build_arg}" | tr "${flag_split}" '\n' | while IFS='=' read -r key value; do
-#     if [ -n "$key" ] && [ -n "$value" ]; then
-#         echo "$key=$value" >> /etc/environment;
-#     fi;
-# done
-# echo "----- check /etc/environment -----"
-# cat /etc/environment
+echo "${build_arg}" | tr "${flag_split}" '\n' | while IFS='=' read -r key value; do
+    if [ -n "$key" ] && [ -n "$value" ]; then
+        echo "$key=$value" >> ${env_docker};
+    fi;
+done
+echo -e "----- check ${env_docker} -----"
+cat ${env_docker}
 
-# set -a
-# . /etc/environment
-# unset build_arg
-# set +a
-# printenv
+set -a
+. ${env_docker}
+unset build_arg
+set +a
+printenv
 
-set +x
 
 tag_target=${update_channel}
 # https://api.github.com/repos/AdguardTeam/AdGuardVPNCLI/tags
