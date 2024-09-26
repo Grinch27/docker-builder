@@ -9,7 +9,7 @@ apk add --no-cache -q \
     ca-certificates \
     aria2
 
-aria2 --version
-version=$(aria2 --version)
+aria2c --version
+version=$(aria2c --version)
 version=$(echo "$version" | awk '/aria2 version / {print $3}')
 echo "version=${version}"
