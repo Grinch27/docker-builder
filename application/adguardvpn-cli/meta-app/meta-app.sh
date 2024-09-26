@@ -1,7 +1,5 @@
 #!/bin/sh
 
-set -x
-
 # Get current directory
 dir_current=$(dirname "$(readlink -f "$0")")
 echo "dir_current=${dir_current}"
@@ -13,18 +11,8 @@ apk add --no-cache -q \
     gpg \
     jq \
     grep \
-    sed 
-# ----- install.sh -----
-# export URL_SH="https://raw.githubusercontent.com/AdguardTeam/AdGuardVPNCLI/master/scripts/${tag_repo}/install.sh"
-# export FILE_SH="/install.sh"
-# curl -fsSL ${URL_SH} -o ${FILE_SH}
-
-# version=$(grep -oP "version='.*?'" ${FILE_SH} | head -1)
-# version=$(echo ${version} | awk -F"'" '{print $2}')
-# echo "version=${version}"
-
-
-# ----- Github release -----
+    sed
+# ----- System info -----
 cpu='x86_64'
 case "$(uname --machine)" in
     'x86_64'|'amd64') cpu='x86_64' ;;
@@ -33,6 +21,17 @@ case "$(uname --machine)" in
     # 'mips') cpu=$(hexdump -o <<<I | awk '{print substr($2, 6, 1)}' | grep -q 1 && echo 'mipsel' || echo 'mips') ;;
     *) echo "Unsupported CPU architecture: $(uname --machine)" ; exit 1 ;;
 esac
+
+set -x
+
+# ----- install.sh -----
+# export URL_SH="https://raw.githubusercontent.com/AdguardTeam/AdGuardVPNCLI/master/scripts/${tag_repo}/install.sh"
+# export FILE_SH="/install.sh"
+# curl -fsSL ${URL_SH} -o ${FILE_SH}
+
+# version=$(grep -oP "version='.*?'" ${FILE_SH} | head -1)
+# version=$(echo ${version} | awk -F"'" '{print $2}')
+# echo "version=${version}"
 
 # ----- load build_arg -----
 env_build="/tmp/build.env"
