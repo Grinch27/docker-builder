@@ -7,6 +7,16 @@ FROM ${base_image}
 ARG build_arg="" \
     flag_split=","
 RUN set -x \
+    # ===== apk dependencies =====
+    && apk update \
+    && apk add --no-cache \
+        ca-certificates \
+        curl \
+        tar \
+        gpg \
+        jq \
+        # grep \
+        # sed \
     # ===== Set environment variable =====
     && export build_arg=$(echo "${build_arg}" | sed 's|^[\"]*||;s|[\"]*$||' | sed "s|^[\']*||;s|[\']*$||") \
     && echo "${build_arg}" \
@@ -20,14 +30,6 @@ RUN set -x \
     && unset build_arg \
     && set +a \
     && printenv \
-    # ===== apk dependencies =====
-    && apk update \
-    && apk add --no-cache \
-        ca-certificates \
-        curl \
-        tar \
-        gpg \
-        jq \
     # ===== System info =====
     && cpu='x86_64' \
     && case "$(uname --machine)" in \
@@ -59,6 +61,8 @@ RUN set -x \
         tar \
         gpg \
         jq \
+        # grep \
+        # sed \
     # ===== Clean apk =====
     && rm -rf /var/cache/apk/* \
     && rm -rf /var/log/*.log \
