@@ -37,15 +37,6 @@ set -x
 env_build="/tmp/build.env"
 env_docker="/etc/environment"
 flag_split=","
-
-# echo "$build_arg"
-# export build_arg=$(echo "${build_arg}" | sed "s|^[\']*||;s|[\']*$||")
-# echo "${build_arg}"
-# export build_arg=$(echo "${build_arg}" | sed "s|^[\']*||;s|[\']*$||")
-# echo ${build_arg}
-
-cat ${env_build}
-
 # while IFS="${flag_split}" read -r line; do
 #     key=$(echo "$line" | cut -d '=' -f1)
 #     value=$(echo "$line" | cut -d '=' -f2-)
@@ -53,6 +44,7 @@ cat ${env_build}
 #         echo "$key=$value" >> /etc/environment
 #     fi
 # done < ${env_build}
+cat ${env_build}
 build_arg=$(grep "^build_arg=" ${env_build} | sed -r "s|^build_arg=['\"](.*)['\"]|\1|")
 echo ${build_arg}
 echo "${build_arg}" | tr "${flag_split}" '\n' | while IFS='=' read -r key value; do
@@ -68,7 +60,6 @@ set -a
 unset build_arg
 set +a
 printenv
-
 
 tag_target=${update_channel}
 # https://api.github.com/repos/AdguardTeam/AdGuardVPNCLI/tags
