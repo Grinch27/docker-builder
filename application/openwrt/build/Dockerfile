@@ -3,7 +3,7 @@
 ############################################################
 
 # ========== Stage1: downloader ==========
-FROM debian:sid-slim as downloader
+FROM debian:sid-slim AS downloader
 RUN set -x \
     # ===== apt dependencies =====
 	&& export DEBIAN_FRONTEND=noninteractive \
