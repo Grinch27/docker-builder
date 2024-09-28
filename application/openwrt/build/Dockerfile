@@ -35,4 +35,4 @@ RUN set -x \
 FROM scratch
 COPY --from=downloader /rootfs /
 # ADD rootfs.tar.gz /
-CMD ["bash"]
+CMD ["sh", "-c", "sleep infinity"]
