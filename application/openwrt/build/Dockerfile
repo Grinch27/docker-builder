@@ -26,13 +26,14 @@ RUN set -x \
     && FILE_download="/tmp/rootfs.tar.gz" \
     && PATH_rootfs="/rootfs" \
     && mkdir -p ${PATH_rootfs} \
-    && curl -fsSL ${URL_download} -o ${FILE_download} \
-    && tar -xzf ${FILE_download} -C ${PATH_rootfs}
-
+    && curl -fsSL ${URL_download} -o ${FILE_download}
+    # && curl -fsSL ${URL_download} -o ${FILE_download} \
+    # && tar -xzf ${FILE_download} -C ${PATH_rootfs}
 
 # ========== Stage2: extractor ==========
 # FROM debian:sid-slim as extractor
 FROM scratch
-COPY --from=downloader /rootfs /
-# ADD rootfs.tar.gz /
+COPY --from=downloader /tmp/rootfs.tar.gz rootfs.tar.gz
+ADD rootfs.tar.gz /
+RUN rm -f rootfs.tar.gz
 CMD ["sh", "-c", "sleep infinity"]
