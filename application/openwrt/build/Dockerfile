@@ -33,7 +33,7 @@ RUN set -x \
 # ========== Stage2: extractor ==========
 # FROM debian:sid-slim as extractor
 FROM scratch
-COPY --from=downloader /tmp/rootfs.tar.gz rootfs.tar.gz
-ADD rootfs.tar.gz /
-RUN rm -f rootfs.tar.gz
+COPY --from=downloader /tmp/rootfs.tar.gz /rootfs.tar.gz
+ADD /rootfs.tar.gz /
+RUN rm -f /rootfs.tar.gz
 CMD ["sh", "-c", "sleep infinity"]
