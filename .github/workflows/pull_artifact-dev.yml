@@ -1,0 +1,173 @@
+name: Pull to Artifact (Dev)
+
+on:
+  repository_dispatch:
+  workflow_dispatch:
+    inputs:
+      app_branch:
+        description: "App Branch"
+        type: string
+        required: true
+        default: "ffmpeg"
+      tag_repo:
+        description: "Tag of Repo"
+        type: string
+        required: false
+        default: "latest"
+      # force_push:
+      #   description: "Force push to Docker Hub"
+      #   type: choice
+      #   required: false
+      #   default: "false"
+      #   options:
+      #     - "true"
+      #     - "false"
+      custom_env:
+        description: "Custom env: key=value;key=value"
+        type: string
+        required: false
+        default: ""
+      arch_branch:
+        description: "Architecture Branch"
+        type: string
+        required: true
+        default: "linux/amd64"
+
+env:
+  app_branch: ${{ inputs.app_branch }}
+  tag_repo: ${{ inputs.tag_repo || 'latest' }}
+  # force_push: ${{ inputs.force_push || 'false' }}
+  # registry_push: "docker.io"
+  # dir_app: "application/${{ inputs.app_branch }}"
+  compress: "true"
+  custom_env: ${{ inputs.custom_env || '' }}
+  arch_branch: ${{ inputs.arch_branch || 'linux/amd64' }}
+  registry_pull: "docker.io"
+
+jobs:
+  pull:
+    name: Pull Docker Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Setup Docker
+        id: docker
+        if: ${{ 'true' == 'false' }} # disable
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        working-directory: /
+        run: |
+          # https://docs.docker.com/engine/install/ubuntu/
+
+          # ===== 1. Set up Docker's apt repository =====
+          # Add Docker's official GPG key:
+          # sudo apt-get update
+          # sudo apt-get install ca-certificates curl
+          sudo install -m 0755 -d /etc/apt/keyrings
+          sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+          sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+          # Add the repository to Apt sources:
+          echo \
+            "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+            $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+            sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+          sudo apt-get update
+
+          # ===== 2. Install the Docker packages =====
+          sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+          docker --version
+          echo "status=success" | tee -a ${GITHUB_OUTPUT}
+
+      - name: Setup QEMU
+        id: qemu
+        uses: docker/setup-qemu-action@master
+        with:
+          platforms: ${{ env.arch_branch }}
+
+      - name: (Output) Save
+        id: output
+        # if: ${{ 'true' == 'false' }} # disable
+        env:
+          dir_output: "${{ github.workspace }}/output"
+          target_ext: "tar"
+        working-directory: "${{ github.workspace }}"
+        run: |
+          echo "Current working directory: $(pwd)"
+
+          mkdir -p ${{ env.dir_output }}
+
+          IFS=',' read -ra platforms <<< "${{ env.arch_branch }}"
+          for platform in "${platforms[@]}"; do
+            target_file="${{ env.app_branch }}_${{ env.tag_repo }}_${{ env.version }}_$(echo ${platform} | tr '/' '_').${{ env.target_ext }}"
+            
+            docker pull --platform ${platform} ${{ env.registry_pull }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}
+            docker save --output ${{ env.dir_output }}/${target_file} ${{ env.repo_dockerhub }}:${{ env.tag_repo }}
+            
+            echo "Exported ${platform} image to ${target_file}"
+          done
+          ls -lh "${{ env.dir_output }}"
+
+          if [ "$(echo ${{ env.compress }} | tr '[:upper:]' '[:lower:]')" != "true" ]; then
+            echo "compress=false" | tee -a $GITHUB_ENV
+          else
+            echo "compress=true" | tee -a $GITHUB_ENV
+          fi
+
+          echo "dir_output=${dir_output}" | tee -a $GITHUB_ENV
+          echo "target_ext=${target_ext}" | tee -a $GITHUB_ENV
+          echo "target_ext=${target_ext}" | tee -a ${GITHUB_OUTPUT}
+          echo "status=success" | tee -a ${GITHUB_OUTPUT}
+
+      - name: (Output) Compress
+        id: output-compress
+        if: ${{ env.compress == 'true' }}
+        env:
+          dir_output: ${{ env.dir_output }}
+          target_ext: "${{ env.target_ext }}"
+        working-directory: "${{ env.dir_output }}"
+        run: |
+          echo -e "Current working directory: $(pwd)"
+          ls -lh ./
+
+          free -h
+          available_mem=$(free -m | awk '/^Mem:/{print $7}')
+          echo "Available memory: ${available_mem} MiB"
+          reserve_mem=2048
+          if [ "${available_mem}" -gt 6144 ]; then
+            memlimit=$((${available_mem} - ${reserve_mem}))
+            memlimit="${memlimit}MiB"
+          else
+            memlimit="4GiB"
+          fi
+          echo "Set memlimit: ${memlimit}"
+
+          for file in ${{ env.dir_output }}/*.${{ env.target_ext }}; do
+            if [[ ! -d "${file}" ]]; then
+              # For compression level -9, each thread may use approximately 67 MiB to 768 MiB or more of memory
+              # check: crc32, sha256, sha512
+              xz --compress \
+                --threads=0 \
+                -9 \
+                --extreme \
+                --memlimit-compress=${memlimit} \
+                --check=sha256 \
+                --verbose \
+                --keep \
+                "${file}"
+            fi
+          done
+
+          ls -lh ./
+          echo "target_ext=xz" | tee -a $GITHUB_ENV
+          echo "status=success" | tee -a ${GITHUB_OUTPUT}
+
+      - name: (Upload) to artifacts
+        id: upload-artifact
+        # if: ${{ 'true' == 'false' }} # disable
+        uses: actions/upload-artifact@main
+        with:
+          name: "${{ env.app_branch }}"
+          path: "${{ env.dir_output }}/*.${{ env.target_ext }}"
