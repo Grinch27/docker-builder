@@ -87,7 +87,7 @@ jobs:
         with:
           platforms: ${{ env.arch_branch }}
 
-      - name: (Output) Save
+      - name: (Output) Save ${{ env.app_branch }}
         id: output
         # if: ${{ 'true' == 'false' }} # disable
         env:
