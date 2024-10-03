@@ -5,9 +5,9 @@
 # syntax=docker/dockerfile:1
 
 # build stage
-# FROM ghcr.io/linuxserver/baseimage-ubuntu:noble as buildstage
+# FROM ghcr.io/linuxserver/baseimage-ubuntu:noble AS buildstage
 ARG base_image=debian:sid-slim
-FROM ${base_image} as buildstage
+FROM ${base_image} AS buildstage
 
 # set version label
 ARG FFMPEG_VERSION
