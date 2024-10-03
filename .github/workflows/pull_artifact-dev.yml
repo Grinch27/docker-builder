@@ -8,7 +8,7 @@ on:
         description: "App Branch"
         type: string
         required: true
-        default: "ffmpeg"
+        default: "linuxserver/ffmpeg"
       tag_repo:
         description: "Tag of Repo"
         type: string
