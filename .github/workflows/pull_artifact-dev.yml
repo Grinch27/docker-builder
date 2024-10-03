@@ -93,6 +93,7 @@ jobs:
         env:
           dir_output: "${{ github.workspace }}/output"
           target_ext: "tar"
+          repo_dockerhub: "${{ env.app_branch }}"
         working-directory: "${{ github.workspace }}"
         run: |
           echo "Current working directory: $(pwd)"
