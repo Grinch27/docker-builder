@@ -77,13 +77,13 @@ RUN \
 # ca-certificates \
 # curl \
 # jq \
-# python3-pip \
+# python3-full \
 ############################################################
   apt-get install -y \
     ca-certificates \
     curl \
     jq \
-    python3 \
+    python3-full \
     python3-pip \
     autoconf \
     automake \
