@@ -71,7 +71,8 @@ ENV \
 RUN \
   echo "**** install build packages ****" && \
   apt-get update && \
-  apt-get install --no-install-recommends -y \
+#   apt-get install --no-install-recommends -y \
+  apt-get install -y \
     autoconf \
     automake \
     bindgen \
@@ -96,7 +97,7 @@ RUN \
     libclc-18-dev \
     libelf-dev \
     libexpat1-dev \
-    libgcc-10-dev \
+    # libgcc-10-dev \
     libglib2.0-dev \
     libgomp1 \
     libllvmspirvlib-18-dev \
