@@ -74,10 +74,12 @@ RUN \
 ############################################################
 # apt-get install --no-install-recommends -y \
 # libgcc-10-dev \
+# ca-certificates \
 # curl \
 # jq \
 ############################################################
   apt-get install -y \
+    ca-certificates \
     curl \
     jq \
     autoconf \
