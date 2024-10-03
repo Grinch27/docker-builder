@@ -102,7 +102,7 @@ jobs:
 
           IFS=',' read -ra platforms <<< "${{ env.arch_branch }}"
           for platform in "${platforms[@]}"; do
-            target_file="${{ env.app_branch }}_${{ env.tag_repo }}_${{ env.version }}_$(echo ${platform} | tr '/' '_').${{ env.target_ext }}"
+            target_file="${{ env.tag_repo }}_$(echo ${platform} | tr '/' '_').${{ env.target_ext }}"
             
             docker pull --platform ${platform} ${{ env.registry_pull }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}
             docker save --output ${{ env.dir_output }}/${target_file} ${{ env.repo_dockerhub }}:${{ env.tag_repo }}
