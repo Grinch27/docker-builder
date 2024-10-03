@@ -71,8 +71,12 @@ ENV \
 RUN \
   echo "**** install build packages ****" && \
   apt-get update && \
-#   apt-get install --no-install-recommends -y \
+############################################################
+# apt-get install --no-install-recommends -y \
 # libgcc-10-dev \
+# curl \
+# jq \
+############################################################
   apt-get install -y \
     autoconf \
     automake \
