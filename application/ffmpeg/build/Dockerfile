@@ -77,11 +77,14 @@ RUN \
 # ca-certificates \
 # curl \
 # jq \
+# python3-pip \
 ############################################################
   apt-get install -y \
     ca-certificates \
     curl \
     jq \
+    python3 \
+    python3-pip \
     autoconf \
     automake \
     bindgen \
