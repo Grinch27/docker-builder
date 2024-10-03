@@ -78,6 +78,8 @@ RUN \
 # jq \
 ############################################################
   apt-get install -y \
+    curl \
+    jq \
     autoconf \
     automake \
     bindgen \
