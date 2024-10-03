@@ -72,6 +72,7 @@ RUN \
   echo "**** install build packages ****" && \
   apt-get update && \
 #   apt-get install --no-install-recommends -y \
+# libgcc-10-dev \
   apt-get install -y \
     autoconf \
     automake \
@@ -97,7 +98,6 @@ RUN \
     libclc-18-dev \
     libelf-dev \
     libexpat1-dev \
-    # libgcc-10-dev \
     libglib2.0-dev \
     libgomp1 \
     libllvmspirvlib-18-dev \
