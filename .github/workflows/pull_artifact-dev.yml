@@ -170,5 +170,5 @@ jobs:
         # if: ${{ 'true' == 'false' }} # disable
         uses: actions/upload-artifact@main
         with:
-          name: "${{ env.app_branch }}"
+          name: "${{ env.tag_repo }}"
           path: "${{ env.dir_output }}/*.${{ env.target_ext }}"
