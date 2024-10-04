@@ -1,8 +1,9 @@
 FROM ubuntu:devel AS buildstage
 
 ARG DEBIAN_FRONTEND=noninteractive \
+    PATH="/root/.cargo/bin:${PATH}" \
     FFMPEG_BRANCH=master
-    # FFMPEG_VERSION=5.1.2
+    # FFMPEG_VERSION=5.1.2 
 
 # 更新并安装依赖
 RUN set -x \
