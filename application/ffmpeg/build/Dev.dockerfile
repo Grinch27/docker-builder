@@ -5,6 +5,7 @@ ARG FFMPEG_BRANCH=master
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PATH="/root/.cargo/bin:${PATH}"
+
 # ========== install build packages ==========
 RUN set -x \
     && apt-get update \
@@ -67,6 +68,7 @@ RUN set -x \
       ocl-icd-opencl-dev \
       perl \
       pkg-config \
+      pipx \
       python3-full \
       python3-pip \
       python3-venv \
@@ -78,12 +80,12 @@ RUN set -x \
       yasm \
     # ===== Clean apt =====
     && cargo install cargo-c cbindgen \
-    && python3 -m venv /lsiopy \
-    && pip install -U --no-cache-dir \
+    # && python3 -m venv /lsiopy \
+    && pipx install -U --no-cache-dir \
       pip \
       setuptools \
       wheel \
-    && pip install --no-cache-dir \
+    && pipx install --no-cache-dir \
       cmake \
       mako \
       meson \
