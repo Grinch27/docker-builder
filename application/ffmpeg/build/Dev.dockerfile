@@ -8,32 +8,32 @@ ARG DEBIAN_FRONTEND=noninteractive \
 RUN set -x \
     && apt-get update \
     && apt-get install -y -qq \
-      libmfx1 \
+      gcc \
+      g++ \
+      git \
+      intel-media-va-driver-non-free \
+      libass-dev \
+      libbluray-dev \
+      libmfx-dev \
       libmfx-tools \
+      libmfx1 \
+      libva-dev \
       libva-drm2 \
-      libva-x11-2 \
-      libva-wayland2 \
       libva-glx2 \
-      vainfo \
-      yasm \
-      wget \
-      vim \
+      libva-wayland2 \
+      libva-x11-2 \
+      libx264-dev \
+      libx265-dev \
       locales \
       less \
       pkg-config \
-      gcc \
-      cmake \
-      intel-media-va-driver-non-free \
-      libva-dev \
-      libmfx-dev \
-      g++ \
-      libbluray-dev \
-      libx264-dev \
-      libx265-dev \
-      libass-dev \
-      git \
       python3-full \
-      python3-pip
+      python3-pip \
+      vim \
+      wget \
+      yasm \
+      cmake \
+      vainfo
 
 # 下载并编译 FFmpeg
 RUN set -x \
