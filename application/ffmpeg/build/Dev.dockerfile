@@ -16,6 +16,7 @@ RUN set -x \
       build-essential \
       bzip2 \
       ca-certificates \
+      cargo \
       cmake \
       curl \
       diffutils \
