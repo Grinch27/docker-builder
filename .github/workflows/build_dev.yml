@@ -8,7 +8,7 @@ on:
         description: "App Branch"
         type: string
         required: true
-        default: "adguardvpn-cli"
+        default: "ffmpeg"
       tag_repo:
         description: "Tag Push to Repo"
         type: string
@@ -18,7 +18,7 @@ on:
         description: "Custom Env: key=value;key=value"
         type: string
         required: false
-        default: ""
+        default: "dockerfile=Dev.dockerfile"
 
 env:
   app_branch: ${{ inputs.app_branch }}
