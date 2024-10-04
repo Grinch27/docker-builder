@@ -103,17 +103,9 @@ COPY --from=buildstage /buildout/ /
 ARG DEBIAN_FRONTEND="noninteractive"
 
 # 设置环境变量 hardware env
-# ENV LC_ALL=C.UTF-8
-# ENV LANG=C.UTF-8
-ENV \
-  LIBVA_DRIVER_NAME=iHD \
-  LIBVA_DRIVERS_PATH="/usr/local/lib/x86_64-linux-gnu/dri" \
-  LD_LIBRARY_PATH="/usr/local/lib" \
-
-# 配置本地化
-# RUN echo "C.UTF-8 UTF-8" >> /etc/locale.gen \
-#     && locale-gen
-
+ENV LIBVA_DRIVER_NAME=iHD \
+    LIBVA_DRIVERS_PATH="/usr/local/lib/x86_64-linux-gnu/dri" \
+    LD_LIBRARY_PATH="/usr/local/lib"
 
 RUN set -x \
     # ===== install runtime =====
