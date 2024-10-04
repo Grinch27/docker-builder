@@ -9,34 +9,71 @@ ENV DEBIAN_FRONTEND=noninteractive \
 RUN set -x \
     && apt-get update \
     && apt-get install -y -qq \
-      cmake \
+      autoconf \
+      automake \
+      bindgen \
+      bison \
+      build-essential \
+      bzip2 \
       ca-certificates \
+      cmake \
       curl \
-      gcc \
+      diffutils \
+      doxygen \
+      flex \
       g++ \
+      gcc \
       git \
+      gperf \
+      i965-va-driver-shaders \
       intel-media-va-driver-non-free \
       less \
+      libasound2-dev \
       libass-dev \
       libbluray-dev \
+      libcairo2-dev \
+      libelf-dev \
+      libexpat1-dev \
+      libgomp1 \
       libmfx-dev \
       libmfx-tools \
       libmfx1 \
+      libpciaccess-dev \
+      libssl-dev \
+      libtool \
       libva-dev \
       libva-drm2 \
       libva-glx2 \
       libva-wayland2 \
       libva-x11-2 \
+      libv4l-dev \
+      libwayland-dev \
+      libwayland-egl-backend-dev \
+      libx11-xcb-dev \
       libx264-dev \
       libx265-dev \
+      libxfixes-dev \
+      libxml2-dev \
+      libxrandr-dev \
+      libxcb-dri2-0-dev \
+      libxcb-dri3-dev \
+      libxcb-glx0-dev \
+      libxcb-present-dev \
+      libxxf86vm-dev \
       locales \
+      make \
+      nasm \
+      ocl-icd-opencl-dev \
+      perl \
       pkg-config \
       python3-full \
       python3-pip \
       python3-venv \
       vainfo \
-      vim \
       wget \
+      x11proto-gl-dev \
+      x11proto-xext-dev \
+      xxd \
       yasm \
     # ===== Clean apt =====
     && cargo install cargo-c cbindgen \
