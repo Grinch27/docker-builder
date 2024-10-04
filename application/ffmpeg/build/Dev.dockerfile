@@ -32,6 +32,7 @@ RUN set -x \
       pkg-config \
       python3-full \
       python3-pip \
+      python3-xyz \
       vainfo \
       vim \
       wget \
