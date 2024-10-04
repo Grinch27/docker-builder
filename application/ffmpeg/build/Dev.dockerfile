@@ -83,10 +83,10 @@ RUN set -x \
       cargo-c \
       cbindgen \
     # && python3 -m venv /lsiopy \
-    && pipx install \
-      pip \
-      setuptools \
-      wheel \
+    # && pipx install \
+    #   pip \
+    #   setuptools \
+    #   wheel \
     && pipx install \
       cmake \
       mako \
