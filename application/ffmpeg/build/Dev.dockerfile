@@ -81,7 +81,7 @@ RUN set -x \
     # ===== Clean apt =====
     && cargo install cargo-c cbindgen \
     # && python3 -m venv /lsiopy \
-    && pipx install -U --no-cache-dir \
+    && pipx install --no-cache-dir \
       pip \
       setuptools \
       wheel \
