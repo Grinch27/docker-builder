@@ -79,13 +79,15 @@ RUN set -x \
       xxd \
       yasm \
     # ===== Clean apt =====
-    && cargo install cargo-c cbindgen \
+    && cargo install \
+      cargo-c \
+      cbindgen \
     # && python3 -m venv /lsiopy \
-    && pipx install --no-cache-dir \
+    && pipx install \
       pip \
       setuptools \
       wheel \
-    && pipx install --no-cache-dir \
+    && pipx install \
       cmake \
       mako \
       meson \
