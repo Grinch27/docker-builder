@@ -31,11 +31,11 @@ RUN set -x \
       libx264-dev \
       libx265-dev \
       libass-dev \
-      git
+      git \
+      python3-full \
+      python3-pip
 
 # 下载并编译 FFmpeg
-# && wget https://www.ffmpeg.org/releases/ffmpeg-$FFMPEG_VERSION.tar.xz \
-    # && tar xJf ffmpeg-$FFMPEG_VERSION.tar.xz \
 RUN set -x \
     && cd /tmp \
     && dir_ffmpeg="/tmp/ffmpeg" \
