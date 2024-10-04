@@ -8,10 +8,14 @@ ARG DEBIAN_FRONTEND=noninteractive \
 RUN set -x \
     && apt-get update \
     && apt-get install -y -qq \
+      cmake \
+      ca-certificates \
+      curl \
       gcc \
       g++ \
       git \
       intel-media-va-driver-non-free \
+      less \
       libass-dev \
       libbluray-dev \
       libmfx-dev \
@@ -25,15 +29,13 @@ RUN set -x \
       libx264-dev \
       libx265-dev \
       locales \
-      less \
       pkg-config \
       python3-full \
       python3-pip \
+      vainfo \
       vim \
       wget \
-      yasm \
-      cmake \
-      vainfo
+      yasm
 
 # 下载并编译 FFmpeg
 RUN set -x \
