@@ -5,7 +5,7 @@ ARG DEBIAN_FRONTEND=noninteractive \
     FFMPEG_BRANCH=master
     # FFMPEG_VERSION=5.1.2 
 
-# 更新并安装依赖
+# ========== install build packages ==========
 RUN set -x \
     && apt-get update \
     && apt-get install -y -qq \
@@ -33,11 +33,27 @@ RUN set -x \
       pkg-config \
       python3-full \
       python3-pip \
+      python3-venv \
       python3-xyz \
       vainfo \
       vim \
       wget \
-      yasm
+      yasm \
+    # ===== Clean apt =====
+    && cargo install cargo-c cbindgen \
+    && python3 -m venv /lsiopy \
+    && pip install -U --no-cache-dir \
+      pip \
+      setuptools \
+      wheel \
+    && pip install --no-cache-dir \
+      cmake \
+      mako \
+      meson \
+      ninja \
+      packaging \
+      ply \
+      pyyaml
 
 # 下载并编译 FFmpeg
 RUN set -x \
