@@ -55,7 +55,7 @@ RUN set -x \
        --enable-libx265 \
        --enable-vaapi \
     # && make -j8 \
-    && make -j$(($(nproc) + 1))
+    && make -j$(nproc --all)
     # && make install
     
 RUN set -x \
