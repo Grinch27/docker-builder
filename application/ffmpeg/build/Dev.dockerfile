@@ -94,8 +94,9 @@ ENV \
 # RUN echo "C.UTF-8 UTF-8" >> /etc/locale.gen \
 #     && locale-gen
 
-# **** install runtime ****
+
 RUN set -x \
+    # ===== install runtime =====
     && apt-get update \
     && apt-get install -y \
       libasound2t64 \
@@ -124,11 +125,13 @@ RUN set -x \
       libxshmfence1 \
       libxml2 \
       ocl-icd-libopencl1 \
-    # echo "**** clean up ****" && \
-    && rm -rf \
-        /var/lib/apt/lists/* \
-        /var/tmp/* && \
-    # echo "**** quick test ffmpeg ****" && \
+    # ===== Clean apt =====
+    && apt-get autoremove --purge -y -qq \
+    && apt-get clean -y -qq \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /var/log/*.log \
+    && rm -rf /var/tmp/* \
+    # ===== test ffmpeg =====
     && ldd /usr/local/bin/ffmpeg \
     && /usr/local/bin/ffmpeg -version
 
