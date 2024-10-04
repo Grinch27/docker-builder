@@ -1,10 +1,10 @@
 FROM ubuntu:devel AS buildstage
 
-ARG DEBIAN_FRONTEND=noninteractive \
-    PATH="/root/.cargo/bin:${PATH}" \
-    FFMPEG_BRANCH=master
+ARG FFMPEG_BRANCH=master
     # FFMPEG_VERSION=5.1.2 
 
+ENV DEBIAN_FRONTEND=noninteractive \
+    PATH="/root/.cargo/bin:${PATH}"
 # ========== install build packages ==========
 RUN set -x \
     && apt-get update \
