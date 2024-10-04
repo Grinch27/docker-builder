@@ -34,7 +34,6 @@ RUN set -x \
       python3-full \
       python3-pip \
       python3-venv \
-      python3-xyz \
       vainfo \
       vim \
       wget \
