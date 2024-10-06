@@ -7,8 +7,12 @@ echo "dir_current=${dir_current}"
 apk add --no-cache -q git make build-base
 git clone --branch master --single-branch https://github.com/Wind4/vlmcsd.git
 cd vlmcsd/
+
+# check repo version
 git describe --tags --long
 # svn info
+
+# make
 make
 cp bin/vlmcsd /usr/bin/vlmcsd
 
