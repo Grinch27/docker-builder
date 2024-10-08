@@ -28,6 +28,8 @@ on:
         required: false
         default: ""
 
+run-name: Docker - ${{ inputs.app_branch }} - ${{ inputs.tag_repo }}
+
 env:
   app_branch: ${{ inputs.app_branch }}
   tag_repo: ${{ inputs.tag_repo || 'latest' }}
