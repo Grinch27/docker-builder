@@ -28,6 +28,8 @@ on:
         required: false
         default: ""
 
+run-name: app - ${{ inputs.app_branch }}
+
 env:
   app_branch: ${{ inputs.app_branch }}
   tag_repo: ${{ inputs.tag_repo || 'latest' }}
@@ -39,7 +41,7 @@ env:
 
 jobs:
   check:
-    name: Check Version
+    name: Check Version - ${{ inputs.app_branch }}
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -269,13 +271,13 @@ jobs:
       #       for platform in "${platforms[@]}"; do
       #         os=$(echo ${platform} | cut -d'/' -f1)
       #         arch=$(echo ${platform} | cut -d'/' -f2-)
-              
+
       #         variant=""
       #         if echo "${arch}" | grep -q "arm/v"; then
       #           variant=$(echo ${arch} | cut -d'/' -f2)
       #           arch=$(echo ${arch} | cut -d'/' -f1)
       #         fi
-              
+
       #         data_json=$(skopeo inspect \
       #           --override-os=${os} \
       #           --override-arch=${arch} \
@@ -478,7 +480,7 @@ jobs:
           echo "changed=${changed}" | tee -a ${GITHUB_OUTPUT}
 
   build:
-    name: Build Docker Image
+    name: Build Docker Image - ${{ inputs.app_branch }}
     runs-on: ubuntu-latest
     needs: check
     if: needs.check.outputs.changed == 'true' && !cancelled()
