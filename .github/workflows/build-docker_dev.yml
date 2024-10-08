@@ -28,7 +28,7 @@ on:
         required: false
         default: ""
 
-run-name: app - ${{ inputs.app_branch }}
+run-name: Docker(Dev) - ${{ inputs.app_branch }} - ${{ inputs.tag_repo }}
 
 env:
   app_branch: ${{ inputs.app_branch }}
@@ -41,7 +41,7 @@ env:
 
 jobs:
   check:
-    name: Check Version - ${{ inputs.app_branch }}
+    name: Check Version
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -480,7 +480,7 @@ jobs:
           echo "changed=${changed}" | tee -a ${GITHUB_OUTPUT}
 
   build:
-    name: Build Docker Image - ${{ inputs.app_branch }}
+    name: Build Docker Image
     runs-on: ubuntu-latest
     needs: check
     if: needs.check.outputs.changed == 'true' && !cancelled()
