@@ -13,6 +13,11 @@ RUN set -x \
     # ===== docker-entrypoint.sh =====
     && sh_entrypoint="/docker-entrypoint.sh" \
     && echo "#!/usr/bin/env sh" >> ${sh_entrypoint} \
+    # ----- start squid -----
+	&& sh_squid="/start-squid.sh" \
+	&& echo "squid -f /etc/squid/squid.conf" >> ${sh_squid} \
+	&& chmod +x ${sh_squid} \
+	&& echo "${sh_squid} &" >> ${sh_entrypoint} \
     # ----- end of docker-entrypoint.sh -----
     && echo "uname -a" >> ${sh_entrypoint} \
 	&& echo "sleep infinity" >> ${sh_entrypoint} \
