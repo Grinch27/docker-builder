@@ -172,3 +172,4 @@ jobs:
         with:
           name: "${{ env.tag_repo }}"
           path: "${{ env.dir_output }}/*.${{ env.target_ext }}"
+          retention-days: ${{ env.retention_days || '1' }}

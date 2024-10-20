@@ -28,6 +28,8 @@ on:
         required: false
         default: ""
 
+run-name: Docker(Dev) - ${{ inputs.app_branch }} - ${{ inputs.tag_repo }}
+
 env:
   app_branch: ${{ inputs.app_branch }}
   tag_repo: ${{ inputs.tag_repo || 'latest' }}
@@ -269,13 +271,13 @@ jobs:
       #       for platform in "${platforms[@]}"; do
       #         os=$(echo ${platform} | cut -d'/' -f1)
       #         arch=$(echo ${platform} | cut -d'/' -f2-)
-              
+
       #         variant=""
       #         if echo "${arch}" | grep -q "arm/v"; then
       #           variant=$(echo ${arch} | cut -d'/' -f2)
       #           arch=$(echo ${arch} | cut -d'/' -f1)
       #         fi
-              
+
       #         data_json=$(skopeo inspect \
       #           --override-os=${os} \
       #           --override-arch=${arch} \
