@@ -56,7 +56,7 @@ jobs:
             tag_repo: "actions-slim"
             custom_env: "dockerfile=actions-slim.Dockerfile"
     with:
-      app_branch: "git.openwrt.org/openwrt/openwrt.git"
-      tag_repo: ${{ matrix.Branch }}
-      force_push: ${{ matrix.inputs_params.Target_System }}
-      custom_env: ${{ matrix.inputs_params.Subtarget }}
+      app_branch: ${{ matrix.inputs_params.app_branch }}
+      tag_repo: ${{ matrix.inputs_params.tag_repo }}
+      force_push: ${{ matrix.inputs_params.force_push }}
+      custom_env: ${{ matrix.inputs_params.custom_env }}
