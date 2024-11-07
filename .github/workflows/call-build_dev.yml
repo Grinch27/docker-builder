@@ -1,0 +1,62 @@
+name: Call Build (Dev)
+
+on:
+  # schedule:
+  #   # 每天在 UTC 时间 22:00 运行
+  #   - cron: "0 22 * * *"
+  repository_dispatch:
+  workflow_dispatch:
+
+run-name: Build Matrix for Docker
+
+jobs:
+  docker:
+    name: ${{ matrix.inputs_params.app_branch }}
+    uses: ./.github/workflows/build-docker.yml
+    strategy:
+      fail-fast: false
+      max-parallel: 3 # 限制同时运行的任务数为 3
+      matrix:
+        inputs_params:
+          # 定义所有需要构建的应用及其配置
+          - app_branch: "cloudflare-warp"
+            tag_repo: "latest"
+          - app_branch: "adguardvpn-cli"
+            tag_repo: "nightly"
+            custom_env: "build_arg='update_channel=nightly'"
+          - app_branch: "adguardvpn-cli"
+            tag_repo: "beta"
+            custom_env: "build_arg='update_channel=beta'"
+          - app_branch: "adguardvpn-cli"
+            tag_repo: "release"
+            custom_env: "build_arg='update_channel=release'"
+          - app_branch: "expressvpn"
+            tag_repo: "latest"
+          - app_branch: "nordvpn"
+            tag_repo: "latest"
+          - app_branch: "squid"
+            tag_repo: "latest"
+          - app_branch: "vlmcsd"
+            tag_repo: "latest"
+          - app_branch: "novnc"
+            tag_repo: "latest"
+          - app_branch: "baidunetdisk"
+            tag_repo: "dev"
+          - app_branch: "steamcmd"
+            tag_repo: "dev"
+          - app_branch: "runner"
+            tag_repo: "dev"
+          - app_branch: "runner"
+            tag_repo: "slim"
+            custom_env: "dockerfile=slim.Dockerfile"
+          - app_branch: "runner"
+            tag_repo: "actions"
+            custom_env: "dockerfile=actions.Dockerfile"
+          - app_branch: "runner"
+            tag_repo: "actions-slim"
+            custom_env: "dockerfile=actions-slim.Dockerfile"
+    with:
+      app_branch: "git.openwrt.org/openwrt/openwrt.git"
+      tag_repo: ${{ matrix.Branch }}
+      force_push: ${{ matrix.inputs_params.Target_System }}
+      custom_env: ${{ matrix.inputs_params.Subtarget }}
