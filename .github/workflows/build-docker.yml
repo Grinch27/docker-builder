@@ -45,6 +45,13 @@ on:
         description: "Custom env: key=value;key=value"
         required: false
         type: string
+    secrets:
+      DOCKER_USERNAME:
+        description: "Docker Hub Username"
+        required: true
+      DOCKER_PASSWORD:
+        description: "Docker Hub Password"
+        required: true
 
 run-name: Docker - ${{ inputs.app_branch }} - ${{ inputs.tag_repo }}
 

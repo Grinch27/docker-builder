@@ -15,10 +15,9 @@ jobs:
     uses: ./.github/workflows/build-docker.yml
     strategy:
       fail-fast: false
-      max-parallel: 3 # 限制同时运行的任务数为 3
+      max-parallel: 3
       matrix:
         inputs_params:
-          # 定义所有需要构建的应用及其配置
           - app_branch: "cloudflare-warp"
             tag_repo: "latest"
           - app_branch: "adguardvpn-cli"
@@ -60,3 +59,6 @@ jobs:
       tag_repo: ${{ matrix.inputs_params.tag_repo }}
       force_push: ${{ matrix.inputs_params.force_push || 'false' }}
       custom_env: ${{ matrix.inputs_params.custom_env || '' }}
+    secrets:
+      DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+      DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
