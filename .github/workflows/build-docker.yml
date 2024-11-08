@@ -72,12 +72,11 @@ env:
   dir_app: "application/${{ inputs.app_branch }}"
   compress: "true"
   custom_env: ${{ inputs.custom_env || '' }}
-  runner-image: ${{ inputs.runner-image || 'ubuntu-24.04' }}
 
 jobs:
   check:
     name: Check Version
-    runs-on: ${{ env.runner-image }}
+    runs-on: ${{ inputs.runner-image || 'ubuntu-latest' }}
     permissions:
       contents: read
       pull-requests: read
@@ -409,7 +408,7 @@ jobs:
 
   build:
     name: Build Docker Image
-    runs-on: ${{ env.runner-image }}
+    runs-on: ${{ inputs.runner-image || 'ubuntu-latest' }}
     needs: check
     if: needs.check.outputs.changed == 'true' && !cancelled()
     permissions:
