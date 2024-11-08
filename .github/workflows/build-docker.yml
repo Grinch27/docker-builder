@@ -27,6 +27,11 @@ on:
         type: string
         required: false
         default: ""
+      runner-image:
+        description: "Runner Image"
+        type: string
+        required: false
+        default: "ubuntu-24.04"
   workflow_call:
     inputs:
       app_branch:
@@ -43,6 +48,10 @@ on:
         type: string
       custom_env:
         description: "Custom env: key=value;key=value"
+        required: false
+        type: string
+      runner-image:
+        description: "Runner Image"
         required: false
         type: string
     secrets:
@@ -63,11 +72,12 @@ env:
   dir_app: "application/${{ inputs.app_branch }}"
   compress: "true"
   custom_env: ${{ inputs.custom_env || '' }}
+  runner-image: ${{ inputs.runner-image || 'ubuntu-24.04' }}
 
 jobs:
   check:
     name: Check Version
-    runs-on: ubuntu-24.04
+    runs-on: ${{ env.runner-image }}
     permissions:
       contents: read
       pull-requests: read
@@ -399,7 +409,7 @@ jobs:
 
   build:
     name: Build Docker Image
-    runs-on: ubuntu-latest
+    runs-on: ${{ env.runner-image }}
     needs: check
     if: needs.check.outputs.changed == 'true' && !cancelled()
     permissions:

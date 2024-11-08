@@ -59,6 +59,7 @@ jobs:
       tag_repo: ${{ matrix.inputs_params.tag_repo }}
       force_push: ${{ matrix.inputs_params.force_push || 'false' }}
       custom_env: ${{ matrix.inputs_params.custom_env || '' }}
+      runner-image: ${{ matrix.inputs_params.runner_image || 'ubuntu-24.04' }}
     secrets:
       DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
       DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
