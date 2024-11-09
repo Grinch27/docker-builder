@@ -17,7 +17,7 @@ jobs:
       fail-fast: false
       max-parallel: 3
       matrix:
-        runner_image: ["ubuntu-24.04"]
+        # runner_image: ["ubuntu-24.04"]
         inputs_params:
           - app_branch: "cloudflare-warp"
             tag_repo: "latest"
@@ -60,7 +60,7 @@ jobs:
       tag_repo: ${{ matrix.inputs_params.tag_repo }}
       force_push: ${{ matrix.inputs_params.force_push || 'false' }}
       custom_env: ${{ matrix.inputs_params.custom_env || '' }}
-      runner_image: ${{ matrix.runner_image }}
+      runner_image: ${{ matrix.runner_image || 'ubuntu-24.04' }}
     secrets:
       DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
       DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
