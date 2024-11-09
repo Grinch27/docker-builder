@@ -14,12 +14,14 @@ RUN set -x \
 		gpg \
         jq \
     # ===== Download OpenWrt from Repo =====
-    && tag_release="x86_64" \
+    && tag_releases=("x86_64" "main") \
     && name_target="generic-rootfs" \
-    # https://api.github.com/repos/Grinch27/openwrt-compiler/tags
+    # 构建关键词的正则表达式模式
+    && pattern=$(IFS='|'; echo "${tag_releases[*]}") \
+    # 获取最新匹配的 tag
     && tag_target=$(curl -s "https://api.github.com/repos/Grinch27/openwrt-compiler/tags" | \
-        jq -r --arg tag_release "$tag_release" '.[] | select(.name | contains($tag_release)) | .name' | head -n 1) \
-    # https://api.github.com/repos/Grinch27/openwrt-compiler/releases/tags/x86_64
+        jq -r --arg pattern "$pattern" '.[] | select(.name | test($pattern)) | .name' | head -n 1) \
+    # 获取对应 tag 下的下载链接
     && URL_download=$(curl -s "https://api.github.com/repos/Grinch27/openwrt-compiler/releases/tags/${tag_target}" | \
         jq -r --arg name_target "$name_target" '.assets[] | select(.name | contains($name_target)) | .browser_download_url' | head -n 1)  \
     # ----- Download -----
@@ -28,7 +30,6 @@ RUN set -x \
     && mkdir -p ${PATH_rootfs} \
     && curl -fsSL ${URL_download} -o ${FILE_download} \
     && tar -xzf ${FILE_download} -C ${PATH_rootfs}
-
 
 # ========== Stage2: extractor ==========
 # FROM debian:sid-slim as extractor
