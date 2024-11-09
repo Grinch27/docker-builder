@@ -66,6 +66,8 @@ jobs:
           - app_branch: "runner"
             tag_repo: "actions-slim"
             custom_env: "dockerfile=actions-slim.Dockerfile"
+          - app_branch: "openwrt"
+            tag_repo: "main"
     with:
       runner_image: ${{ matrix.runner_image }} # || 'ubuntu-24.04'
       app_branch: ${{ matrix.workflows_inputs.app_branch }}
