@@ -27,7 +27,7 @@ on:
         type: string
         required: false
         default: ""
-      runner-image:
+      runner_image:
         description: "Runner Image"
         type: string
         required: false
@@ -50,7 +50,7 @@ on:
         description: "Custom env: key=value;key=value"
         required: false
         type: string
-      runner-image:
+      runner_image:
         description: "Runner Image"
         required: false
         type: string
@@ -76,7 +76,7 @@ env:
 jobs:
   check:
     name: Check Version
-    runs-on: ${{ inputs.runner-image || 'ubuntu-latest' }}
+    runs-on: ${{ inputs.runner_image || 'ubuntu-latest' }}
     permissions:
       contents: read
       pull-requests: read
@@ -408,7 +408,7 @@ jobs:
 
   build:
     name: Build Docker Image
-    runs-on: ${{ inputs.runner-image || 'ubuntu-latest' }}
+    runs-on: ${{ inputs.runner_image || 'ubuntu-latest' }}
     needs: check
     if: needs.check.outputs.changed == 'true' && !cancelled()
     permissions:
