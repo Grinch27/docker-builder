@@ -2,7 +2,7 @@ name: Call Build (Dev)
 
 on:
   schedule:
-    # 每天在 UTC 时间 00:00 运行
+    # Run every day at 00:00 UTC
     - cron: "0 0 * * *"
   repository_dispatch:
   workflow_dispatch:
