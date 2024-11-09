@@ -6,18 +6,18 @@
 FROM debian:sid-slim AS downloader
 RUN set -x \
     # ===== apt dependencies =====
-	&& export DEBIAN_FRONTEND=noninteractive \
-	&& apt-get update --ignore-missing -y -qq \
+    && export DEBIAN_FRONTEND=noninteractive \
+    && apt-get update --ignore-missing -y -qq \
     && apt-get install --no-install-recommends --no-install-suggests --fix-missing -y -qq \
         ca-certificates \
-		curl \
-		gpg \
+        curl \
+        gpg \
         jq \
     # ===== Download OpenWrt from Repo =====
-    && tag_releases=("x86_64" "main") \
+    && tag_releases="x86_64 main" \
     && name_target="generic-rootfs" \
     # 构建关键词的正则表达式模式
-    && pattern=$(IFS='|'; echo "${tag_releases[*]}") \
+    && pattern=$(echo "$tag_releases" | tr ' ' '|') \
     # 获取最新匹配的 tag
     && tag_target=$(curl -s "https://api.github.com/repos/Grinch27/openwrt-compiler/tags" | \
         jq -r --arg pattern "$pattern" '.[] | select(.name | test($pattern)) | .name' | head -n 1) \
