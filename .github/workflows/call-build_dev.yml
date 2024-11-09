@@ -1,5 +1,8 @@
 name: Call Build (Dev)
 
+# https://docs.github.com/zh/actions/writing-workflows/workflow-syntax-for-github-actions
+run-name: Build Matrix for Docker
+
 on:
   schedule:
     # Run every day at 00:00 UTC
@@ -7,18 +10,27 @@ on:
   repository_dispatch:
   workflow_dispatch:
 
-run-name: Build Matrix for Docker
+# permissions: {}
+# concurrency:
+#   group: ${{ github.workflow }}-${{ github.ref }}
+#   cancel-in-progress: true
 
 jobs:
   docker:
-    name: ${{ matrix.inputs_params.app_branch }}
+    name: ${{ matrix.workflows_inputs.app_branch }}
+    runs-on: ubuntu-latest
+    # continue-on-error: true
+    # concurrency:
+    #   group: example-group
+    #   cancel-in-progress: true
     uses: ./.github/workflows/build-docker.yml
+    # secrets: inherit
     strategy:
       fail-fast: false
       max-parallel: 3
       matrix:
         runner_image: ["ubuntu-24.04"]
-        inputs_params:
+        workflows_inputs:
           - app_branch: "cloudflare-warp"
             tag_repo: "latest"
           - app_branch: "adguardvpn-cli"
@@ -56,11 +68,11 @@ jobs:
             tag_repo: "actions-slim"
             custom_env: "dockerfile=actions-slim.Dockerfile"
     with:
-      app_branch: ${{ matrix.inputs_params.app_branch }}
-      tag_repo: ${{ matrix.inputs_params.tag_repo }}
-      force_push: ${{ matrix.inputs_params.force_push || 'false' }}
-      custom_env: ${{ matrix.inputs_params.custom_env || '' }}
       runner_image: ${{ matrix.runner_image }} # || 'ubuntu-24.04'
+      app_branch: ${{ matrix.workflows_inputs.app_branch }}
+      tag_repo: ${{ matrix.workflows_inputs.tag_repo }}
+      force_push: ${{ matrix.workflows_inputs.force_push || 'false' }}
+      custom_env: ${{ matrix.workflows_inputs.custom_env || '' }}
     secrets:
       DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
       DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
