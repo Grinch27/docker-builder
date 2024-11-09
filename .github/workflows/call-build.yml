@@ -1,35 +1,35 @@
 name: Call Build
 
 on:
-  schedule:
-    # cloudflare-warp
-    - cron: "0 22 * * *"
-    # adguardvpn-cli
-    - cron: "10 22 * * *"
-    - cron: "10 22 * * *"
-    - cron: "10 22 * * *"
-    # expressvpn
-    - cron: "20 22 * * *"
-    # nordvpn
-    - cron: "20 22 * * *"
-    # squid
-    - cron: "30 22 * * *"
-    # vlmcsd
-    - cron: "30 22 * * *"
-    # novnc
-    - cron: "40 22 * * *"
-    # baidunetdisk
-    - cron: "40 22 * * *"
-    # steamcmd
-    - cron: "50 22 * * *"
-    # runner
-    - cron: "0 23 * * *"
-    # runner:slim
-    - cron: "0 23 * * *"
-    # runner:actions
-    - cron: "0 23 * * *"
-    # runner:actions-slim
-    - cron: "0 23 * * *"
+  # schedule:
+  #   # cloudflare-warp
+  #   - cron: "0 22 * * *"
+  #   # adguardvpn-cli
+  #   - cron: "10 22 * * *"
+  #   - cron: "10 22 * * *"
+  #   - cron: "10 22 * * *"
+  #   # expressvpn
+  #   - cron: "20 22 * * *"
+  #   # nordvpn
+  #   - cron: "20 22 * * *"
+  #   # squid
+  #   - cron: "30 22 * * *"
+  #   # vlmcsd
+  #   - cron: "30 22 * * *"
+  #   # novnc
+  #   - cron: "40 22 * * *"
+  #   # baidunetdisk
+  #   - cron: "40 22 * * *"
+  #   # steamcmd
+  #   - cron: "50 22 * * *"
+  #   # runner
+  #   - cron: "0 23 * * *"
+  #   # runner:slim
+  #   - cron: "0 23 * * *"
+  #   # runner:actions
+  #   - cron: "0 23 * * *"
+  #   # runner:actions-slim
+  #   - cron: "0 23 * * *"
   repository_dispatch:
   workflow_dispatch:
     inputs:
