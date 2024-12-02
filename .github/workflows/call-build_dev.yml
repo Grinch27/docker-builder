@@ -55,6 +55,7 @@ jobs:
             tag_repo: "dev"
           - app_branch: "steamcmd"
             tag_repo: "dev"
+          # runner
           - app_branch: "runner"
             tag_repo: "dev"
           - app_branch: "runner"
@@ -66,8 +67,15 @@ jobs:
           - app_branch: "runner"
             tag_repo: "actions-slim"
             custom_env: "dockerfile=actions-slim.Dockerfile"
+          # openwrt
           - app_branch: "openwrt"
             tag_repo: "main"
+          # privoxy
+          - app_branch: "privoxy"
+            tag_repo: "latest"
+          # aria2
+          - app_branch: "aria2"
+            tag_repo: "latest"
     with:
       runner_image: ${{ matrix.runner_image }} # || 'ubuntu-24.04'
       app_branch: ${{ matrix.workflows_inputs.app_branch }}
