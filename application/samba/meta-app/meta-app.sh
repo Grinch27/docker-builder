@@ -30,6 +30,7 @@ apk add --no-cache -q \
     # samba-winbind-clients \
     # samba-winbind-krb5-locator \
 
-# version=$(privoxy --version)
-# version=$(echo "$version" | awk '/Privoxy version / {print $3}')
-# echo "version=${version}"
+# Version 4.20.6
+version=$(smbd --version)
+version=$(echo "$version" | awk '/Version/ {print $2}')
+echo "version=${version}"
