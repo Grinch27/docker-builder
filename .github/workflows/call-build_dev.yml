@@ -76,6 +76,9 @@ jobs:
           # aria2
           - app_branch: "aria2"
             tag_repo: "latest"
+          # samba
+          - app_branch: "samba"
+            tag_repo: "latest"
     with:
       runner_image: ${{ matrix.runner_image }} # || 'ubuntu-24.04'
       app_branch: ${{ matrix.workflows_inputs.app_branch }}
