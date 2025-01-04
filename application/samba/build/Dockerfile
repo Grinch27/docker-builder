@@ -37,11 +37,11 @@ RUN set -x \
     # ===== docker-entrypoint.sh =====
     && sh_entrypoint="/docker-entrypoint.sh" \
     && echo "#!/usr/bin/env sh" >> ${sh_entrypoint} \
-    # # ----- start samba -----
-	# && sh_samba="/start-samba.sh" \
-	# && echo "samba ${dir_samba}/samba.conf" >> ${sh_samba} \
-	# && chmod +x ${sh_samba} \
-	# && echo "${sh_samba} &" >> ${sh_entrypoint} \
+    # ----- start samba -----
+	&& sh_samba="/start-samba.sh" \
+	&& echo "smbd" >> ${sh_samba} \
+	&& chmod +x ${sh_samba} \
+	&& echo "${sh_samba} &" >> ${sh_entrypoint} \
     # ----- end of docker-entrypoint.sh -----
     && echo "uname -a" >> ${sh_entrypoint} \
 	&& echo "sleep infinity" >> ${sh_entrypoint} \
