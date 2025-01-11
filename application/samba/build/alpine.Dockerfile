@@ -38,10 +38,8 @@ RUN set -x \
     # ===== Clean apk =====
     && rm -rf /var/cache/apk/* \
     && rm -rf /var/log/*.log \
-    # # ===== samba configuration =====
-    # && dir_samba="/etc/samba" \
-    # && cp -f "${dir_samba}/config.new" "${dir_samba}/samba.conf" \
-    && echo -e "password\npassword" | smbpasswd -a root \
+    # ===== samba configuration =====
+    # && echo -e "password\npassword" | smbpasswd -a root \
     # ===== docker-entrypoint.sh =====
     && sh_entrypoint="/docker-entrypoint.sh" \
     && echo "#!/usr/bin/env sh" >> ${sh_entrypoint} \
