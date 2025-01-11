@@ -79,6 +79,10 @@ jobs:
           # samba
           - app_branch: "samba"
             tag_repo: "latest"
+            # custom_env: "dockerfile=slim.Dockerfile"
+          - app_branch: "samba"
+            tag_repo: "alpine"
+            custom_env: "dockerfile=alpine.Dockerfile"
     with:
       runner_image: ${{ matrix.runner_image }} # || 'ubuntu-24.04'
       app_branch: ${{ matrix.workflows_inputs.app_branch }}
