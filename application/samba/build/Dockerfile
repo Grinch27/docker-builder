@@ -8,32 +8,40 @@ RUN set -x \
         ca-certificates \
         samba \
         samba-client \
-        samba-client-libs \
-        samba-common \
-        samba-common-server-libs \
-        samba-common-tools \
-        # samba-dc \
-        # samba-dc-libs \
-        # samba-dev \
-        # samba-doc \
-        # samba-libnss-winbind \
         samba-libs \
-        # samba-libs-py3 \
-        # samba-pidl \
         samba-server \
-        samba-server-libs \
-        # samba-server-openrc \
-        # samba-test \
         samba-util-libs \
-        # samba-winbind \
-        # samba-winbind-clients \
-        # samba-winbind-krb5-locator \
+        # ----- full list -----
+        # ca-certificates \
+        # samba \
+        # samba-client \
+        # samba-client-libs \
+        # samba-common \
+        # samba-common-server-libs \
+        # samba-common-tools \
+        # # samba-dc \
+        # # samba-dc-libs \
+        # # samba-dev \
+        # # samba-doc \
+        # # samba-libnss-winbind \
+        # samba-libs \
+        # # samba-libs-py3 \
+        # # samba-pidl \
+        # samba-server \
+        # samba-server-libs \
+        # # samba-server-openrc \
+        # # samba-test \
+        # samba-util-libs \
+        # # samba-winbind \
+        # # samba-winbind-clients \
+        # # samba-winbind-krb5-locator \
     # ===== Clean apk =====
     && rm -rf /var/cache/apk/* \
     && rm -rf /var/log/*.log \
     # # ===== samba configuration =====
     # && dir_samba="/etc/samba" \
     # && cp -f "${dir_samba}/config.new" "${dir_samba}/samba.conf" \
+    && echo -e "password\npassword" | smbpasswd -a root \
     # ===== docker-entrypoint.sh =====
     && sh_entrypoint="/docker-entrypoint.sh" \
     && echo "#!/usr/bin/env sh" >> ${sh_entrypoint} \
@@ -48,36 +56,3 @@ RUN set -x \
 	&& chmod +x ${sh_entrypoint}
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
-
-# # samba in alpine list
-# samba
-# samba-client
-# samba-client-libs
-# samba-common
-# samba-common-server-libs
-# samba-common-tools
-# samba-dc
-# samba-dc-libs
-# samba-dev
-# samba-doc
-# samba-libnss-winbind
-# samba-libs
-# samba-libs-py3
-# samba-pidl
-# samba-server
-# samba-server-libs
-# samba-server-openrc
-# samba-test
-# samba-util-libs
-# samba-winbind
-# samba-winbind-clients
-# samba-winbind-krb5-locator
-
-# # samba in openwrt
-# samba4-admin	4.18.8-r1	-	-	
-# samba4-client	4.18.8-r1	-	-	
-# samba4-libs	4.18.8-r1	-	-	
-# samba4-server	4.18.8-r1	-	-	
-# samba4-utils	4.18.8-r1	-	-	
-# luci-app-samba4	24.243.35685~648a099	-	-	
-# luci-i18n-samba4-zh-cn	24.243.35685~648a099
