@@ -54,7 +54,7 @@ jobs:
           echo "Layers: $layers"
 
           # 将 layers 作为输出传递下游作业（确保输出为单行 JSON 字符串）
-          echo "layers=$layers" >> "$GITHUB_OUTPUT"
+          echo "layers=$layers" | tee -a ${GITHUB_OUTPUT}
 
       - name: Display Docker Layers in Log
       if: ${{ 'true' == 'false' }} # disable
