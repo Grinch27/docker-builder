@@ -8,7 +8,7 @@ on:
 
 jobs:
   fetch-layers:
-    name: Docker Layers - ${{ matrix.image_name }} on ${{ matrix.os }}/${{ matrix.arch }}
+    name: ${{ matrix.image_name }} on ${{ matrix.os }}/${{ matrix.arch }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
