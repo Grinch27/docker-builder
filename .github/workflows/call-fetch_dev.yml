@@ -8,44 +8,39 @@ on:
 
 jobs:
   fetch-layers:
-    name: Fetch Docker layers (Matrix)
+    name: Docker Layers - ${{ matrix.image_name }} on ${{ matrix.os }}/${{ matrix.arch }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        # 同时针对多个镜像、多个平台
         image_name: ["alpine:latest", "debian:latest", "ubuntu:latest"]
-        arch_branch: ["linux/amd64", "linux/arm64"]
+        os: ["linux"]
+        arch: ["amd64", "arm64"]
+    outputs:
+      layers: ${{ steps.meta_image.outputs.layers }}
     steps:
       - name: Setup environment
         run: |
           sudo apt-get -qq update
           sudo apt-get -qq install -y ca-certificates curl gpg skopeo jq
 
-      - name: (MetaData) from DockerHub
-        id: meta-image
-        env:
-          category: "repository"
-          # 把冒号和斜杠都替换成下划线，以便生成合法的文件名  1. GitHub Actions 的表达式中不支持 Bash 风格的字符串替换 (如 //[:\/]/_)。  2. 可以使用内置函数 replace( <string>, <search>, <replace> ) 递归替换冒号 (:) 和斜杠 (/)。
-          file_prefix: ${{ replace(replace(matrix.image_name, ':', '_'), '/', '_') }}
-          file_suffix: ${{ replace(replace(matrix.arch_branch, ':', '_'), '/', '_') }}
+      - name: Get Docker MetaData from DockerHub
+        id: meta_image
         run: |
-          # 初始化存储元数据的 JSON
-          metadata='{"repository":[]}'
-
           repo="${{ matrix.image_name }}"
-          platform="${{ matrix.arch_branch }}"
+          platform="${{ matrix.os }}/${{ matrix.arch }}"
           echo "Inspecting image: $repo for platform: $platform"
 
-          os=$(echo "$platform" | cut -d'/' -f1)
-          arch=$(echo "$platform" | cut -d'/' -f2-)
-
+          # 获取 os 与 arch，不做额外转换（如没遇到特殊情况）
+          os="${{ matrix.os }}"
+          arch="${{ matrix.arch }}"
           variant=""
           if echo "${arch}" | grep -q "arm/v"; then
             variant=$(echo "${arch}" | cut -d'/' -f2)
             arch=$(echo "${arch}" | cut -d'/' -f1)
           fi
 
+          # 利用 skopeo 拉取镜像元数据，并格式化输出
           data_json=$(skopeo inspect \
             --override-os="${os}" \
             --override-arch="${arch}" \
@@ -53,44 +48,30 @@ jobs:
             --format=json \
             docker://docker.io/"${repo}" | jq .)
 
-          metadata=$(jq \
-            --argjson data "${data_json}" \
-            --arg platform "${platform}" \
-            --arg repo "${repo}" \
-            '.repository += [{name: $repo, platform: $platform, data: $data}]' <<< "${metadata}")
+          echo "MetaData for $repo on $platform:"
+          echo "${data_json}" | jq .
 
-          output_file="layers_summary_${{ env.file_prefix }}_${{ env.file_suffix }}.json"
-          echo "${metadata}" | jq . > "${output_file}"
-          echo "status=success" | tee -a ${GITHUB_OUTPUT}
+          # 提取镜像层信息，假定在 .Layers 属性中，如果镜像没有该属性，可以根据实际情况修改
+          layers=$(echo "${data_json}" | jq -c '.Layers')
+          echo "Layers: $layers"
 
-      - name: (Check) Layer MetaData
-        id: check-layer
-        env:
-          file_prefix: ${{ replace(replace(matrix.image_name, ':', '_'), '/', '_') }}
-          file_suffix: ${{ replace(replace(matrix.arch_branch, ':', '_'), '/', '_') }}
+          # 将 layers 作为输出传递下游作业（注意输出为单行 JSON 字符串）
+          echo "layers=$layers" >> "$GITHUB_OUTPUT"
+
+      - name: Display Docker Layers in Log
         run: |
-          meta_file="layers_summary_${{ env.file_prefix }}_${{ env.file_suffix }}.json"
-          if [ ! -f "$meta_file" ]; then
-            echo "No metadata file found: $meta_file"
-            exit 1
-          fi
+          # 从前一步骤输出中获取 layers 输出
+          layers="${{ steps.meta_image.outputs.layers }}"
+          echo "Docker layers for image ${{ matrix.image_name }} on platform ${{ matrix.os }}/${{ matrix.arch }}:"
+          # 逐行输出每一层（假设 layers 为 JSON 数组）
+          echo "$layers" | jq -r '.[]'
 
-          echo "Reading metadata from: $meta_file"
-          metadata_image=$(cat "$meta_file")
-
-          layers=$(echo "${metadata_image}" | jq -r '.repository[].data.Layers | @sh')
-          echo "Layers found:"
-          echo "${layers}"
-
-          changed=false
-          echo "changed=${changed}" | tee -a ${GITHUB_OUTPUT}
-          echo "status=success" | tee -a ${GITHUB_OUTPUT}
-
-      - name: Show summary
-        env:
-          file_prefix: ${{ replace(replace(matrix.image_name, ':', '_'), '/', '_') }}
-          file_suffix: ${{ replace(replace(matrix.arch_branch, ':', '_'), '/', '_') }}
+  show-all-layers:
+    name: Show Aggregated Layers from All Matrix Jobs
+    runs-on: ubuntu-latest
+    needs: fetch-layers
+    steps:
+      - name: Aggregated Output
         run: |
-          meta_file="layers_summary_${{ env.file_prefix }}_${{ env.file_suffix }}.json"
-          echo "Final summary for $meta_file:"
-          cat "$meta_file"
+          echo "Aggregated Docker Layers outputs (JSON map):"
+          echo "${{ toJSON(needs.fetch-layers.outputs) }}"
