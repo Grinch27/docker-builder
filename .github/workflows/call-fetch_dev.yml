@@ -1,0 +1,38 @@
+name: Fetch (Dev)
+
+run-name: Fetch Matrix for Docker
+
+on:
+  repository_dispatch:
+  workflow_dispatch:
+
+jobs:
+  fetch-layers:
+    name: Fetch Docker layers (Matrix)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        docker_image: ["alpine:latest", "debian:latest", "ubuntu:latest"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Setup environment
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ca-certificates curl gpg skopeo jq
+
+      - name: Inspect image
+        id: inspect
+        run: |
+          echo "Processing image: ${{ matrix.docker_image }}"
+          out=$(skopeo inspect --format=json docker://docker.io/${{ matrix.docker_image }})
+          echo "$out" | jq . > layers_summary_${{ matrix.docker_image//[:\/]/_ }}.json
+
+          # 如果需要将结果输出到 GITHUB_OUTPUT，可根据需要启用
+          echo "layers_summary=$(cat layers_summary_${{ matrix.docker_image//[:\/]/_ }}.json)" >> $GITHUB_OUTPUT
+
+      - name: Show summary
+        run: |
+          cat layers_summary_${{ matrix.docker_image//[:\/]/_ }}.json
