@@ -9,23 +9,24 @@ on:
 jobs:
   fetch-layers:
     name: ${{ matrix.image_name }} - ${{ matrix.os }}/${{ matrix.arch }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner_image || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
       matrix:
+        runner_image: ["ubuntu-latest"]
         image_name: ["alpine:latest", "debian:latest", "ubuntu:latest"]
         os: ["linux"]
         arch: ["amd64", "arm64"]
     outputs:
-      layers: ${{ steps.meta_image.outputs.layers }}
+      layers_obj: ${{ steps.assemble-layers.outputs.layers_obj }}
     steps:
       - name: Setup environment
         run: |
           sudo apt-get -qq update
           sudo apt-get -qq install -y ca-certificates curl gpg skopeo jq
 
-      - name: Get Docker MetaData from DockerHub
-        id: meta_image
+      - name: Fetch Layer Info
+        id: fetch-layers
         run: |
           repo="${{ matrix.image_name }}"
           platform="${{ matrix.os }}/${{ matrix.arch }}"
@@ -39,6 +40,7 @@ jobs:
             arch=$(echo "${arch}" | cut -d'/' -f1)
           fi
 
+          # 获取镜像数据
           data_json=$(skopeo inspect \
             --override-os="${os}" \
             --override-arch="${arch}" \
@@ -46,24 +48,34 @@ jobs:
             --format=json \
             docker://docker.io/"${repo}" | jq .)
 
-          echo "MetaData for $repo on $platform:"
-          echo "${data_json}" | jq .
-
-          # 提取镜像层信息，假定在 .Layers 属性中（返回 JSON 数组字符串）
+          # 提取 layers 数组 (已是 JSON 数组字符串)
           layers=$(echo "${data_json}" | jq -c '.Layers')
-          echo "Layers: $layers"
 
-          # 将 layers 作为输出传递下游作业（确保输出为单行 JSON 字符串）
+          echo "Data JSON:"
+          echo "${data_json}" | jq .
+          echo "Layers (JSON array string): $layers"
+
+          # 将提取到的 layers 写入 Step Output，供后续步骤使用
           echo "layers=$layers" | tee -a ${GITHUB_OUTPUT}
 
-      - name: Display Docker Layers in Log
-        if: ${{ 'true' == 'false' }} # disable
+      - name: Assemble Layers JSON
+        id: assemble-layers
         run: |
-          # 从输出中获取 layers（原始值为嵌套 JSON 字符串）
-          layers="${{ steps.meta_image.outputs.layers }}"
-          echo "Docker layers for image ${{ matrix.image_name }} on platform ${{ matrix.os }}/${{ matrix.arch }}:"
-          # 使用 -R -s 将原始输入作为字符串读入，再用 fromjson 解析为 JSON 数组，逐行输出每一层
-          echo "$layers" | jq -R -s 'fromjson | .[]'
+          repo="${{ matrix.image_name }}"
+          os="${{ matrix.os }}"
+          arch="${{ matrix.arch }}"
+
+          # 从上一步 output 中取出
+          layers="${{ steps.fetch-layers.outputs.layers }}"
+
+          echo "Key generation (example: 'alpine-linux-amd64'):"
+          key="${repo//[:\/]/-}-${os}-${arch}"
+          echo "Key: $key"
+
+          # 根据 key 和 layers 组装 { "alpine-linux-amd64": [ ... ] }
+          layers_obj=$(jq -n --arg key "$key" --argjson layers "$layers" '{($key): $layers}')
+
+          echo "layers_obj=$layers_obj" | tee -a ${GITHUB_OUTPUT}
 
   show-all-layers:
     name: Show Aggregated Layers from All Matrix Jobs
