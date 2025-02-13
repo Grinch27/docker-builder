@@ -31,7 +31,6 @@ jobs:
           platform="${{ matrix.os }}/${{ matrix.arch }}"
           echo "Inspecting image: $repo for platform: $platform"
 
-          # 获取 os 与 arch，不做额外转换（如没遇到特殊情况）
           os="${{ matrix.os }}"
           arch="${{ matrix.arch }}"
           variant=""
@@ -40,7 +39,6 @@ jobs:
             arch=$(echo "${arch}" | cut -d'/' -f1)
           fi
 
-          # 利用 skopeo 拉取镜像元数据，并格式化输出
           data_json=$(skopeo inspect \
             --override-os="${os}" \
             --override-arch="${arch}" \
@@ -51,20 +49,20 @@ jobs:
           echo "MetaData for $repo on $platform:"
           echo "${data_json}" | jq .
 
-          # 提取镜像层信息，假定在 .Layers 属性中，如果镜像没有该属性，可以根据实际情况修改
+          # 提取镜像层信息，假定在 .Layers 属性中（返回 JSON 数组字符串）
           layers=$(echo "${data_json}" | jq -c '.Layers')
           echo "Layers: $layers"
 
-          # 将 layers 作为输出传递下游作业（注意输出为单行 JSON 字符串）
+          # 将 layers 作为输出传递下游作业（确保输出为单行 JSON 字符串）
           echo "layers=$layers" >> "$GITHUB_OUTPUT"
 
       - name: Display Docker Layers in Log
         run: |
-          # 从前一步骤输出中获取 layers 输出
+          # 从输出中获取 layers（原始值为嵌套 JSON 字符串）
           layers="${{ steps.meta_image.outputs.layers }}"
           echo "Docker layers for image ${{ matrix.image_name }} on platform ${{ matrix.os }}/${{ matrix.arch }}:"
-          # 逐行输出每一层（假设 layers 为 JSON 数组）
-          echo "$layers" | jq -r '.[]'
+          # 使用 fromjson 解析输出的 JSON 字符串，再逐行输出每一层
+          echo "$layers" | jq -r 'fromjson | .[]'
 
   show-all-layers:
     name: Show Aggregated Layers from All Matrix Jobs
