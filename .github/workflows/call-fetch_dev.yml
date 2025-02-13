@@ -9,16 +9,16 @@ on:
 jobs:
   fetch-layers:
     name: ${{ matrix.image_name }} - ${{ matrix.os }}/${{ matrix.arch }}
-    runs-on: ${{ matrix.runner_image || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        runner_image: ["ubuntu-latest"]
         image_name: ["alpine:latest", "debian:latest", "ubuntu:latest"]
         os: ["linux"]
         arch: ["amd64", "arm64"]
     outputs:
-      layers_obj: ${{ steps.assemble-layers.outputs.layers_obj }}
+      # 直接将层信息作为纯文本输出
+      layers_text: ${{ steps.fetch-layers.outputs.layers_text }}
     steps:
       - name: Setup environment
         run: |
@@ -29,18 +29,16 @@ jobs:
         id: fetch-layers
         run: |
           repo="${{ matrix.image_name }}"
-          platform="${{ matrix.os }}/${{ matrix.arch }}"
-          echo "Inspecting image: $repo for platform: $platform"
-
           os="${{ matrix.os }}"
           arch="${{ matrix.arch }}"
+          echo "Inspecting image: $repo for platform: $os/$arch"
+
           variant=""
           if echo "${arch}" | grep -q "arm/v"; then
             variant=$(echo "${arch}" | cut -d'/' -f2)
             arch=$(echo "${arch}" | cut -d'/' -f1)
           fi
 
-          # 获取镜像数据
           data_json=$(skopeo inspect \
             --override-os="${os}" \
             --override-arch="${arch}" \
@@ -48,34 +46,20 @@ jobs:
             --format=json \
             docker://docker.io/"${repo}" | jq .)
 
-          # 提取 layers 数组 (已是 JSON 数组字符串)
-          layers=$(echo "${data_json}" | jq -c '.Layers')
+          # 从 data_json 中提取各层的名称，按换行分隔
+          # 例如: 
+          # Layers:
+          # sha256:xxxxxxx
+          # sha256:yyyyyyy
+          layers_text=$(echo "$data_json" | jq -r '.Layers[]')
 
-          echo "Data JSON:"
-          echo "${data_json}" | jq .
-          echo "Layers (JSON array string): $layers"
+          echo "Layers for $repo:"
+          echo "$layers_text"
 
-          # 将提取到的 layers 写入 Step Output，供后续步骤使用
-          echo "layers=$layers" | tee -a ${GITHUB_OUTPUT}
-
-      - name: Assemble Layers JSON
-        id: assemble-layers
-        run: |
-          repo="${{ matrix.image_name }}"
-          os="${{ matrix.os }}"
-          arch="${{ matrix.arch }}"
-
-          # 从上一步 output 中取出
-          layers="${{ steps.fetch-layers.outputs.layers }}"
-
-          echo "Key generation (example: 'alpine-linux-amd64'):"
-          key="${repo//[:\/]/-}-${os}-${arch}"
-          echo "Key: $key"
-
-          # 根据 key 和 layers 组装 { "alpine-linux-amd64": [ ... ] }
-          layers_obj=$(jq -n --arg key "$key" --argjson layers "$layers" '{($key): $layers}')
-
-          echo "layers_obj=$layers_obj" | tee -a ${GITHUB_OUTPUT}
+          # 将层列表(多行文本)直接写入输出
+          echo "layers_text<<EOF" >> $GITHUB_OUTPUT
+          echo "$layers_text" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
   show-all-layers:
     name: Show Aggregated Layers from All Matrix Jobs
@@ -84,5 +68,9 @@ jobs:
     steps:
       - name: Aggregated Output
         run: |
-          echo "Aggregated Docker Layers outputs (JSON map):"
+          echo "Aggregated Docker Layers outputs:"
+          # 通过 toJSON 查看所有矩阵作业的输出 
           echo "${{ toJSON(needs.fetch-layers.outputs) }}"
+
+          # 如果要汇总到一个大列表，可以解析上一步 JSON map 并合并行:
+          # 这里只做简单演示，实际可用 jq 去收集所有 layers_text 内容合并
