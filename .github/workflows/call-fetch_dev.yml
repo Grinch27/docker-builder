@@ -8,7 +8,7 @@ on:
 
 jobs:
   fetch-layers:
-    name: ${{ matrix.image_name }} - ${{ matrix.os }}/${{ matrix.arch }}
+    name: ${{ matrix.os }}/${{ matrix.arch }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -17,7 +17,6 @@ jobs:
         os: ["linux"]
         arch: ["amd64", "arm64"]
     outputs:
-      # 直接将层信息作为纯文本输出
       layers_text: ${{ steps.fetch-layers.outputs.layers_text }}
     steps:
       - name: Setup environment
@@ -47,10 +46,6 @@ jobs:
             docker://docker.io/"${repo}" | jq .)
 
           # 从 data_json 中提取各层的名称，按换行分隔
-          # 例如: 
-          # Layers:
-          # sha256:xxxxxxx
-          # sha256:yyyyyyy
           layers_text=$(echo "$data_json" | jq -r '.Layers[]')
 
           echo "Layers for $repo:"
@@ -68,9 +63,18 @@ jobs:
     steps:
       - name: Aggregated Output
         run: |
-          echo "Aggregated Docker Layers outputs:"
+          echo "Aggregated Docker Layers outputs (JSON map):"
           # 通过 toJSON 查看所有矩阵作业的输出 
-          echo "${{ toJSON(needs.fetch-layers.outputs) }}"
+          all_outputs='${{ toJSON(needs.fetch-layers.outputs) }}'
+          echo "$all_outputs"
 
-          # 如果要汇总到一个大列表，可以解析上一步 JSON map 并合并行:
-          # 这里只做简单演示，实际可用 jq 去收集所有 layers_text 内容合并
+          echo "Now combining all layers_text into one big array..."
+          # 利用 jq 将所有矩阵下的 layers_text 条目收集成一个数组
+          # 其中 select(.) 判断有无空值，避免空输出导致的报错
+          combined=$(echo "$all_outputs" | jq -Rs '
+            . as $raw
+            | ($raw | fromjson?| to_entries | map(.value // "") ) as $vals
+            | [ $vals[] | select(.) ]
+          ')
+          echo "Combined layers array:"
+          echo "$combined" | jq .
