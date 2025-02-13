@@ -57,7 +57,7 @@ jobs:
           echo "layers=$layers" | tee -a ${GITHUB_OUTPUT}
 
       - name: Display Docker Layers in Log
-      if: ${{ 'true' == 'false' }} # disable
+        if: ${{ 'true' == 'false' }} # disable
         run: |
           # 从输出中获取 layers（原始值为嵌套 JSON 字符串）
           layers="${{ steps.meta_image.outputs.layers }}"
