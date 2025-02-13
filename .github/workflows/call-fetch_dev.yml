@@ -58,11 +58,11 @@ jobs:
 
       - name: Display Docker Layers in Log
         run: |
-          # 从输出中获取 layers（原始值为嵌套 JSON 字符串）
+          # 从输出中获取 layers（此时 layers 已经是 JSON 数组字符串）
           layers="${{ steps.meta_image.outputs.layers }}"
           echo "Docker layers for image ${{ matrix.image_name }} on platform ${{ matrix.os }}/${{ matrix.arch }}:"
-          # 使用 fromjson 解析输出的 JSON 字符串，再逐行输出每一层
-          echo "$layers" | jq -r 'fromjson | .[]'
+          # 逐行输出每一层
+          echo "$layers" | jq -r '.[]'
 
   show-all-layers:
     name: Show Aggregated Layers from All Matrix Jobs
