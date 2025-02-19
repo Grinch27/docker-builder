@@ -37,7 +37,7 @@ version=$(smbd --version)
 # echo "version=${version}"
 
 remove_prefix="Version "
-remove_suffix="-Debian-"
+remove_suffix="-Debian"
 version=${version##*$remove_prefix}
 version=${version%%$remove_suffix*}
 echo "version=${version}"
