@@ -61,12 +61,11 @@ reject_ttl = 600\n\
 # 创建启动脚本
 RUN echo '#!/bin/bash\n\
 \n\
-echo "Starting dnscrypt-proxy (NO SNI mode)..."\n\
-echo "DNS over HTTPS proxy is now running directly on port 53!"\n\
-echo "IPv4 and IPv6 support enabled by default"\n\
+uname -a\n\
 \n\
-# 启动dnscrypt-proxy并保持在前台运行\n\
 exec dnscrypt-proxy -config /etc/dnscrypt-proxy/dnscrypt-proxy.toml\n\
+\n\
+sleep infinity\n\
 ' > /start.sh \
     && chmod +x /start.sh
 
@@ -99,4 +98,5 @@ RUN chmod 644 /etc/dnscrypt-proxy/dnscrypt-proxy.toml \
 EXPOSE 53/tcp 53/udp
 
 # 启动服务
-CMD ["/start.sh"]
+# uname -a && exec dnscrypt-proxy -config /etc/dnscrypt-proxy/dnscrypt-proxy.toml && sleep infinity
+ENTRYPOINT ["/start.sh"]
