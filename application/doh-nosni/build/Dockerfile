@@ -1,11 +1,17 @@
 # 第一阶段：生成配置文件和证书
-FROM debian:sid-slim AS builder
+ARG base_image=debian:sid-slim
+FROM ${base_image} AS builder
 
 # 安装生成证书所需的软件
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    openssl \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+RUN set -x \
+    && export DEBIAN_FRONTEND=noninteractive \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        openssl \
+        ca-certificates \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /var/log/*.log
 
 # 创建证书目录并生成自签名证书
 RUN mkdir -p /etc/nginx/ca \
@@ -16,7 +22,7 @@ RUN mkdir -p /etc/nginx/ca \
     -subj "/CN=DOH_NO_SNI" \
     -addext "subjectAltName=DNS:dns.cloudflare.com"
 
-# 创建精简的 DOH_NO_SNI.conf 配置，只包含 cloudflare-standard
+# 创建精简的 DOH_NO_SNI.conf 配置
 RUN echo "# DNS over HTTPS proxy configuration\n\
 \n\
 # Local DNS-DOH bridge\n\
@@ -63,7 +69,7 @@ server {\n\
     }\n\
 }" > /etc/nginx/conf.d/DOH_NO_SNI.conf
 
-# 创建简化的启动脚本
+# 创建启动脚本
 RUN echo '#!/bin/bash\n\
 # 设置 dnsmasq 配置\n\
 cat > /etc/dnsmasq.conf << EOF\n\
@@ -81,8 +87,8 @@ echo "IPv4 and IPv6 support enabled by default"\n\
 echo "DNS server dns.cloudflare.com is mapped to 127.0.0.1 in hosts file"\n\
 \n\
 exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf\n\
-' > /start.sh
-RUN chmod +x /start.sh
+' > /start.sh \
+    && chmod +x /start.sh
 
 # 创建 supervisor 配置
 RUN echo '[supervisord]\n\
@@ -109,7 +115,8 @@ stderr_logfile_maxbytes=0\n\
 ' > /etc/supervisor/conf.d/supervisord.conf
 
 # 第二阶段：安装必要软件并复制配置
-FROM debian:sid-slim
+ARG base_image=debian:sid-slim
+FROM ${base_image} AS builder
 
 # 环境变量配置
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -117,13 +124,17 @@ ENV DEBIAN_FRONTEND=noninteractive \
     TZ="Asia/Shanghai"
 
 # 安装必要软件
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    nginx-full \
-    dnsmasq \
-    supervisor \
-    tzdata \
-    dnsutils \
+RUN set -x \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        nginx-full \
+        dnsmasq \
+        supervisor \
+    && apt-get autoremove --purge -y \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /var/log/*.log \
     && rm -f /etc/nginx/sites-enabled/default
 
 # 从构建阶段复制证书和配置文件
@@ -136,11 +147,19 @@ COPY --from=builder /etc/supervisor/conf.d/supervisord.conf /etc/supervisor/conf
 RUN echo "127.0.0.1 dns.cloudflare.com" >> /etc/hosts
 
 # 确保文件权限
-RUN chmod -R 777 /etc/nginx/ca && \
-    chmod 777 /etc/nginx/conf.d/DOH_NO_SNI.conf && \
-    chmod 777 /start.sh && \
-    chmod 777 /etc/supervisor/conf.d/supervisord.conf
+RUN chmod -R 755 /etc/nginx/ca \
+    && chmod 644 /etc/nginx/ca/DOH_NO_SNI.crt \
+    && chmod 600 /etc/nginx/ca/DOH_NO_SNI.key \
+    && chmod 644 /etc/nginx/conf.d/DOH_NO_SNI.conf \
+    && chmod 755 /start.sh \
+    && chmod 644 /etc/supervisor/conf.d/supervisord.conf
 
+# # 健康检查
+# HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+#     CMD dig @127.0.0.1 -p 53 cloudflare.com || exit 1
+
+# 仅暴露需要的端口
 EXPOSE 53/tcp 53/udp
 
+# 启动服务
 CMD ["/start.sh"]
