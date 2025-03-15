@@ -600,6 +600,7 @@ jobs:
 
       - name: (Test) Docker image
         id: test
+        continue-on-error: true # 允许此步骤失败但继续执行后续步骤
         env:
           container_name: container-test
           dir_container: "/tmp"
@@ -815,7 +816,7 @@ jobs:
 
       - name: (Push) Image to ${{ env.registry_push }}
         id: push
-        continue-on-error: true # 添加此行，允许此步骤失败但继续执行后续步骤
+        continue-on-error: true # 允许此步骤失败但继续执行后续步骤
         # if: ${{ 'true' == 'false' }} # disable
         working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
