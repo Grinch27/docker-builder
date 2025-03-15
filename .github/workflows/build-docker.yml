@@ -8,7 +8,7 @@ on:
         description: "App Branch"
         type: string
         required: true
-        default: "adguardvpn-cli"
+        default: "dns-nosni"
       tag_repo:
         description: "Tag Push to Repo"
         type: string
