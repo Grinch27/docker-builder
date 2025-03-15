@@ -116,7 +116,7 @@ stderr_logfile_maxbytes=0\n\
 
 # 第二阶段：安装必要软件并复制配置
 ARG base_image=debian:sid-slim
-FROM ${base_image} AS builder
+FROM ${base_image}
 
 # 环境变量配置
 ENV DEBIAN_FRONTEND=noninteractive \
