@@ -23,7 +23,7 @@ RUN echo "# DNS over HTTPS proxy configuration\n\
 server {\n\
     listen 8053;\n\
     location /dns-query {\n\
-        proxy_pass https://cloudflare-standard;\n\
+        proxy_pass https://real-cloudflare-dns;\n\
         proxy_set_header Host \$http_host;\n\
         proxy_set_header User-Agent \$http_user_agent;\n\
         proxy_set_header X-Real-IP \$remote_addr;\n\
@@ -36,10 +36,12 @@ server {\n\
     }\n\
 }\n\
 \n\
-# Cloudflare DNS Standard\n\
-upstream cloudflare-standard {\n\
+# 真实的Cloudflare DNS - 使用IP地址避免循环代理\n\
+upstream real-cloudflare-dns {\n\
     server 1.1.1.1:443;\n\
     server 1.0.0.1:443;\n\
+    server [2606:4700:4700::1111]:443;\n\
+    server [2606:4700:4700::1001]:443;\n\
 }\n\
 \n\
 server {\n\
@@ -51,7 +53,7 @@ server {\n\
     ssl_protocols TLSv1.3 TLSv1.2;\n\
 \n\
     location / {\n\
-        proxy_pass https://cloudflare-standard;\n\
+        proxy_pass https://real-cloudflare-dns;\n\
         proxy_set_header Host \$http_host;\n\
         proxy_set_header User-Agent \$http_user_agent;\n\
         proxy_set_header X-Real-IP \$remote_addr;\n\
@@ -74,17 +76,9 @@ log-queries=extra\n\
 log-facility=-\n\
 EOF\n\
 \n\
-# 设置动态 upstream 配置\n\
-cat > /etc/nginx/conf.d/dynamic-upstream.conf << EOF\n\
-upstream cloudflare-standard {\n\
-    server 1.1.1.1:443;\n\
-    server 1.0.0.1:443;\n\
-    $([ "${ENABLE_IPV6:-true}" = "true" ] && echo "    server [2606:4700:4700::1111]:443;\n    server [2606:4700:4700::1001]:443;")\n\
-}\n\
-EOF\n\
-\n\
 echo "Starting DNS proxy with Cloudflare Standard (NO SNI)"\n\
-echo "IPv6 support: ${ENABLE_IPV6:-true}"\n\
+echo "IPv4 and IPv6 support enabled by default"\n\
+echo "DNS server dns.cloudflare.com is mapped to 127.0.0.1 in hosts file"\n\
 \n\
 exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf\n\
 ' > /start.sh
@@ -120,7 +114,6 @@ FROM debian:sid-slim
 # 环境变量配置
 ENV DEBIAN_FRONTEND=noninteractive \
     CACHE_SIZE=1000 \
-    ENABLE_IPV6="true" \
     TZ="Asia/Shanghai"
 
 # 安装必要软件
@@ -138,6 +131,9 @@ COPY --from=builder /etc/nginx/ca /etc/nginx/ca
 COPY --from=builder /etc/nginx/conf.d/DOH_NO_SNI.conf /etc/nginx/conf.d/
 COPY --from=builder /start.sh /start.sh
 COPY --from=builder /etc/supervisor/conf.d/supervisord.conf /etc/supervisor/conf.d/
+
+# 修改 hosts 文件，将上游 DNS 服务器指向本地
+RUN echo "127.0.0.1 dns.cloudflare.com" >> /etc/hosts
 
 # 确保文件权限
 RUN chmod -R 777 /etc/nginx/ca && \
