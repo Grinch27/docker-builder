@@ -18,7 +18,7 @@ on:
         description: "Force push to Docker Hub"
         type: choice
         required: false
-        default: "false"
+        default: "true"
         options:
           - "true"
           - "false"
