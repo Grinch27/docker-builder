@@ -61,10 +61,13 @@ reject_ttl = 600\n\
 # 创建启动脚本
 RUN echo '#!/bin/bash\n\
 \n\
+set -e\n\
+\n\
 uname -a\n\
 \n\
-exec dnscrypt-proxy -config /etc/dnscrypt-proxy/dnscrypt-proxy.toml\n\
+exec dnscrypt-proxy --config /etc/dnscrypt-proxy/dnscrypt-proxy.toml\n\
 \n\
+set +e\n\
 sleep infinity\n\
 ' > /start.sh \
     && chmod +x /start.sh
