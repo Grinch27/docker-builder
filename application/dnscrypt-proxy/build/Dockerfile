@@ -1,5 +1,5 @@
-# 第一阶段：生成配置文件
-FROM debian:sid-slim AS builder
+ARG base_image=debian:sid-slim
+FROM ${base_image} AS builder
 
 # 安装基本工具
 RUN set -x \
@@ -16,8 +16,8 @@ RUN mkdir -p /etc/dnscrypt-proxy \
     && echo '\
 # dnscrypt-proxy 配置 - 无SNI泄露\n\
 \n\
-# 基本设置\n\
-listen_addresses = ["127.0.0.1:5053"]\n\
+# 基本设置 - 直接监听53端口\n\
+listen_addresses = ["0.0.0.0:53"]\n\
 max_clients = 250\n\
 ipv4_servers = true\n\
 ipv6_servers = true\n\
@@ -30,6 +30,14 @@ esni = true\n\
 force_tcp = false\n\
 timeout = 5000\n\
 keepalive = 30\n\
+\n\
+# 缓存设置\n\
+cache = true\n\
+cache_size = 4096\n\
+cache_min_ttl = 300\n\
+cache_max_ttl = 86400\n\
+cache_neg_min_ttl = 60\n\
+cache_neg_max_ttl = 600\n\
 \n\
 # 使用Cloudflare服务器\n\
 server_names = ["cloudflare"]\n\
@@ -53,64 +61,27 @@ reject_ttl = 600\n\
 # 创建启动脚本
 RUN echo '#!/bin/bash\n\
 \n\
-# 设置 dnsmasq 配置\n\
-cat > /etc/dnsmasq.conf << EOF\n\
-# 基础设置\n\
-no-resolv\n\
-no-poll\n\
-# 将请求转发至本地dnscrypt-proxy\n\
-server=127.0.0.1#5053\n\
-listen-address=0.0.0.0\n\
-bind-interfaces\n\
-\n\
-# 缓存设置\n\
-cache-size=10000\n\
-min-cache-ttl=300\n\
-\n\
-# 日志设置\n\
-log-queries=extra\n\
-log-facility=-\n\
-EOF\n\
-\n\
-# 启动 dnscrypt-proxy\n\
 echo "Starting dnscrypt-proxy (NO SNI mode)..."\n\
-dnscrypt-proxy -config /etc/dnscrypt-proxy/dnscrypt-proxy.toml &\n\
-DNSCRYPT_PID=$!\n\
-\n\
-# 等待 dnscrypt-proxy 启动\n\
-sleep 2\n\
-if ! kill -0 $DNSCRYPT_PID 2>/dev/null; then\n\
-  echo "Failed to start dnscrypt-proxy"\n\
-  exit 1\n\
-fi\n\
-echo "dnscrypt-proxy started successfully (PID: $DNSCRYPT_PID)"\n\
-\n\
-# 设置进程终止信号处理\n\
-trap "kill $DNSCRYPT_PID; exit" SIGINT SIGTERM\n\
-\n\
-# 启动dnsmasq并运行在前台\n\
-echo "Starting dnsmasq..."\n\
-echo "DNS over HTTPS proxy is now running (NO SNI)!"\n\
+echo "DNS over HTTPS proxy is now running directly on port 53!"\n\
 echo "IPv4 and IPv6 support enabled by default"\n\
 \n\
-exec dnsmasq -k --log-facility=- --no-daemon\n\
+# 启动dnscrypt-proxy并保持在前台运行\n\
+exec dnscrypt-proxy -config /etc/dnscrypt-proxy/dnscrypt-proxy.toml\n\
 ' > /start.sh \
     && chmod +x /start.sh
 
 # 第二阶段：安装必要软件并复制配置
-FROM debian:sid-slim
+FROM ${base_image}
 
 # 环境变量配置
-ENV DEBIAN_FRONTEND=noninteractive
+ENV DEBIAN_FRONTEND=noninteractive 
 
 # 安装必要软件 (仅保留必要组件)
 RUN set -x \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
-        dnsmasq \
         dnscrypt-proxy \
-        tzdata \
     && apt-get autoremove --purge -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
@@ -120,10 +91,8 @@ RUN set -x \
 COPY --from=builder /etc/dnscrypt-proxy/dnscrypt-proxy.toml /etc/dnscrypt-proxy/
 COPY --from=builder /start.sh /start.sh
 
-# 创建运行目录并设置权限
-RUN mkdir -p /var/run/dnscrypt-proxy \
-    && chmod -R 755 /var/run/dnscrypt-proxy \
-    && chmod 644 /etc/dnscrypt-proxy/dnscrypt-proxy.toml \
+# 设置权限
+RUN chmod 644 /etc/dnscrypt-proxy/dnscrypt-proxy.toml \
     && chmod 755 /start.sh
 
 # 仅暴露需要的端口
