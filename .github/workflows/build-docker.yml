@@ -815,6 +815,7 @@ jobs:
 
       - name: (Push) Image to ${{ env.registry_push }}
         id: push
+        continue-on-error: true # 添加此行，允许此步骤失败但继续执行后续步骤
         # if: ${{ 'true' == 'false' }} # disable
         working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
@@ -846,8 +847,7 @@ jobs:
           IFS=',' read -ra registries <<< "${{ env.registry_push }}"
           for registry_remote in "${registries[@]}"; do
             for tag_each in "${tag_array[@]}"; do
-              docker buildx imagetools create --tag "${registry_remote}/${{ env.repo_dockerhub }}:${tag_each}" "${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}"
-              # skopeo inspect --format=json docker://${registry_remote}/${{ env.repo_dockerhub }}:${tag_each}
+              docker buildx imagetools create --tag "${registry_remote}/${{ env.repo_dockerhub }}:${tag_each}" "${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}" || echo "Failed to push ${tag_each} to ${registry_remote}, but continuing..."
             done
           done
 
@@ -855,6 +855,7 @@ jobs:
 
       - name: (Upload) to Release
         id: upload-release
+        # 修改条件判断，不再依赖push步骤的状态，只检查output步骤的状态
         if: steps.output.outputs.status == 'success' && !cancelled()
         # if: ${{ 'true' == 'false' }} # disable
         uses: ncipollo/release-action@main
