@@ -1,0 +1,150 @@
+# 第一阶段：生成配置文件和证书
+FROM debian:sid-slim AS builder
+
+# 安装生成证书所需的软件
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openssl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# 创建证书目录并生成自签名证书
+RUN mkdir -p /etc/nginx/ca \
+    && openssl req -x509 -nodes -days 3650 \
+    -newkey rsa:2048 \
+    -keyout /etc/nginx/ca/DOH_NO_SNI.key \
+    -out /etc/nginx/ca/DOH_NO_SNI.crt \
+    -subj "/CN=DOH_NO_SNI" \
+    -addext "subjectAltName=DNS:dns.cloudflare.com"
+
+# 创建精简的 DOH_NO_SNI.conf 配置，只包含 cloudflare-standard
+RUN echo "# DNS over HTTPS proxy configuration\n\
+\n\
+# Local DNS-DOH bridge\n\
+server {\n\
+    listen 8053;\n\
+    location /dns-query {\n\
+        proxy_pass https://cloudflare-standard;\n\
+        proxy_set_header Host \$http_host;\n\
+        proxy_set_header User-Agent \$http_user_agent;\n\
+        proxy_set_header X-Real-IP \$remote_addr;\n\
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;\n\
+        proxy_ssl_server_name off;\n\
+        proxy_buffering off;\n\
+        proxy_connect_timeout 10;\n\
+        proxy_send_timeout 10;\n\
+        proxy_read_timeout 10;\n\
+    }\n\
+}\n\
+\n\
+# Cloudflare DNS Standard\n\
+upstream cloudflare-standard {\n\
+    server 1.1.1.1:443;\n\
+    server 1.0.0.1:443;\n\
+}\n\
+\n\
+server {\n\
+    listen 443 ssl;\n\
+    server_name dns.cloudflare.com;\n\
+\n\
+    ssl_certificate ca/DOH_NO_SNI.crt;\n\
+    ssl_certificate_key ca/DOH_NO_SNI.key;\n\
+    ssl_protocols TLSv1.3 TLSv1.2;\n\
+\n\
+    location / {\n\
+        proxy_pass https://cloudflare-standard;\n\
+        proxy_set_header Host \$http_host;\n\
+        proxy_set_header User-Agent \$http_user_agent;\n\
+        proxy_set_header X-Real-IP \$remote_addr;\n\
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;\n\
+        proxy_ssl_server_name off;\n\
+        proxy_buffering off;\n\
+    }\n\
+}" > /etc/nginx/conf.d/DOH_NO_SNI.conf
+
+# 创建简化的启动脚本
+RUN echo '#!/bin/bash\n\
+# 设置 dnsmasq 配置\n\
+cat > /etc/dnsmasq.conf << EOF\n\
+no-resolv\n\
+no-poll\n\
+server=127.0.0.1#8053\n\
+listen-address=0.0.0.0\n\
+cache-size=${CACHE_SIZE:-1000}\n\
+log-queries=extra\n\
+log-facility=-\n\
+EOF\n\
+\n\
+# 设置动态 upstream 配置\n\
+cat > /etc/nginx/conf.d/dynamic-upstream.conf << EOF\n\
+upstream cloudflare-standard {\n\
+    server 1.1.1.1:443;\n\
+    server 1.0.0.1:443;\n\
+    $([ "${ENABLE_IPV6:-true}" = "true" ] && echo "    server [2606:4700:4700::1111]:443;\n    server [2606:4700:4700::1001]:443;")\n\
+}\n\
+EOF\n\
+\n\
+echo "Starting DNS proxy with Cloudflare Standard (NO SNI)"\n\
+echo "IPv6 support: ${ENABLE_IPV6:-true}"\n\
+\n\
+exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf\n\
+' > /start.sh
+RUN chmod +x /start.sh
+
+# 创建 supervisor 配置
+RUN echo '[supervisord]\n\
+nodaemon=true\n\
+user=root\n\
+\n\
+[program:nginx]\n\
+command=nginx -g "daemon off;"\n\
+autostart=true\n\
+autorestart=true\n\
+stdout_logfile=/dev/stdout\n\
+stdout_logfile_maxbytes=0\n\
+stderr_logfile=/dev/stderr\n\
+stderr_logfile_maxbytes=0\n\
+\n\
+[program:dnsmasq]\n\
+command=dnsmasq -k\n\
+autostart=true\n\
+autorestart=true\n\
+stdout_logfile=/dev/stdout\n\
+stdout_logfile_maxbytes=0\n\
+stderr_logfile=/dev/stderr\n\
+stderr_logfile_maxbytes=0\n\
+' > /etc/supervisor/conf.d/supervisord.conf
+
+# 第二阶段：安装必要软件并复制配置
+FROM debian:sid-slim
+
+# 环境变量配置
+ENV DEBIAN_FRONTEND=noninteractive \
+    CACHE_SIZE=1000 \
+    ENABLE_IPV6="true" \
+    TZ="Asia/Shanghai"
+
+# 安装必要软件
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    nginx-full \
+    dnsmasq \
+    supervisor \
+    tzdata \
+    dnsutils \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -f /etc/nginx/sites-enabled/default
+
+# 从构建阶段复制证书和配置文件
+COPY --from=builder /etc/nginx/ca /etc/nginx/ca
+COPY --from=builder /etc/nginx/conf.d/DOH_NO_SNI.conf /etc/nginx/conf.d/
+COPY --from=builder /start.sh /start.sh
+COPY --from=builder /etc/supervisor/conf.d/supervisord.conf /etc/supervisor/conf.d/
+
+# 确保文件权限
+RUN chmod -R 777 /etc/nginx/ca && \
+    chmod 777 /etc/nginx/conf.d/DOH_NO_SNI.conf && \
+    chmod 777 /start.sh && \
+    chmod 777 /etc/supervisor/conf.d/supervisord.conf
+
+EXPOSE 53/tcp 53/udp
+
+CMD ["/start.sh"]
