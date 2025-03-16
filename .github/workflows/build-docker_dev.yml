@@ -632,6 +632,9 @@ jobs:
 
           df -Th
 
+          mkdir -p "${{ env.path_build }}/${{ env.dir_app }}"
+          mkdir -p "${{ env.path_build }}/${{ env.dir_app }}/output"
+
       - name: (Service) Local Registry
         id: registry
         env:
