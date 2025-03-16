@@ -632,9 +632,6 @@ jobs:
 
           df -Th
 
-          mkdir -p "${{ env.path_build }}/${{ env.dir_app }}"
-          mkdir -p "${{ env.path_build }}/${{ env.dir_app }}/output"
-
       - name: (Service) Local Registry
         id: registry
         env:
@@ -651,7 +648,7 @@ jobs:
 
       - name: Build and push to local registry
         id: build
-        working-directory: "${{ env.path_build }}/${{ env.dir_app }}"
+        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
           echo "Current working directory: $(pwd)"
 
@@ -709,7 +706,7 @@ jobs:
           container_name: container-test
           dir_container: "/tmp"
           time_sleep: ${{ env.time_sleep || '3' }}
-        working-directory: "${{ env.path_build }}/${{ env.dir_app }}"
+        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
           echo "Current working directory: $(pwd)"
 
@@ -767,7 +764,7 @@ jobs:
         env:
           dir_output: "${{ env.path_build }}/${{ env.dir_app }}/output"
           target_ext: "tar"
-        working-directory: "${{ env.path_build }}/${{ env.dir_app }}"
+        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
           echo "Current working directory: $(pwd)"
 
@@ -874,9 +871,9 @@ jobs:
         id: release-md
         # if: ${{ 'true' == 'false' }} # disable
         env:
-          release_md: "${{ env.path_build }}/${{ env.dir_app }}/release.md"
+          release_md: "${{ github.workspace }}/${{ env.dir_app }}/release.md"
           metadata_sum_path: ${{ steps.output-check.outputs.metadata_sum_path }}
-        working-directory: "${{ env.path_build }}/${{ env.dir_app }}"
+        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
           echo "Current working directory: $(pwd)"
 
@@ -922,7 +919,7 @@ jobs:
         id: push
         continue-on-error: true # 允许此步骤失败但继续执行后续步骤
         # if: ${{ 'true' == 'false' }} # disable
-        working-directory: "${{ env.path_build }}/${{ env.dir_app }}"
+        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
           echo "Current working directory: $(pwd)"
           declare -a tag_array=("${{ env.tag_repo }}")
