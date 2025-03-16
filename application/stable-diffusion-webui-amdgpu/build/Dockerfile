@@ -1,4 +1,4 @@
-ARG base_image=debian:sid-slim
+ARG base_image=ubuntu:devel
 FROM ${base_image}
 
 RUN set -x \
