@@ -9,7 +9,7 @@ RUN set -x \
     #     ca-certificates \
     #     sudo \
     # Debian-based:
-    && apt-get install -y -qq \
+    && apt-get install -y \
         ca-certificates \
         wget \
         curl \
