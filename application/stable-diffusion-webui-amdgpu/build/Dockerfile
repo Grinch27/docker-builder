@@ -15,18 +15,18 @@ RUN set -x \
         wget \
         curl \
         git \
-        python3.11 \
-        python3-pip \
-        python3-venv \
+        # python3.11 \
+        # python3-pip \
+        # python3-venv \
         libgl1 \
         libglib2.0-0 \
     # ubuntu install python3.11 or python3.10
-    # && add-apt-repository ppa:deadsnakes/ppa \
-    # && apt-get update --ignore-missing -y -qq \
-    # && apt-get install -y \
-    #     python3.11 \
-    #     python3-pip \
-    #     python3-venv \
+    && add-apt-repository ppa:deadsnakes/ppa \
+    && apt-get update --ignore-missing -y -qq \
+    && apt-get install -y \
+        python3.11 \
+        python3-pip \
+        python3-venv \
     # ===== Clean apt =====
     && apt-get autoremove --purge -y -qq \
     && apt-get clean -y -qq \
