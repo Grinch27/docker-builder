@@ -11,18 +11,22 @@ RUN set -x \
     # Debian-based:
     && apt-get install -y \
         ca-certificates \
+        software-properties-common \
         wget \
         curl \
         git \
         # python3.11 \
-        python3-pip \
-        python3-venv \
+        # python3-pip \
+        # python3-venv \
         libgl1 \
         libglib2.0-0 \
     # install python3.11 or python3.10
     && add-apt-repository ppa:deadsnakes/ppa \
     && apt-get update --ignore-missing -y -qq \
-    && apt-get install -y python3.11 \
+    && apt-get install -y \
+        python3.11 \
+        python3-pip \
+        python3-venv \
     # ===== Clean apt =====
     && apt-get autoremove --purge -y -qq \
     && apt-get clean -y -qq \
