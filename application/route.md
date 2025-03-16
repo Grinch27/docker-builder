@@ -1,5 +1,7 @@
 # application\samba
 
+新建一个文件夹，参考该 markdown 指出的文件夹架构，创建文件,名为：
+
 ## level 1
 
 samba
@@ -19,7 +21,7 @@ samba\build\Dockerfile
 samba\env\vars.env
 samba\meta-app\meta-app.sh
 samba\test\test.sh
-samba\push\tag_version.sh
+samba\push\tag_version.shw
 
 ## file
 

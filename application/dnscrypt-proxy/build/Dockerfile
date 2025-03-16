@@ -14,19 +14,18 @@ RUN set -x \
 # 创建 dnscrypt-proxy 配置 - 关闭 SNI
 RUN mkdir -p /etc/dnscrypt-proxy \
     && echo '\
-# dnscrypt-proxy 配置 - 无SNI泄露\n\
+listen_addresses = [\"0.0.0.0:53\"]\n\
+max_clients = 100\n\
 \n\
-# 基本设置 - 直接监听53端口\n\
-listen_addresses = ["0.0.0.0:53"]\n\
-max_clients = 250\n\
-ipv4_servers = true\n\
-ipv6_servers = true\n\
+# 服务器选择\n\
+server_names = [\"cloudflare\", \"cloudflare-ipv6\"]\n\
 \n\
 # 隐私保护设置\n\
 tls_disable_session_tickets = true\n\
-esni = true\n\
+dnscrypt_ephemeral_keys = false\n\
+bootstrap_resolvers = [\"1.1.1.1:53\"]\n\
 \n\
-# 服务器选择 - 使用安全的无SNI实现\n\
+# 连接设置\n\
 force_tcp = false\n\
 timeout = 5000\n\
 keepalive = 30\n\
@@ -39,36 +38,43 @@ cache_max_ttl = 86400\n\
 cache_neg_min_ttl = 60\n\
 cache_neg_max_ttl = 600\n\
 \n\
-# 使用Cloudflare服务器\n\
-server_names = ["cloudflare"]\n\
-\n\
-[static]\n\
-  [static."cloudflare"]\n\
-  stamp = "sdns://AgcAAAAAAAAACzEwNC4xOS4xOTkuMjMAG3NsLWRvaC5jaXJjbC5vcGVuZG5zLmNvbS93Zy1zdGFnaW5n"\n\
-\n\
 # 日志设置\n\
 log_level = 2\n\
-log_file = ""\n\
+log_file = \"\"\n\
 use_syslog = false\n\
 \n\
-# 禁用所有需要域名查询的功能\n\
+# IPv4/IPv6 设置\n\
+ipv4_servers = true\n\
+ipv6_servers = false\n\
 block_ipv6 = false\n\
 block_unqualified = false\n\
 block_undelegated = false\n\
 reject_ttl = 600\n\
+ignore_system_dns = true\n\
+\n\
+# 静态服务器定义\n\
+[sources]\n\
+\n\
+[static]\n\
+  [static.\"cloudflare\"]\n\
+  stamp = \"sdns://AgcAAAAAAAAABzEuMC4wLjEABzEuMC4wLjEKL2Rucy1xdWVyeQ\"\n\
+\n\
+  [static.\"cloudflare-ipv6\"]\n\
+  stamp = \"sdns://AgcAAAAAAAAAFlsyNjA2OjQ3MDA6OjY4MTA6ZjlmOV0AEmNsb3VkZmxhcmUtZG5zLmNvbQovZG5zLXF1ZXJ5\"\n\
 ' > /etc/dnscrypt-proxy/dnscrypt-proxy.toml
 
 # 创建启动脚本
 RUN echo '#!/bin/bash\n\
 \n\
-set -e\n\
-\n\
 uname -a\n\
+\n\
+set -e\n\
 \n\
 exec dnscrypt-proxy --config /etc/dnscrypt-proxy/dnscrypt-proxy.toml\n\
 \n\
 set +e\n\
-sleep infinity\n\
+\n\
+& sleep infinity\n\
 ' > /start.sh \
     && chmod +x /start.sh
 
@@ -100,6 +106,5 @@ RUN chmod 644 /etc/dnscrypt-proxy/dnscrypt-proxy.toml \
 # 仅暴露需要的端口
 EXPOSE 53/tcp 53/udp
 
-# 启动服务
 # uname -a && exec dnscrypt-proxy -config /etc/dnscrypt-proxy/dnscrypt-proxy.toml && sleep infinity
 ENTRYPOINT ["/start.sh"]

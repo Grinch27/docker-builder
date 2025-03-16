@@ -17,5 +17,5 @@ echo "dir_current=${dir_current}"
 # echo "version=${version}"
 
 # 获取 dnscrypt-proxy 版本
-version=$(dnscrypt-proxy --version 2>&1 | grep -oP 'dnscrypt-proxy \K[0-9]+\.[0-9]+\.[0-9]+')
+version=$(dnscrypt-proxy -version)
 echo "version=${version}"

@@ -9,10 +9,5 @@ apt-get install --no-install-recommends --no-install-suggests --fix-missing -y -
     ca-certificates \
     dnscrypt-proxy
 
-# 获取 dnscrypt-proxy 版本
-version=$(dnscrypt-proxy --version 2>&1 | grep -oP 'dnscrypt-proxy \K[0-9]+\.[0-9]+\.[0-9]+')
-# 如果上面的方式获取失败，尝试另一种方式
-if [ -z "$version" ]; then
-  version=$(dnscrypt-proxy --version 2>&1 | head -n 1 | awk '{print $2}')
-fi
+version=$(dnscrypt-proxy -version)
 echo "version=${version}"
