@@ -12,6 +12,7 @@ RUN set -x \
     && apt-get install -y -qq \
         ca-certificates \
         wget \
+        curl \
         git \
         python3.11 \
         python3-pip \
