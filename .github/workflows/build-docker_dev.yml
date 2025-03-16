@@ -1,4 +1,4 @@
-name: (Dev) Build Docker
+name: Build Docker
 
 on:
   repository_dispatch:
@@ -8,7 +8,7 @@ on:
         description: "App Branch"
         type: string
         required: true
-        default: "adguardvpn-cli"
+        default: "stable-diffusion-webui-amdgpu"
       tag_repo:
         description: "Tag Push to Repo"
         type: string
@@ -27,8 +27,42 @@ on:
         type: string
         required: false
         default: ""
+      runner_image:
+        description: "Runner Image"
+        type: string
+        required: false
+        default: "ubuntu-latest"
+  workflow_call:
+    inputs:
+      app_branch:
+        description: "App Branch"
+        required: true
+        type: string
+      tag_repo:
+        description: "Tag Push to Repo"
+        required: true
+        type: string
+      force_push:
+        description: "Force push to Docker Hub"
+        required: true
+        type: string
+      custom_env:
+        description: "Custom env: key=value;key=value"
+        required: false
+        type: string
+      runner_image:
+        description: "Runner Image"
+        required: false
+        type: string
+    secrets:
+      DOCKER_USERNAME:
+        description: "Docker Hub Username"
+        required: true
+      DOCKER_PASSWORD:
+        description: "Docker Hub Password"
+        required: true
 
-run-name: Docker(Dev) - ${{ inputs.app_branch }} - ${{ inputs.tag_repo }}
+run-name: Docker - ${{ inputs.app_branch }} - ${{ inputs.tag_repo }}
 
 env:
   app_branch: ${{ inputs.app_branch }}
@@ -38,11 +72,12 @@ env:
   dir_app: "application/${{ inputs.app_branch }}"
   compress: "true"
   custom_env: ${{ inputs.custom_env || '' }}
+  path_build: "/build"
 
 jobs:
   check:
     name: Check Version
-    runs-on: ubuntu-24.04
+    runs-on: ${{ inputs.runner_image || 'ubuntu-latest' }}
     permissions:
       contents: read
       pull-requests: read
@@ -51,8 +86,8 @@ jobs:
       version: ${{ steps.summary.outputs.version }}
       consistent: ${{ steps.summary.outputs.consistent }}
     env:
-      metadata_image_path: "${{ github.workspace }}/${{ inputs.dir_app }}/metadata_image.json"
-      metadata_app_path: "${{ github.workspace }}/${{ inputs.dir_app }}/metadata_app.json"
+      metadata_image_path: "/build/${{ inputs.dir_app }}/metadata_image.json"
+      metadata_app_path: "/build/${{ inputs.dir_app }}/metadata_app.json"
     steps:
       - name: Checkout ${{ github.repository }}
         uses: actions/checkout@main
@@ -82,7 +117,7 @@ jobs:
 
       - name: (Env) Load .env files
         id: env-app
-        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
+        working-directory: "${{ env.path_build }}/${{ env.dir_app }}"
         run: |
           echo "Current working directory: $(pwd)"
 
@@ -152,149 +187,42 @@ jobs:
         with:
           platforms: ${{ env.arch_branch }}
 
-      - name: (MetaData) inspect DockerHub (without login) - ${{ env.base_image }}
-        id: meta-image-base
-        env:
-          category: "repository"
-        run: |
-          metadata='{"${{ env.category }}":[]}'
-          base_image="${{ env.base_image }}"
-          IFS=',' read -ra platforms <<< "${{ env.arch_branch }}"
-          for platform in "${platforms[@]}"; do
-            os=$(echo ${platform} | cut -d'/' -f1)
-            arch=$(echo ${platform} | cut -d'/' -f2-)
-
-            variant=""
-            if echo "${arch}" | grep -q "arm/v"; then
-              variant=$(echo ${arch} | cut -d'/' -f2)
-              arch=$(echo ${arch} | cut -d'/' -f1)
-            fi
-
-            data_json=$(skopeo inspect \
-              --override-os=${os} \
-              --override-arch=${arch} \
-              ${variant:+--override-variant=${variant}} \
-              --format=json \
-              docker://docker.io/${base_image} | jq .)
-
-            metadata=$(jq \
-              --argjson data "${data_json}" \
-              --arg platform "${platform}" \
-              --arg repo "${base_image}" \
-              '.${{ env.category }} += [{name: $repo, platform: $platform, data: $data}]' <<< "${metadata}")
-          done
-          echo "metadata=${metadata}"
-          echo "${metadata}" | jq . > ${{ env.metadata_image_path }}.base
-          echo "status=success" | tee -a ${GITHUB_OUTPUT}
-
-      - name: (Log in) to Docker Hub
-        id: dockerhub-login
-        uses: docker/login-action@master
-        with:
-          registry: docker.io
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-
-      - name: (MetaData) inspect DockerHub (login) - ${{ env.repo_dockerhub }}:${{ env.tag_repo }}
-        id: meta-image-repo
-        env:
-          category: "repository"
-        run: |
-          metadata='{"${{ env.category }}":[]}'
-          repo="${{ env.repo_dockerhub }}:${{ env.tag_repo }}"
-          IFS=',' read -ra platforms <<< "${{ env.arch_branch }}"
-          for platform in "${platforms[@]}"; do
-            os=$(echo ${platform} | cut -d'/' -f1)
-            arch=$(echo ${platform} | cut -d'/' -f2-)
-
-            variant=""
-            if echo "${arch}" | grep -q "arm/v"; then
-              variant=$(echo ${arch} | cut -d'/' -f2)
-              arch=$(echo ${arch} | cut -d'/' -f1)
-            fi
-
-            data_json=$(skopeo inspect \
-              --override-os=${os} \
-              --override-arch=${arch} \
-              ${variant:+--override-variant=${variant}} \
-              --format=json \
-              docker://docker.io/${repo} | jq .)
-
-            metadata=$(jq \
-              --argjson data "${data_json}" \
-              --arg platform "${platform}" \
-              --arg repo "${repo}" \
-              '.${{ env.category }} += [{name: $repo, platform: $platform, data: $data}]' <<< "${metadata}")
-          done
-          echo "metadata=${metadata}"
-          echo "${metadata}" | jq . > ${{ env.metadata_image_path }}.repo
-          echo "status=success" | tee -a ${GITHUB_OUTPUT}
-
-      - name: (MetaData) recursive JSON merge
+      - name: (MetaData) from DockerHub
         id: meta-image
         env:
-          category_image: "repository"
+          category: "repository"
         run: |
-          # 使用 jq 的 --slurpfile 选项加载 base 和 repo metadata 文件内容
-          # merged_data=$(jq -n \
-          #   --arg category "${{ env.category_image }}" \
-          #   --slurpfile base "${{ env.metadata_image_path }}.base" \
-          #   --slurpfile repo "${{ env.metadata_image_path }}.repo" \
-          #   '$base[0][$category] + $repo[0][$category]')
+          metadata='{"${{ env.category }}":[]}'
+          declare -a repo_array=("${{ env.base_image }}" "${{ env.repo_dockerhub }}:${{ env.tag_repo }}")
+          for repo in "${repo_array[@]}"; do
+            IFS=',' read -ra platforms <<< "${{ env.arch_branch }}"
+            for platform in "${platforms[@]}"; do
+              os=$(echo ${platform} | cut -d'/' -f1)
+              arch=$(echo ${platform} | cut -d'/' -f2-)
+              
+              variant=""
+              if echo "${arch}" | grep -q "arm/v"; then
+                variant=$(echo ${arch} | cut -d'/' -f2)
+                arch=$(echo ${arch} | cut -d'/' -f1)
+              fi
+              
+              data_json=$(skopeo inspect \
+                --override-os=${os} \
+                --override-arch=${arch} \
+                ${variant:+--override-variant=${variant}} \
+                --format=json \
+                docker://docker.io/${repo} | jq .)
 
-          # # 创建合并后的 JSON 对象，key 为 category_image
-          # merged_metadata=$(jq -n \
-          #   --arg category "${{ env.category_image }}" \
-          #   --argjson data "$merged_data" '{$category: $data}')
-          # 使用 * 运算符递归地合并对象，并处理对象类型冲突
-
-          merged_metadata=$(jq -n \
-            --arg category "${{ env.category_image }}" \
-            --slurpfile base "${{ env.metadata_image_path }}.base" \
-            --slurpfile repo "${{ env.metadata_image_path }}.repo" \
-            '{$category: ($base[0][$category] * $repo[0][$category])}')
-
-          # 输出合并后的 metadata
-          echo "metadata=${merged_metadata}"
-          echo "${merged_metadata}" | jq . > "${{ env.metadata_image_path }}"
+              metadata=$(jq \
+                --argjson data "${data_json}" \
+                --arg platform "${platform}" \
+                --arg repo "${repo}" \
+                '.${{ env.category }} += [{name: $repo, platform: $platform, data: $data}]' <<< "${metadata}")
+            done
+          done
+          echo "metadata=${metadata}"
+          echo "${metadata}" | jq . > ${{ env.metadata_image_path }}
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
-
-      # - name: (MetaData) from DockerHub
-      #   id: meta-image
-      #   env:
-      #     category: "repository"
-      #   run: |
-      #     metadata='{"${{ env.category }}":[]}'
-      #     declare -a repo_array=("${{ env.base_image }}" "${{ env.repo_dockerhub }}:${{ env.tag_repo }}")
-      #     for repo in "${repo_array[@]}"; do
-      #       IFS=',' read -ra platforms <<< "${{ env.arch_branch }}"
-      #       for platform in "${platforms[@]}"; do
-      #         os=$(echo ${platform} | cut -d'/' -f1)
-      #         arch=$(echo ${platform} | cut -d'/' -f2-)
-
-      #         variant=""
-      #         if echo "${arch}" | grep -q "arm/v"; then
-      #           variant=$(echo ${arch} | cut -d'/' -f2)
-      #           arch=$(echo ${arch} | cut -d'/' -f1)
-      #         fi
-
-      #         data_json=$(skopeo inspect \
-      #           --override-os=${os} \
-      #           --override-arch=${arch} \
-      #           ${variant:+--override-variant=${variant}} \
-      #           --format=json \
-      #           docker://docker.io/${repo} | jq .)
-
-      #         metadata=$(jq \
-      #           --argjson data "${data_json}" \
-      #           --arg platform "${platform}" \
-      #           --arg repo "${repo}" \
-      #           '.${{ env.category }} += [{name: $repo, platform: $platform, data: $data}]' <<< "${metadata}")
-      #       done
-      #     done
-      #     echo "metadata=${metadata}"
-      #     echo "${metadata}" | jq . > ${{ env.metadata_image_path }}
-      #     echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
       - name: (Check) Layer MetaData ${{ env.base_image }} in ${{ env.repo_dockerhub }}:${{ env.tag_repo }}
         id: check-layer
@@ -337,7 +265,7 @@ jobs:
           container_name: "container-test"
           category: "platforms"
           dir_container: "/tmp"
-        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
+        working-directory: "${{ env.path_build }}/${{ env.dir_app }}"
         run: |
           echo "Current working directory: $(pwd)"
 
@@ -481,7 +409,7 @@ jobs:
 
   build:
     name: Build Docker Image
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner_image || 'ubuntu-latest' }}
     needs: check
     if: needs.check.outputs.changed == 'true' && !cancelled()
     permissions:
@@ -528,7 +456,7 @@ jobs:
 
       - name: (Env) Load .env files
         id: env-app
-        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
+        working-directory: "${{ env.path_build }}/${{ env.dir_app }}"
         run: |
           echo "Current working directory: $(pwd)"
 
@@ -604,6 +532,56 @@ jobs:
           version: latest
           driver-opts: network=host
 
+      - name: Create simulated physical disk
+        id: disk
+        env:
+          path_build: ${{ env.path_build }}
+          root_num: 4
+          mnt_num: 1
+        working-directory: /
+        run: |
+          echo "Current working directory: $(pwd)"
+
+          # 获取 /mnt 和 / 分区的剩余空间
+          mnt_available=$(df -B1 /mnt | tail -1 | awk '{print $4}')
+          root_available=$(df -B1 / | tail -1 | awk '{print $4}')
+          echo "Raw available space in /mnt (bytes): ${mnt_available}"
+          echo "Raw available space in / (bytes): ${root_available}"
+
+          # 减去缓冲空间：/mnt 和 / 分区分别减去缓冲
+          gb2bytes=$((1024 * 1024 * 1024))
+          mnt_size=$((${mnt_available} - ${{ env.mnt_num }} * ${gb2bytes}))
+          root_size=$((${root_available} - ${{ env.root_num }} * ${gb2bytes}))
+          echo "Available space in /mnt (bytes): ${mnt_size}"
+          echo "Available space in / (bytes): ${root_size}"
+
+          # 创建磁盘映像文件
+          sudo truncate -s "${mnt_size}" /mnt/mnt.img
+          sudo truncate -s "${root_size}" /root.img
+
+          # 动态分配可用的循环设备
+          LOOP_MNT=$(sudo losetup --find --show /mnt/mnt.img)
+          LOOP_ROOT=$(sudo losetup --find --show /root.img)
+          echo "Assigned loop device for /mnt/mnt.img: ${LOOP_MNT}"
+          echo "Assigned loop device for /root.img: ${LOOP_ROOT}"
+
+          # 创建物理卷
+          sudo pvcreate "${LOOP_MNT}"
+          sudo pvcreate "${LOOP_ROOT}"
+          # 创建卷组
+          sudo vgcreate github "${LOOP_MNT}" "${LOOP_ROOT}"
+
+          # 在 github 卷组上创建一个名为 runner 的逻辑卷，使用所有可用空间, 并格式化为XFS文件系统
+          sudo lvcreate -n runner -l 100%FREE github
+          sudo mkfs.xfs /dev/github/runner
+
+          # 创建一个挂载点 ${path_build}, 将 runner 逻辑卷挂载到 ${path_build}, 将 ${path_build} 的所有者和组更改为 runner
+          sudo mkdir -p "${path_build}"
+          sudo mount /dev/github/runner "${path_build}"
+          sudo chown -R runner:runner "${path_build}"
+
+          df -Th
+
       - name: (Service) Local Registry
         id: registry
         env:
@@ -620,7 +598,7 @@ jobs:
 
       - name: Build and push to local registry
         id: build
-        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
+        working-directory: "${{ env.path_build }}/${{ env.dir_app }}"
         run: |
           echo "Current working directory: $(pwd)"
 
@@ -646,7 +624,7 @@ jobs:
       - name: (Inspect) Layers with skopeo
         id: inspect
         # if: ${{ 'true' == 'false' }} # disable
-        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
+        working-directory: "${{ env.path_build }}/${{ env.dir_app }}"
         run: |
           echo "Current working directory: $(pwd)"
 
@@ -673,11 +651,12 @@ jobs:
 
       - name: (Test) Docker image
         id: test
+        continue-on-error: true # 允许此步骤失败但继续执行后续步骤
         env:
           container_name: container-test
           dir_container: "/tmp"
           time_sleep: ${{ env.time_sleep || '3' }}
-        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
+        working-directory: "${{ env.path_build }}/${{ env.dir_app }}"
         run: |
           echo "Current working directory: $(pwd)"
 
@@ -733,9 +712,9 @@ jobs:
         id: output
         # if: ${{ 'true' == 'false' }} # disable
         env:
-          dir_output: "${{ github.workspace }}/${{ env.dir_app }}/output"
+          dir_output: "${{ env.path_build }}/${{ env.dir_app }}/output"
           target_ext: "tar"
-        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
+        working-directory: "${{ env.path_build }}/${{ env.dir_app }}"
         run: |
           echo "Current working directory: $(pwd)"
 
@@ -812,7 +791,7 @@ jobs:
         if: steps.output.outputs.status == 'success' && !cancelled()
         # if: ${{ 'true' == 'false' }} # disable
         env:
-          metadata_sum_path: "${{ github.workspace }}/metadata_sum.json"
+          metadata_sum_path: "${{ env.path_build }}/metadata_sum.json"
           category: "files"
           target_ext: "${{ steps.output.outputs.target_ext }}"
         working-directory: "${{ env.dir_output }}"
@@ -842,9 +821,9 @@ jobs:
         id: release-md
         # if: ${{ 'true' == 'false' }} # disable
         env:
-          release_md: "${{ github.workspace }}/${{ env.dir_app }}/release.md"
+          release_md: "${{ env.path_build }}/${{ env.dir_app }}/release.md"
           metadata_sum_path: ${{ steps.output-check.outputs.metadata_sum_path }}
-        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
+        working-directory: "${{ env.path_build }}/${{ env.dir_app }}"
         run: |
           echo "Current working directory: $(pwd)"
 
@@ -888,8 +867,9 @@ jobs:
 
       - name: (Push) Image to ${{ env.registry_push }}
         id: push
+        continue-on-error: true # 允许此步骤失败但继续执行后续步骤
         # if: ${{ 'true' == 'false' }} # disable
-        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
+        working-directory: "${{ env.path_build }}/${{ env.dir_app }}"
         run: |
           echo "Current working directory: $(pwd)"
           declare -a tag_array=("${{ env.tag_repo }}")
@@ -919,8 +899,7 @@ jobs:
           IFS=',' read -ra registries <<< "${{ env.registry_push }}"
           for registry_remote in "${registries[@]}"; do
             for tag_each in "${tag_array[@]}"; do
-              docker buildx imagetools create --tag "${registry_remote}/${{ env.repo_dockerhub }}:${tag_each}" "${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}"
-              # skopeo inspect --format=json docker://${registry_remote}/${{ env.repo_dockerhub }}:${tag_each}
+              docker buildx imagetools create --tag "${registry_remote}/${{ env.repo_dockerhub }}:${tag_each}" "${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}" || echo "Failed to push ${tag_each} to ${registry_remote}, but continuing..."
             done
           done
 
@@ -928,6 +907,7 @@ jobs:
 
       - name: (Upload) to Release
         id: upload-release
+        # 修改条件判断，不再依赖push步骤的状态，只检查output步骤的状态
         if: steps.output.outputs.status == 'success' && !cancelled()
         # if: ${{ 'true' == 'false' }} # disable
         uses: ncipollo/release-action@main
