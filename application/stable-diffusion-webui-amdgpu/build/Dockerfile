@@ -23,7 +23,7 @@ RUN set -x \
     && apt-get clean -y -qq \
     && rm -rf /var/lib/apt/lists/* \
     && rm -rf /var/log/*.log \
-	&& unset DEBIAN_FRONTEND \
+	&& unset DEBIAN_FRONTEND
     # # ===== samba configuration =====
     # # && echo -e "password\npassword" | smbpasswd -a root \
     # # ===== docker-entrypoint.sh =====
