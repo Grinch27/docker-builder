@@ -59,7 +59,7 @@ RUN useradd -m sduser \
     && echo "sduser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
     # 克隆AMD支持版本的仓库
-RUN git clone https://github.com/lshqqytiger/stable-diffusion-webui-amdgpu.git /home/sduser/stable-diffusion-webui \
+RUN git clone https://github.com/lshqqytiger/stable-diffusion-webui-amdgpu.git /home/sduser/stable-diffusion-webui --depth=1 \
     && chown -R sduser:sduser /home/sduser/stable-diffusion-webui
 
 USER sduser
