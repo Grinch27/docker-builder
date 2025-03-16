@@ -9,7 +9,7 @@ RUN set -x \
         ca-certificates \
         sudo \
     # Debian-based:
-    && sudo apt-get install --fix-missing -y -qq \
+    && apt-get install --fix-missing -y -qq \
         wget \
         git \
         python3.11 \
