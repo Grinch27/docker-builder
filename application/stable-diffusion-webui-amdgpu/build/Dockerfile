@@ -68,9 +68,6 @@ RUN git clone https://github.com/lshqqytiger/stable-diffusion-webui-amdgpu.git /
     && bash webui.sh \
     && export COMMANDLINE_ARGS="--use-directml --listen --port 7860"
 
-
-
-
 # # 设置工作目录
 # WORKDIR /home/sduser/webui
 
@@ -81,9 +78,6 @@ EXPOSE 7860
 # ENTRYPOINT ["/home/webui/webui.sh", "--use-directml", "--listen", "--port", "7860"]
 # uname -a sleep infinity
 ENTRYPOINT ["sleep", "infinity"]
-
-
-
 
 # ARG base_image=debian:testing-slim
 # FROM ${base_image}
