@@ -5,11 +5,12 @@ RUN set -x \
 	&& export DEBIAN_FRONTEND=noninteractive \
     # ===== apt dependencies =====
 	&& apt-get update --ignore-missing -y -qq \
-    && apt-get install --no-install-recommends --no-install-suggests --fix-missing -y -qq \
-        ca-certificates \
-        sudo \
+    # && apt-get install --no-install-recommends --no-install-suggests --fix-missing -y -qq \
+    #     ca-certificates \
+    #     sudo \
     # Debian-based:
-    && apt-get install --fix-missing -y -qq \
+    && apt-get install -y -qq \
+        ca-certificates \
         wget \
         git \
         python3.11 \
