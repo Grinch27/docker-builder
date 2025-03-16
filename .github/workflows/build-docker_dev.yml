@@ -86,8 +86,8 @@ jobs:
       version: ${{ steps.summary.outputs.version }}
       consistent: ${{ steps.summary.outputs.consistent }}
     env:
-      metadata_image_path: "/build/${{ inputs.dir_app }}/metadata_image.json"
-      metadata_app_path: "/build/${{ inputs.dir_app }}/metadata_app.json"
+      metadata_image_path: "${{ github.workspace }}/${{ inputs.dir_app }}/metadata_image.json"
+      metadata_app_path: "${{ github.workspace }}/${{ inputs.dir_app }}/metadata_app.json"
     steps:
       - name: Checkout ${{ github.repository }}
         uses: actions/checkout@main
@@ -117,7 +117,7 @@ jobs:
 
       - name: (Env) Load .env files
         id: env-app
-        working-directory: "${{ env.path_build }}/${{ env.dir_app }}"
+        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
           echo "Current working directory: $(pwd)"
 
@@ -315,7 +315,7 @@ jobs:
           container_name: "container-test"
           category: "platforms"
           dir_container: "/tmp"
-        working-directory: "${{ env.path_build }}/${{ env.dir_app }}"
+        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
           echo "Current working directory: $(pwd)"
 
@@ -506,7 +506,7 @@ jobs:
 
       - name: (Env) Load .env files
         id: env-app
-        working-directory: "${{ env.path_build }}/${{ env.dir_app }}"
+        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
           echo "Current working directory: $(pwd)"
 
@@ -674,7 +674,7 @@ jobs:
       - name: (Inspect) Layers with skopeo
         id: inspect
         # if: ${{ 'true' == 'false' }} # disable
-        working-directory: "${{ env.path_build }}/${{ env.dir_app }}"
+        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
           echo "Current working directory: $(pwd)"
 
@@ -841,7 +841,7 @@ jobs:
         if: steps.output.outputs.status == 'success' && !cancelled()
         # if: ${{ 'true' == 'false' }} # disable
         env:
-          metadata_sum_path: "${{ env.path_build }}/metadata_sum.json"
+          metadata_sum_path: "${{ github.workspace }}/metadata_sum.json"
           category: "files"
           target_ext: "${{ steps.output.outputs.target_ext }}"
         working-directory: "${{ env.dir_output }}"
