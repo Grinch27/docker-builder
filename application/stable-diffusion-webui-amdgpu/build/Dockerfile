@@ -58,15 +58,14 @@ RUN set -x \
 RUN useradd -m sduser \
     && echo "sduser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
+    # 克隆AMD支持版本的仓库
+RUN git clone https://github.com/lshqqytiger/stable-diffusion-webui-amdgpu.git /home/sduser/stable-diffusion-webui
+
 USER sduser
-WORKDIR /home/sduser
+WORKDIR /home/sduser/stable-diffusion-webui
 
-# 克隆AMD支持版本的仓库
-
-RUN git clone https://github.com/lshqqytiger/stable-diffusion-webui-amdgpu.git /home/sduser/stable-diffusion-webui \
-    && cd /home/webui \
-    && bash webui.sh \
-    && export COMMANDLINE_ARGS="--use-directml --listen --port 7860"
+RUN bash webui.sh
+    # && export COMMANDLINE_ARGS="--use-directml --listen --port 7860"
 
 # # 设置工作目录
 # WORKDIR /home/sduser/webui
