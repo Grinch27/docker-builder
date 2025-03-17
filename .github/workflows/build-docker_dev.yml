@@ -495,6 +495,7 @@ jobs:
             "skopeo"
             "jq"
             "xz-utils"
+            "coreutils"
           )
           sudo -E apt-get -y -qq update
           sudo -E apt-get -y -qq install "${packages_install[@]}"
@@ -793,17 +794,22 @@ jobs:
           echo "target_ext=${target_ext}" | tee -a ${GITHUB_OUTPUT}
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
-      - name: (Output) Compress
+      - name: (Output) Compress and Split
         id: output-compress
         if: ${{ env.compress == 'true' }}
         env:
           dir_output: ${{ env.dir_output }}
           target_ext: "${{ env.target_ext }}"
+          split_size: "1G" # 每个分卷大小为 1GB
         working-directory: "${{ env.dir_output }}"
         run: |
           echo -e "Current working directory: $(pwd)"
           ls -lh ./
 
+          # 安装分割工具
+          sudo apt-get install -y coreutils
+
+          # 设置内存限制
           free -h
           available_mem=$(free -m | awk '/^Mem:/{print $7}')
           echo "Available memory: ${available_mem} MiB"
@@ -816,21 +822,35 @@ jobs:
           fi
           echo "Set memlimit: ${memlimit}"
 
-          for file in ${{ env.dir_output }}/*.${{ env.target_ext }}; do
+          # 处理所有tar文件
+          for file in ./*.${{ env.target_ext }}; do
             if [[ ! -d "${file}" ]]; then
-              # For compression level -9, each thread may use approximately 67 MiB to 768 MiB or more of memory
-              # check: crc32, sha256, sha512
-              xz --compress \
-                --threads=0 \
-                -9 \
-                --extreme \
-                --memlimit-compress=${memlimit} \
-                --check=sha256 \
-                --verbose \
-                --keep \
-                "${file}"
+              base_name=$(basename "${file}")
+              file_size=$(du -b "${file}" | cut -f1)
+              echo "Processing ${base_name} ($(numfmt --to=iec-i --suffix=B ${file_size}))"
+              
+              # 压缩文件
+              xz --compress --threads=0 -9 --extreme --memlimit-compress=${memlimit} --check=sha256 --verbose "${file}"
+              compressed_file="${file}.xz"
+              
+              # 检查是否需要分卷
+              compressed_size=$(du -b "${compressed_file}" | cut -f1)
+              split_threshold=$((1024 * 1024 * 1024)) # 1GB in bytes
+              
+              if [ ${compressed_size} -gt ${split_threshold} ]; then
+                echo "Splitting ${compressed_file} into ${split_size} parts"
+                # 分割文件并添加序号后缀
+                split -b ${{ env.split_size }} --numeric-suffixes=1 --suffix-length=3 "${compressed_file}" "${compressed_file}.part"
+                # 删除原始的压缩文件
+                rm "${compressed_file}"
+                # 列出所有分卷
+                ls -lh "${compressed_file}.part"*
+              fi
             fi
           done
+
+          # 删除原始tar文件
+          find . -name "*.${{ env.target_ext }}" -type f -delete
 
           ls -lh ./
           echo "target_ext=xz" | tee -a $GITHUB_ENV
@@ -957,9 +977,7 @@ jobs:
 
       - name: (Upload) to Release
         id: upload-release
-        # 修改条件判断，不再依赖push步骤的状态，只检查output步骤的状态
         if: steps.output.outputs.status == 'success' && !cancelled()
-        # if: ${{ 'true' == 'false' }} # disable
         uses: ncipollo/release-action@main
         env:
           dir_output: "${{ env.dir_output }}"
@@ -968,7 +986,7 @@ jobs:
         with:
           name: "${{ env.repo_dockerhub }}"
           tag: "${{ env.app_branch }}"
-          artifacts: "${{ env.dir_output }}/*.${{ env.target_ext }}"
+          artifacts: "${{ env.dir_output }}/*.${{ env.target_ext }},${{ env.dir_output }}/*.${{ env.target_ext }}.part*"
           allowUpdates: true
           removeArtifacts: false
           replacesArtifacts: true
