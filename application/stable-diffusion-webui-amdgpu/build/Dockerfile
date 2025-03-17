@@ -9,7 +9,7 @@ RUN set -x \
     #     ca-certificates \
     #     sudo \
     # Debian-based:
-    && apt-get install -y \
+    && apt-get install --no-install-recommends --no-install-suggests --fix-missing -y \
         ca-certificates \
         software-properties-common \
         wget \
@@ -23,7 +23,7 @@ RUN set -x \
     # ubuntu install python3.11 or python3.10
     && add-apt-repository ppa:deadsnakes/ppa \
     && apt-get update --ignore-missing -y -qq \
-    && apt-get install -y \
+    && apt-get install --no-install-recommends --no-install-suggests --fix-missing -y \
         python3.11 \
         python3-pip \
         python3-venv \
