@@ -928,6 +928,18 @@ jobs:
             echo "docker load < \*.tar" >> ${{ env.release_md }}
           done
 
+          # 添加分卷合并指南
+          echo -e "\n### 如何处理分卷文件\n" >> ${{ env.release_md }}
+          echo "如果文件被分卷压缩，您可以通过以下方式合并还原：" >> ${{ env.release_md }}
+          echo '```bash' >> ${{ env.release_md }}
+          echo "# 合并分卷文件" >> ${{ env.release_md }}
+          echo "cat 文件名.xz.part* > 文件名.xz" >> ${{ env.release_md }}
+          echo "# 解压缩" >> ${{ env.release_md }}
+          echo "xz --decompress --verbose 文件名.xz" >> ${{ env.release_md }}
+          echo "# 加载Docker镜像" >> ${{ env.release_md }}
+          echo "docker load < 文件名" >> ${{ env.release_md }}
+          echo '```' >> ${{ env.release_md }}
+
           sum_json_content=$(jq '.' "${{ env.metadata_sum_path }}")
           record_to_markdown "sha256sum" "${sum_json_content}" "json"
 
