@@ -23,7 +23,7 @@ RUN set -x \
     # ubuntu install python3.11 or python3.10
     && add-apt-repository ppa:deadsnakes/ppa \
     && apt-get update --ignore-missing -y -qq \
-    && apt-get install --no-install-recommends --no-install-suggests --fix-missing -y \
+    && apt-get install -y \
         python3.11 \
         python3-pip \
         python3-venv \
@@ -33,7 +33,6 @@ RUN set -x \
     && apt-get clean -y -qq \
     && rm -rf /var/lib/apt/lists/* \
     && rm -rf /var/log/*.log \
-	&& unset DEBIAN_FRONTEND
     # # ===== samba configuration =====
     # # && echo -e "password\npassword" | smbpasswd -a root \
     # # ===== docker-entrypoint.sh =====
@@ -48,15 +47,19 @@ RUN set -x \
     # && echo "uname -a" >> ${sh_entrypoint} \
 	# && echo "sleep infinity" >> ${sh_entrypoint} \
 	# && chmod +x ${sh_entrypoint}
+    # ========== user ==========
+    && unset DEBIAN_FRONTEND \
+    && useradd -m sduser \
+    && echo "sduser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
 # # 创建一个非root用户
 # RUN useradd -m sduser
 # USER sduser
 # WORKDIR /home/sduser
 
-# 创建非root用户
-RUN useradd -m sduser \
-    && echo "sduser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+# # 创建非root用户
+# RUN useradd -m sduser \
+#     && echo "sduser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
     # 克隆AMD支持版本的仓库
 RUN git clone https://github.com/lshqqytiger/stable-diffusion-webui-amdgpu.git /home/sduser/stable-diffusion-webui --depth=1 \
