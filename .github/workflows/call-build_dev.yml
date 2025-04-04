@@ -83,6 +83,9 @@ jobs:
           - app_branch: "samba"
             tag_repo: "alpine"
             custom_env: "dockerfile=alpine.Dockerfile"
+          # dnscrypt-proxy
+          - app_branch: "dnscrypt-proxy"
+            tag_repo: "latest"
     with:
       runner_image: ${{ matrix.runner_image }} # || 'ubuntu-24.04'
       app_branch: ${{ matrix.workflows_inputs.app_branch }}
