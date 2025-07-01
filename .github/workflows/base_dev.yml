@@ -154,19 +154,31 @@ jobs:
 
           all_outputs='${{ toJSON(needs.base.outputs) }}'
 
-          # 创建汇总统计，增加错误处理
+          # 创建汇总统计，修复 null 键问题
           summary=$(echo "$all_outputs" | jq '
             [
               to_entries[] |
               select(.value != null and .value != "") |
               .value |
-              try fromjson catch empty
+              try fromjson catch empty |
+              select(. != null and has("architecture") and has("image"))
             ] as $all_data |
             if ($all_data | length) > 0 then
               {
                 total_images: ($all_data | length),
-                images_by_arch: ($all_data | group_by(.architecture) | map({arch: .[0].architecture, count: length}) | from_entries),
-                layer_stats: ($all_data | map(.layer_count) | {min: min, max: max, avg: (add / length)})
+                images_by_arch: (
+                  $all_data |
+                  map(select(.architecture != null)) |
+                  group_by(.architecture) |
+                  map({key: .[0].architecture, value: length}) |
+                  from_entries
+                ),
+                layer_stats: (
+                  $all_data |
+                  map(.layer_count) |
+                  select(length > 0) |
+                  {min: min, max: max, avg: (add / length)}
+                )
               }
             else
               {
@@ -178,7 +190,8 @@ jobs:
           ')
 
           echo "📊 Statistics:"
-          if [ "$(echo "$summary" | jq -r '.total_images')" -gt 0 ]; then
+          total_count=$(echo "$summary" | jq -r '.total_images')
+          if [ "$total_count" -gt 0 ]; then
             echo "$summary" | jq -r '
               "Total images analyzed: \(.total_images)",
               "Images by architecture:",
@@ -190,4 +203,6 @@ jobs:
             '
           else
             echo "No valid image data was collected."
+            echo "Debug info:"
+            echo "$all_outputs" | jq .
           fi
