@@ -23,27 +23,48 @@ jobs:
         os: ["linux"]
         arch: ["amd64", "arm64"]
     outputs:
-      result: ${{ steps.output.outputs.result }}
+      # 为每个矩阵组合创建唯一的输出键
+      alpine-latest-amd64: ${{ steps.output.outputs.alpine-latest-amd64 }}
+      alpine-latest-arm64: ${{ steps.output.outputs.alpine-latest-arm64 }}
+      debian-latest-amd64: ${{ steps.output.outputs.debian-latest-amd64 }}
+      debian-latest-arm64: ${{ steps.output.outputs.debian-latest-arm64 }}
+      ubuntu-latest-amd64: ${{ steps.output.outputs.ubuntu-latest-amd64 }}
+      ubuntu-latest-arm64: ${{ steps.output.outputs.ubuntu-latest-arm64 }}
     steps:
-      - name: Setup and Fetch Layer Info
-        id: output
+      - name: Setup environment
         run: |
           sudo apt-get -qq update
           sudo apt-get -qq install -y ca-certificates curl gpg skopeo jq
 
+      - name: Fetch Layer Info
+        id: base
+        run: |
           repo="${{ matrix.image_name }}"
           os="${{ matrix.os }}"
           arch="${{ matrix.arch }}"
           echo "Inspecting image: $repo for platform: $os/$arch"
 
+          variant=""
+          if echo "${arch}" | grep -q "arm/v"; then
+            variant=$(echo "${arch}" | cut -d'/' -f2)
+            arch=$(echo "${arch}" | cut -d'/' -f1)
+          fi
+
           data_json=$(skopeo inspect \
             --override-os="${os}" \
             --override-arch="${arch}" \
+            ${variant:+--override-variant="${variant}"} \
             --format=json \
             docker://docker.io/"${repo}")
 
-          # 直接创建结果并输出
-          result=$(echo "$data_json" | jq -c --arg image "$repo" --arg arch "$arch" --arg os "$os" '{
+          # 从 data_json 中提取各层的名称，按换行分隔
+          layers_text=$(echo "$data_json" | jq -r '.Layers[]')
+
+          echo "Layers for $repo:"
+          echo "$layers_text"
+
+          # 创建包含镜像信息的JSON对象，确保正确转义
+          layer_info=$(echo "$data_json" | jq --arg image "$repo" --arg arch "${{ matrix.arch }}" --arg os "${{ matrix.os }}" '{
             image: $image,
             architecture: $arch,
             os: $os,
@@ -51,64 +72,33 @@ jobs:
             layer_count: (.Layers | length)
           }')
 
-          echo "result=$result" >> $GITHUB_OUTPUT
-          echo "✅ Processed $repo ($arch): $(echo "$result" | jq -r '.layer_count') layers"
+          echo "Layer info JSON:"
+          echo "$layer_info"
 
-  show-all-layers:
-    name: Show Aggregated Results
-    runs-on: ubuntu-latest
-    needs: base
-    steps:
-      - name: Collect and Display Results
+          # 将层信息写入输出，使用多行文本格式
+          {
+            echo "layer_info<<EOF"
+            echo "$layer_info"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
+
+      - name: Set Matrix Output
+        id: output
         run: |
-          echo "=== Docker Base Images Layer Information ==="
-          echo
+          # 创建唯一的输出键名
+          output_key="${{ matrix.image_name }}-${{ matrix.arch }}"
+          output_key=$(echo "$output_key" | sed 's/:/-/g')
 
-          # 收集所有矩阵作业的输出
-          all_outputs='${{ toJSON(needs.base.outputs) }}'
-          
-          # 将所有输出组合成数组
-          results=$(echo "$all_outputs" | jq '[.result] | map(select(. != null and . != ""))')
-          
-          echo "=== Individual Image Analysis ==="
-          echo
+          echo "Setting output for key: $output_key"
 
-          # 处理每个结果
-          echo "$results" | jq -r '.[]' | while read -r result; do
-            if [ -n "$result" ]; then
-              image=$(echo "$result" | jq -r '.image')
-              arch=$(echo "$result" | jq -r '.architecture') 
-              count=$(echo "$result" | jq -r '.layer_count')
-              
-              echo "📦 Image: $image ($arch)"
-              echo "   Layers: $count"
-              echo "   Layer hashes:"
-              echo "$result" | jq -r '.layers[]' | sed 's/^/     - /'
-              echo
-            fi
-          done
+          # 将 JSON 作为单行字符串输出，避免多行问题
+          layer_info_compressed=$(echo '${{ steps.base.outputs.layer_info }}' | jq -c .)
 
-          echo "=== Summary Report ==="
-          echo
-
-          # 生成统计报告
-          summary=$(echo "$results" | jq '{
-            total_images: length,
-            images_by_arch: (group_by(.architecture) | map({(.[]|.architecture): length}) | add),
-            layer_stats: (map(.layer_count) | {min: min, max: max, avg: (add/length)})
-          }')
-
-          echo "📊 Statistics:"
-          echo "$summary" | jq -r '
-            "Total images analyzed: \(.total_images)",
-            "Images by architecture:",
-            (.images_by_arch | to_entries | map("  - \(.key): \(.value) images") | join("\n")),
-            "Layer count statistics:",
-            "  - Min layers: \(.layer_stats.min)",
-            "  - Max layers: \(.layer_stats.max)",
-            "  - Avg layers: \(.layer_stats.avg | floor)"
-          '
-          fi
+          {
+            echo "${output_key}<<EOF"
+            echo "$layer_info_compressed"
+            echo "EOF"  
+          } >> $GITHUB_OUTPUT
 
   show-all-layers:
     name: Show Aggregated Layers from All Matrix Jobs
@@ -120,34 +110,38 @@ jobs:
           echo "=== Docker Base Images Layer Information ==="
           echo
 
-          # 收集所有输出 - 现在是一个简单的数组
-          all_results='${{ toJSON(needs.base.outputs.results) }}'
-          echo "Raw results from matrix jobs:"
-          echo "$all_results"
+          # 收集所有输出
+          all_outputs='${{ toJSON(needs.base.outputs) }}'
+          echo "Raw outputs from matrix jobs:"
+          echo "$all_outputs" | jq .
           echo
 
           echo "=== Individual Image Analysis ==="
           echo
 
-          # 处理结果数组
-          echo "$all_results" | jq -r '.[]' | while read -r layer_info; do
-            if [ -n "$layer_info" ] && [ "$layer_info" != "null" ] && [ "$layer_info" != "{}" ]; then
-              echo "Processing layer info..."
+          # 处理每个镜像的层信息，修复解析问题
+          echo "$all_outputs" | jq -r 'to_entries[] | select(.value != null and .value != "") | @base64' | while read -r encoded_entry; do
+            entry=$(echo "$encoded_entry" | base64 -d)
+            key=$(echo "$entry" | jq -r '.key')
+            value=$(echo "$entry" | jq -r '.value')
+            
+            if [ -n "$value" ] && [ "$value" != "null" ]; then
+              echo "Processing $key..."
               
-              # 解析 JSON
-              if parsed_info=$(echo "$layer_info" | jq . 2>/dev/null); then
-                image_name=$(echo "$parsed_info" | jq -r '.image // "unknown"')
-                arch=$(echo "$parsed_info" | jq -r '.architecture // "unknown"')
-                layer_count=$(echo "$parsed_info" | jq -r '.layer_count // 0')
+              # 尝试解析 JSON
+              if layer_info=$(echo "$value" | jq . 2>/dev/null); then
+                image_name=$(echo "$layer_info" | jq -r '.image // "unknown"')
+                arch=$(echo "$layer_info" | jq -r '.architecture // "unknown"')
+                layer_count=$(echo "$layer_info" | jq -r '.layer_count // 0')
                 
                 echo "📦 Image: $image_name ($arch)"
                 echo "   Layers: $layer_count"
                 echo "   Layer hashes:"
-                echo "$parsed_info" | jq -r '.layers[]? // empty' | sed 's/^/     - /'
+                echo "$layer_info" | jq -r '.layers[]? // empty' | sed 's/^/     - /'
                 echo
               else
-                echo "❌ Failed to parse layer info"
-                echo "   Raw value: $layer_info"
+                echo "❌ Failed to parse layer info for $key"
+                echo "   Raw value: $value"
                 echo
               fi
             fi
@@ -158,28 +152,21 @@ jobs:
           echo "=== Summary Report ==="
           echo
 
-          all_results='${{ toJSON(needs.base.outputs.results) }}'
+          all_outputs='${{ toJSON(needs.base.outputs) }}'
 
-          # 创建汇总统计
-          summary=$(echo "$all_results" | jq '
-            map(select(. != null and . != {} and .image != null)) as $valid_data |
-            if ($valid_data | length) > 0 then
+          # 创建汇总统计，增加错误处理
+          summary=$(echo "$all_outputs" | jq '
+            [
+              to_entries[] |
+              select(.value != null and .value != "") |
+              .value |
+              try fromjson catch empty
+            ] as $all_data |
+            if ($all_data | length) > 0 then
               {
-                total_images: ($valid_data | length),
-                images_by_arch: (
-                  $valid_data | 
-                  group_by(.architecture // "unknown") | 
-                  map({
-                    arch: (.[0].architecture // "unknown"), 
-                    count: length
-                  }) |
-                  reduce .[] as $item ({}; .[$item.arch] = $item.count)
-                ),
-                layer_stats: (
-                  $valid_data | 
-                  map(.layer_count // 0) | 
-                  {min: min, max: max, avg: (add / length)}
-                )
+                total_images: ($all_data | length),
+                images_by_arch: ($all_data | group_by(.architecture) | map({arch: .[0].architecture, count: length}) | from_entries),
+                layer_stats: ($all_data | map(.layer_count) | {min: min, max: max, avg: (add / length)})
               }
             else
               {
@@ -203,20 +190,4 @@ jobs:
             '
           else
             echo "No valid image data was collected."
-            echo "Debug: All results:"
-            echo "$all_results"
-          fi
-              "Layer count statistics:",
-              (if .layer_stats.min != null then
-                "  - Min layers: \(.layer_stats.min)",
-                "  - Max layers: \(.layer_stats.max)", 
-                "  - Avg layers: \(.layer_stats.avg | floor)"
-              else
-                "  - No layer statistics available"
-              end)
-            '
-          else
-            echo "No valid image data was collected."
-            echo "Debug: All outputs structure:"
-            echo "$all_outputs" | jq .
           fi
