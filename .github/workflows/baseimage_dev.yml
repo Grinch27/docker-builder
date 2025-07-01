@@ -10,8 +10,6 @@ on:
   repository_dispatch:
   workflow_dispatch:
 
-# run-name: Base Image Info
-
 jobs:
   base:
     name: ${{ matrix.image_name }} - ${{ matrix.arch }}
@@ -22,49 +20,26 @@ jobs:
         image_name: ["alpine:latest", "debian:latest", "ubuntu:latest"]
         os: ["linux"]
         arch: ["amd64", "arm64"]
-    outputs:
-      # 为每个矩阵组合创建唯一的输出键
-      alpine-latest-amd64: ${{ steps.output.outputs.alpine-latest-amd64 }}
-      alpine-latest-arm64: ${{ steps.output.outputs.alpine-latest-arm64 }}
-      debian-latest-amd64: ${{ steps.output.outputs.debian-latest-amd64 }}
-      debian-latest-arm64: ${{ steps.output.outputs.debian-latest-arm64 }}
-      ubuntu-latest-amd64: ${{ steps.output.outputs.ubuntu-latest-amd64 }}
-      ubuntu-latest-arm64: ${{ steps.output.outputs.ubuntu-latest-arm64 }}
     steps:
-      - name: Setup environment
+      - name: Fetch and Upload Layer Info
         run: |
           sudo apt-get -qq update
           sudo apt-get -qq install -y ca-certificates curl gpg skopeo jq
 
-      - name: Fetch Layer Info
-        id: base
-        run: |
           repo="${{ matrix.image_name }}"
           os="${{ matrix.os }}"
           arch="${{ matrix.arch }}"
           echo "Inspecting image: $repo for platform: $os/$arch"
 
-          variant=""
-          if echo "${arch}" | grep -q "arm/v"; then
-            variant=$(echo "${arch}" | cut -d'/' -f2)
-            arch=$(echo "${arch}" | cut -d'/' -f1)
-          fi
-
+          # 获取镜像信息并直接生成结果
           data_json=$(skopeo inspect \
             --override-os="${os}" \
             --override-arch="${arch}" \
-            ${variant:+--override-variant="${variant}"} \
             --format=json \
             docker://docker.io/"${repo}")
 
-          # 从 data_json 中提取各层的名称，按换行分隔
-          layers_text=$(echo "$data_json" | jq -r '.Layers[]')
-
-          echo "Layers for $repo ($arch):"
-          echo "$layers_text"
-
-          # 创建包含镜像信息的JSON对象，包含更多有用信息
-          layer_info=$(echo "$data_json" | jq --arg image "$repo" --arg arch "${{ matrix.arch }}" --arg os "${{ matrix.os }}" '{
+          # 创建结果 JSON
+          result=$(echo "$data_json" | jq -c --arg image "$repo" --arg arch "$arch" --arg os "$os" '{
             image: $image,
             architecture: $arch,
             os: $os,
@@ -74,34 +49,12 @@ jobs:
             digest: .Digest
           }')
 
-          echo "Layer info JSON:"
-          echo "$layer_info"
-
-          # 将层信息写入输出，使用多行文本格式
-          {
-            echo "layer_info<<EOF"
-            echo "$layer_info"
-            echo "EOF"
-          } >> $GITHUB_OUTPUT
-
-      - name: Set Matrix Output
-        id: output
-        run: |
-          # 创建唯一的输出键名
-          output_key="${{ matrix.image_name }}-${{ matrix.arch }}"
-          output_key=$(echo "$output_key" | sed 's/:/-/g')
-
-          echo "Setting output for key: $output_key"
-
-          # 将 JSON 作为单行字符串输出，避免多行问题
-          layer_info_compressed=$(echo '${{ steps.base.outputs.layer_info }}' | jq -c .)
-
-          # 创建文件存储结果
+          # 创建清理后的文件名并保存
+          clean_name=$(echo "$repo" | sed 's/:/-/g')
           mkdir -p /tmp/results
-          echo "$layer_info_compressed" > "/tmp/results/${output_key}.json"
+          echo "$result" > "/tmp/results/${clean_name}-${arch}.json"
 
-          # 设置输出
-          echo "${output_key}=${layer_info_compressed}" >> $GITHUB_OUTPUT
+          echo "✅ Processed $repo ($arch): $(echo "$result" | jq -r '.layer_count') layers"
 
       - name: Upload Results
         uses: actions/upload-artifact@v4
@@ -109,30 +62,77 @@ jobs:
           name: layer-info-${{ matrix.image_name }}-${{ matrix.arch }}
           path: /tmp/results/
           retention-days: 1
+        env:
+          # 处理 artifact 名称中的特殊字符
+          MATRIX_IMAGE: ${{ matrix.image_name }}
 
   show-all-layers:
-    name: Show Aggregated Layers from All Matrix Jobs
+    name: Show Aggregated Results
     runs-on: ubuntu-latest
     needs: base
     steps:
-      - name: Download All Results
+      - name: Download and Process Results
         uses: actions/download-artifact@v4
         with:
           pattern: layer-info-*
           path: /tmp/all-results
           merge-multiple: true
 
-      - name: Aggregated Output
+      - name: Generate Report
         run: |
           echo "=== Docker Base Images Layer Information ==="
-          echo
 
-          # 收集所有 JSON 文件
-          results_array="[]"
-          if [ -d "/tmp/all-results" ]; then
-            for json_file in /tmp/all-results/*.json; do
-              if [ -f "$json_file" ]; then
-                content=$(cat "$json_file")
+          # 直接读取所有 JSON 文件并合并
+          jq -s '.' /tmp/all-results/*.json > /tmp/combined.json
+
+          echo "Found $(jq 'length' /tmp/combined.json) results"
+          echo
+          echo "=== Individual Image Analysis ==="
+
+          # 处理每个镜像
+          jq -r '.[] | @json' /tmp/combined.json | while read -r info; do
+            echo "$info" | jq -r '
+              "📦 Image: \(.image) (\(.architecture))",
+              "   Layers: \(.layer_count)",
+              "   Size: \(.size) bytes", 
+              "   Digest: \(.digest[0:19])..."
+            '
+            
+            layer_count=$(echo "$info" | jq -r '.layer_count')
+            if [ "$layer_count" -le 5 ]; then
+              echo "   Layer hashes:"
+              echo "$info" | jq -r '.layers[] | "     - " + .'
+            else
+              echo "   Layer hashes (first 3 and last 2):"
+              echo "$info" | jq -r '.layers[0:3][] | "     - " + .'
+              echo "     ... ($((layer_count - 5)) more layers) ..."
+              echo "$info" | jq -r '.layers[-2:][] | "     - " + .'
+            fi
+            echo
+          done
+
+          echo "=== Summary Report ==="
+
+          # 生成统计报告
+          jq -r '
+            "📊 Statistics:",
+            "Total images analyzed: \(length)",
+            "",
+            "Images by architecture:",
+            (group_by(.architecture) | map("  - \(.[0].architecture): \(length) images") | join("\n")),
+            "",
+            "Layer count statistics:",
+            "  - Min layers: \(map(.layer_count) | min)",
+            "  - Max layers: \(map(.layer_count) | max)",
+            "  - Avg layers: \(map(.layer_count) | add / length | floor)",
+            "  - Layer distribution:",
+            (map(.layer_count) | group_by(.) | map("    * \(.[0]) layers: \(length) images") | join("\n")),
+            "",
+            "Size statistics:",
+            "  - Total size: \(map(.size) | add) bytes",
+            "  - Avg size: \(map(.size) | add / length | floor) bytes",
+            "  - Size range: \(map(.size) | min) - \(map(.size) | max) bytes"
+          ' /tmp/combined.json
                 results_array=$(echo "$results_array" | jq ". + [$content]")
               fi
             done
