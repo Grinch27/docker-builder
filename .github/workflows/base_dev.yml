@@ -23,7 +23,13 @@ jobs:
         os: ["linux"]
         arch: ["amd64", "arm64"]
     outputs:
-      layers_text: ${{ steps.base.outputs.layers_text }}
+      # 为每个矩阵组合创建唯一的输出键
+      alpine-latest-amd64: ${{ steps.output.outputs.alpine-latest-amd64 }}
+      alpine-latest-arm64: ${{ steps.output.outputs.alpine-latest-arm64 }}
+      debian-latest-amd64: ${{ steps.output.outputs.debian-latest-amd64 }}
+      debian-latest-arm64: ${{ steps.output.outputs.debian-latest-arm64 }}
+      ubuntu-latest-amd64: ${{ steps.output.outputs.ubuntu-latest-amd64 }}
+      ubuntu-latest-arm64: ${{ steps.output.outputs.ubuntu-latest-arm64 }}
     steps:
       - name: Setup environment
         run: |
@@ -57,10 +63,37 @@ jobs:
           echo "Layers for $repo:"
           echo "$layers_text"
 
-          # 将层列表(多行文本)直接写入输出
-          echo "layers_text<<EOF" >> $GITHUB_OUTPUT
-          echo "$layers_text" >> $GITHUB_OUTPUT
+          # 创建包含镜像信息的JSON对象
+          layer_info=$(jq -n \
+            --arg image "$repo" \
+            --arg arch "${{ matrix.arch }}" \
+            --arg os "${{ matrix.os }}" \
+            --argjson layers "$(echo "$data_json" | jq '.Layers')" \
+            '{
+              image: $image,
+              architecture: $arch,
+              os: $os,
+              layers: $layers,
+              layer_count: ($layers | length)
+            }')
+
+          echo "Layer info JSON:"
+          echo "$layer_info"
+
+          # 将层信息写入输出，使用多行文本格式
+          echo "layer_info<<EOF" >> $GITHUB_OUTPUT
+          echo "$layer_info" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Set Matrix Output
+        id: output
+        run: |
+          # 创建唯一的输出键名
+          output_key="${{ matrix.image_name }}-${{ matrix.arch }}"
+          output_key=$(echo "$output_key" | sed 's/:/-/g')
+
+          echo "Setting output for key: $output_key"
+          echo "${output_key}=${{ steps.base.outputs.layer_info }}" >> $GITHUB_OUTPUT
 
   show-all-layers:
     name: Show Aggregated Layers from All Matrix Jobs
@@ -69,18 +102,66 @@ jobs:
     steps:
       - name: Aggregated Output
         run: |
-          echo "Aggregated Docker Layers outputs (JSON map):"
-          # 通过 toJSON 查看所有矩阵作业的输出 
-          all_outputs='${{ toJSON(needs.base.outputs) }}'
-          echo "$all_outputs"
+          echo "=== Docker Base Images Layer Information ==="
+          echo
 
-          echo "Now combining all layers_text into one big array..."
-          # 利用 jq 将所有矩阵下的 layers_text 条目收集成一个数组
-          # 其中 select(.) 判断有无空值，避免空输出导致的报错
-          combined=$(echo "$all_outputs" | jq -Rs '
-            . as $raw
-            | ($raw | fromjson?| to_entries | map(.value // "") ) as $vals
-            | [ $vals[] | select(.) ]
+          # 收集所有输出
+          all_outputs='${{ toJSON(needs.base.outputs) }}'
+          echo "Raw outputs from matrix jobs:"
+          echo "$all_outputs" | jq .
+          echo
+
+          echo "=== Individual Image Analysis ==="
+          echo
+
+          # 逐个处理每个镜像的层信息
+          echo "$all_outputs" | jq -r '
+            to_entries[] |
+            select(.value != null and .value != "") |
+            .value' | while read -r layer_info; do
+            
+            if [ -n "$layer_info" ]; then
+              echo "Processing layer info..."
+              image_name=$(echo "$layer_info" | jq -r '.image')
+              arch=$(echo "$layer_info" | jq -r '.architecture')
+              layer_count=$(echo "$layer_info" | jq -r '.layer_count')
+              
+              echo "📦 Image: $image_name ($arch)"
+              echo "   Layers: $layer_count"
+              echo "   Layer hashes:"
+              echo "$layer_info" | jq -r '.layers[]' | sed 's/^/     - /'
+              echo
+            fi
+          done
+
+      - name: Generate Summary Report
+        run: |
+          echo "=== Summary Report ==="
+          echo
+
+          all_outputs='${{ toJSON(needs.base.outputs) }}'
+
+          # 创建汇总统计
+          summary=$(echo "$all_outputs" | jq -r '
+            [
+              to_entries[] |
+              select(.value != null and .value != "") |
+              .value | fromjson
+            ] as $all_data |
+            {
+              total_images: ($all_data | length),
+              images_by_arch: ($all_data | group_by(.architecture) | map({arch: .[0].architecture, count: length}) | from_entries),
+              layer_stats: ($all_data | map(.layer_count) | {min: min, max: max, avg: (add / length)})
+            }
           ')
-          echo "Combined layers array:"
-          echo "$combined" | jq .
+
+          echo "📊 Statistics:"
+          echo "$summary" | jq -r '
+            "Total images analyzed: \(.total_images)",
+            "Images by architecture:",
+            (.images_by_arch | to_entries | map("  - \(.key): \(.value) images") | join("\n")),
+            "Layer count statistics:",
+            "  - Min layers: \(.layer_stats.min)",
+            "  - Max layers: \(.layer_stats.max)", 
+            "  - Avg layers: \(.layer_stats.avg | floor)"
+          '
