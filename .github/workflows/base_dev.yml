@@ -10,7 +10,7 @@ on:
   repository_dispatch:
   workflow_dispatch:
 
-run-name: Base Image Info
+# run-name: Base Image Info
 
 jobs:
   base:
