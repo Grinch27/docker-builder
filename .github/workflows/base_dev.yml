@@ -60,16 +60,18 @@ jobs:
           # 从 data_json 中提取各层的名称，按换行分隔
           layers_text=$(echo "$data_json" | jq -r '.Layers[]')
 
-          echo "Layers for $repo:"
+          echo "Layers for $repo ($arch):"
           echo "$layers_text"
 
-          # 创建包含镜像信息的JSON对象，确保正确转义
+          # 创建包含镜像信息的JSON对象，包含更多有用信息
           layer_info=$(echo "$data_json" | jq --arg image "$repo" --arg arch "${{ matrix.arch }}" --arg os "${{ matrix.os }}" '{
             image: $image,
             architecture: $arch,
             os: $os,
             layers: .Layers,
-            layer_count: (.Layers | length)
+            layer_count: (.Layers | length),
+            size: .Size,
+            digest: .Digest
           }')
 
           echo "Layer info JSON:"
@@ -119,7 +121,7 @@ jobs:
           echo "=== Individual Image Analysis ==="
           echo
 
-          # 处理每个镜像的层信息，修复解析问题
+          # 处理每个镜像的层信息，优化多层显示
           echo "$all_outputs" | jq -r 'to_entries[] | select(.value != null and .value != "") | @base64' | while read -r encoded_entry; do
             entry=$(echo "$encoded_entry" | base64 -d)
             key=$(echo "$entry" | jq -r '.key')
@@ -133,11 +135,23 @@ jobs:
                 image_name=$(echo "$layer_info" | jq -r '.image // "unknown"')
                 arch=$(echo "$layer_info" | jq -r '.architecture // "unknown"')
                 layer_count=$(echo "$layer_info" | jq -r '.layer_count // 0')
+                size=$(echo "$layer_info" | jq -r '.size // 0')
+                digest=$(echo "$layer_info" | jq -r '.digest // "unknown"')
                 
                 echo "📦 Image: $image_name ($arch)"
                 echo "   Layers: $layer_count"
-                echo "   Layer hashes:"
-                echo "$layer_info" | jq -r '.layers[]? // empty' | sed 's/^/     - /'
+                echo "   Size: $(numfmt --to=iec $size 2>/dev/null || echo "$size bytes")"
+                echo "   Digest: ${digest:0:19}..."
+                
+                if [ "$layer_count" -le 5 ]; then
+                  echo "   Layer hashes:"
+                  echo "$layer_info" | jq -r '.layers[]? // empty' | sed 's/^/     - /'
+                else
+                  echo "   Layer hashes (first 3 and last 2):"
+                  echo "$layer_info" | jq -r '.layers[0:3][]? // empty' | sed 's/^/     - /'
+                  echo "     ... ($(($layer_count - 5)) more layers) ..."
+                  echo "$layer_info" | jq -r '.layers[-2:][]? // empty' | sed 's/^/     - /'
+                fi
                 echo
               else
                 echo "❌ Failed to parse layer info for $key"
@@ -154,7 +168,7 @@ jobs:
 
           all_outputs='${{ toJSON(needs.base.outputs) }}'
 
-          # 创建汇总统计，修复 null 键问题
+          # 创建汇总统计，增加层数分布统计
           summary=$(echo "$all_outputs" | jq '
             [
               to_entries[] |
@@ -176,15 +190,31 @@ jobs:
                 layer_stats: (
                   $all_data |
                   map(.layer_count) |
+                  {
+                    min: min, 
+                    max: max, 
+                    avg: (add / length),
+                    distribution: (group_by(.) | map({layers: .[0], count: length}))
+                  }
+                ),
+                size_stats: (
+                  $all_data |
+                  map(.size // 0) |
                   select(length > 0) |
-                  {min: min, max: max, avg: (add / length)}
+                  {
+                    min: min,
+                    max: max, 
+                    avg: (add / length),
+                    total: add
+                  }
                 )
               }
             else
               {
                 total_images: 0,
                 images_by_arch: {},
-                layer_stats: {min: 0, max: 0, avg: 0}
+                layer_stats: {min: 0, max: 0, avg: 0, distribution: []},
+                size_stats: {min: 0, max: 0, avg: 0, total: 0}
               }
             end
           ')
@@ -194,12 +224,21 @@ jobs:
           if [ "$total_count" -gt 0 ]; then
             echo "$summary" | jq -r '
               "Total images analyzed: \(.total_images)",
+              "",
               "Images by architecture:",
               (.images_by_arch | to_entries | map("  - \(.key): \(.value) images") | join("\n")),
+              "",
               "Layer count statistics:",
               "  - Min layers: \(.layer_stats.min)",
               "  - Max layers: \(.layer_stats.max)", 
-              "  - Avg layers: \(.layer_stats.avg | floor)"
+              "  - Avg layers: \(.layer_stats.avg | floor)",
+              "  - Layer distribution:",
+              (.layer_stats.distribution | map("    * \(.layers) layers: \(.count) images") | join("\n")),
+              "",
+              "Size statistics:",
+              "  - Total size: \(.size_stats.total) bytes",
+              "  - Avg size: \(.size_stats.avg | floor) bytes",
+              "  - Size range: \(.size_stats.min) - \(.size_stats.max) bytes"
             '
           else
             echo "No valid image data was collected."
