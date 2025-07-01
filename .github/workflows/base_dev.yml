@@ -91,14 +91,18 @@ jobs:
 
           echo "Setting output for key: $output_key"
 
-          # 将 JSON 作为单行字符串输出，避免多行问题
-          layer_info_compressed=$(echo '${{ steps.base.outputs.layer_info }}' | jq -c .)
+          # 获取层信息并确保是有效的 JSON
+          layer_info='${{ steps.base.outputs.layer_info }}'
 
-          {
-            echo "${output_key}<<EOF"
-            echo "$layer_info_compressed"
-            echo "EOF"  
-          } >> $GITHUB_OUTPUT
+          # 验证 JSON 是否有效
+          if echo "$layer_info" | jq . >/dev/null 2>&1; then
+            # 将 JSON 作为单行字符串输出
+            layer_info_compressed=$(echo "$layer_info" | jq -c .)
+            echo "${output_key}=${layer_info_compressed}" >> $GITHUB_OUTPUT
+          else
+            echo "Warning: Invalid JSON for $output_key, skipping..."
+            echo "${output_key}=" >> $GITHUB_OUTPUT
+          fi
 
   show-all-layers:
     name: Show Aggregated Layers from All Matrix Jobs
@@ -154,19 +158,34 @@ jobs:
 
           all_outputs='${{ toJSON(needs.base.outputs) }}'
 
-          # 创建汇总统计，增加错误处理
+          # 创建汇总统计，增加错误处理和 null 检查
           summary=$(echo "$all_outputs" | jq '
             [
               to_entries[] |
-              select(.value != null and .value != "") |
+              select(.value != null and .value != "" and (.value | type) == "string") |
               .value |
-              try fromjson catch empty
+              try fromjson catch empty |
+              select(. != null and .architecture != null and .image != null)
             ] as $all_data |
             if ($all_data | length) > 0 then
               {
                 total_images: ($all_data | length),
-                images_by_arch: ($all_data | group_by(.architecture) | map({arch: .[0].architecture, count: length}) | from_entries),
-                layer_stats: ($all_data | map(.layer_count) | {min: min, max: max, avg: (add / length)})
+                images_by_arch: (
+                  $all_data | 
+                  group_by(.architecture // "unknown") | 
+                  map({
+                    arch: (.[0].architecture // "unknown"), 
+                    count: length
+                  }) | 
+                  map(select(.arch != null)) |
+                  reduce .[] as $item ({}; .[$item.arch] = $item.count)
+                ),
+                layer_stats: (
+                  $all_data | 
+                  map(.layer_count // 0) | 
+                  select(length > 0) |
+                  {min: min, max: max, avg: (add / length)}
+                )
               }
             else
               {
@@ -182,12 +201,22 @@ jobs:
             echo "$summary" | jq -r '
               "Total images analyzed: \(.total_images)",
               "Images by architecture:",
-              (.images_by_arch | to_entries | map("  - \(.key): \(.value) images") | join("\n")),
+              (if (.images_by_arch | length) > 0 then 
+                .images_by_arch | to_entries | map("  - \(.key): \(.value) images") | join("\n")
+              else 
+                "  - No architecture data available"
+              end),
               "Layer count statistics:",
-              "  - Min layers: \(.layer_stats.min)",
-              "  - Max layers: \(.layer_stats.max)", 
-              "  - Avg layers: \(.layer_stats.avg | floor)"
+              (if .layer_stats.min != null then
+                "  - Min layers: \(.layer_stats.min)",
+                "  - Max layers: \(.layer_stats.max)", 
+                "  - Avg layers: \(.layer_stats.avg | floor)"
+              else
+                "  - No layer statistics available"
+              end)
             '
           else
             echo "No valid image data was collected."
+            echo "Debug: All outputs structure:"
+            echo "$all_outputs" | jq .
           fi
