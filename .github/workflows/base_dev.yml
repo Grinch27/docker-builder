@@ -96,68 +96,78 @@ jobs:
           # 将 JSON 作为单行字符串输出，避免多行问题
           layer_info_compressed=$(echo '${{ steps.base.outputs.layer_info }}' | jq -c .)
 
-          {
-            echo "${output_key}<<EOF"
-            echo "$layer_info_compressed"
-            echo "EOF"  
-          } >> $GITHUB_OUTPUT
+          # 创建文件存储结果
+          mkdir -p /tmp/results
+          echo "$layer_info_compressed" > "/tmp/results/${output_key}.json"
+
+          # 设置输出
+          echo "${output_key}=${layer_info_compressed}" >> $GITHUB_OUTPUT
+
+      - name: Upload Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: layer-info-${{ matrix.image_name }}-${{ matrix.arch }}
+          path: /tmp/results/
+          retention-days: 1
 
   show-all-layers:
     name: Show Aggregated Layers from All Matrix Jobs
     runs-on: ubuntu-latest
     needs: base
     steps:
+      - name: Download All Results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: layer-info-*
+          path: /tmp/all-results
+          merge-multiple: true
+
       - name: Aggregated Output
         run: |
           echo "=== Docker Base Images Layer Information ==="
           echo
 
-          # 收集所有输出
-          all_outputs='${{ toJSON(needs.base.outputs) }}'
-          echo "Raw outputs from matrix jobs:"
-          echo "$all_outputs" | jq .
+          # 收集所有 JSON 文件
+          results_array="[]"
+          if [ -d "/tmp/all-results" ]; then
+            for json_file in /tmp/all-results/*.json; do
+              if [ -f "$json_file" ]; then
+                content=$(cat "$json_file")
+                results_array=$(echo "$results_array" | jq ". + [$content]")
+              fi
+            done
+          fi
+
+          echo "Found $(echo "$results_array" | jq 'length') results"
           echo
 
           echo "=== Individual Image Analysis ==="
           echo
 
-          # 处理每个镜像的层信息，优化多层显示
-          echo "$all_outputs" | jq -r 'to_entries[] | select(.value != null and .value != "") | @base64' | while read -r encoded_entry; do
-            entry=$(echo "$encoded_entry" | base64 -d)
-            key=$(echo "$entry" | jq -r '.key')
-            value=$(echo "$entry" | jq -r '.value')
-            
-            if [ -n "$value" ] && [ "$value" != "null" ]; then
-              echo "Processing $key..."
+          # 处理每个镜像的层信息
+          echo "$results_array" | jq -r '.[]' | while read -r layer_info; do
+            if [ -n "$layer_info" ] && [ "$layer_info" != "null" ]; then
+              image_name=$(echo "$layer_info" | jq -r '.image // "unknown"')
+              arch=$(echo "$layer_info" | jq -r '.architecture // "unknown"')
+              layer_count=$(echo "$layer_info" | jq -r '.layer_count // 0')
+              size=$(echo "$layer_info" | jq -r '.size // 0')
+              digest=$(echo "$layer_info" | jq -r '.digest // "unknown"')
               
-              # 尝试解析 JSON
-              if layer_info=$(echo "$value" | jq . 2>/dev/null); then
-                image_name=$(echo "$layer_info" | jq -r '.image // "unknown"')
-                arch=$(echo "$layer_info" | jq -r '.architecture // "unknown"')
-                layer_count=$(echo "$layer_info" | jq -r '.layer_count // 0')
-                size=$(echo "$layer_info" | jq -r '.size // 0')
-                digest=$(echo "$layer_info" | jq -r '.digest // "unknown"')
-                
-                echo "📦 Image: $image_name ($arch)"
-                echo "   Layers: $layer_count"
-                echo "   Size: $(numfmt --to=iec $size 2>/dev/null || echo "$size bytes")"
-                echo "   Digest: ${digest:0:19}..."
-                
-                if [ "$layer_count" -le 5 ]; then
-                  echo "   Layer hashes:"
-                  echo "$layer_info" | jq -r '.layers[]? // empty' | sed 's/^/     - /'
-                else
-                  echo "   Layer hashes (first 3 and last 2):"
-                  echo "$layer_info" | jq -r '.layers[0:3][]? // empty' | sed 's/^/     - /'
-                  echo "     ... ($(($layer_count - 5)) more layers) ..."
-                  echo "$layer_info" | jq -r '.layers[-2:][]? // empty' | sed 's/^/     - /'
-                fi
-                echo
+              echo "📦 Image: $image_name ($arch)"
+              echo "   Layers: $layer_count"
+              echo "   Size: $(numfmt --to=iec $size 2>/dev/null || echo "$size bytes")"
+              echo "   Digest: ${digest:0:19}..."
+              
+              if [ "$layer_count" -le 5 ]; then
+                echo "   Layer hashes:"
+                echo "$layer_info" | jq -r '.layers[]? // empty' | sed 's/^/     - /'
               else
-                echo "❌ Failed to parse layer info for $key"
-                echo "   Raw value: $value"
-                echo
+                echo "   Layer hashes (first 3 and last 2):"
+                echo "$layer_info" | jq -r '.layers[0:3][]? // empty' | sed 's/^/     - /'
+                echo "     ... ($(($layer_count - 5)) more layers) ..."
+                echo "$layer_info" | jq -r '.layers[-2:][]? // empty' | sed 's/^/     - /'
               fi
+              echo
             fi
           done
 
@@ -166,23 +176,25 @@ jobs:
           echo "=== Summary Report ==="
           echo
 
-          all_outputs='${{ toJSON(needs.base.outputs) }}'
+          # 收集所有 JSON 文件并创建数组
+          results_array="[]"
+          if [ -d "/tmp/all-results" ]; then
+            for json_file in /tmp/all-results/*.json; do
+              if [ -f "$json_file" ]; then
+                content=$(cat "$json_file")
+                results_array=$(echo "$results_array" | jq ". + [$content]")
+              fi
+            done
+          fi
 
-          # 创建汇总统计，增加层数分布统计
-          summary=$(echo "$all_outputs" | jq '
-            [
-              to_entries[] |
-              select(.value != null and .value != "") |
-              .value |
-              try fromjson catch empty |
-              select(. != null and has("architecture") and has("image"))
-            ] as $all_data |
+          # 创建汇总统计
+          summary=$(echo "$results_array" | jq '
+            map(select(. != null and has("architecture") and has("image"))) as $all_data |
             if ($all_data | length) > 0 then
               {
                 total_images: ($all_data | length),
                 images_by_arch: (
                   $all_data |
-                  map(select(.architecture != null)) |
                   group_by(.architecture) |
                   map({key: .[0].architecture, value: length}) |
                   from_entries
@@ -242,6 +254,4 @@ jobs:
             '
           else
             echo "No valid image data was collected."
-            echo "Debug info:"
-            echo "$all_outputs" | jq .
           fi
