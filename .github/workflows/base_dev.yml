@@ -1,0 +1,86 @@
+name: Base Image Info (Dev)
+
+on:
+  push:
+    paths:
+      - ".github/workflows/base_dev.yml"
+  pull_request:
+    paths:
+      - ".github/workflows/base_dev.yml"
+  repository_dispatch:
+  workflow_dispatch:
+
+run-name: Base Image Info
+
+jobs:
+  base:
+    name: ${{ matrix.image_name }} - ${{ matrix.arch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image_name: ["alpine:latest", "debian:latest", "ubuntu:latest"]
+        os: ["linux"]
+        arch: ["amd64", "arm64"]
+    outputs:
+      layers_text: ${{ steps.base.outputs.layers_text }}
+    steps:
+      - name: Setup environment
+        run: |
+          sudo apt-get -qq update
+          sudo apt-get -qq install -y ca-certificates curl gpg skopeo jq
+
+      - name: Fetch Layer Info
+        id: base
+        run: |
+          repo="${{ matrix.image_name }}"
+          os="${{ matrix.os }}"
+          arch="${{ matrix.arch }}"
+          echo "Inspecting image: $repo for platform: $os/$arch"
+
+          variant=""
+          if echo "${arch}" | grep -q "arm/v"; then
+            variant=$(echo "${arch}" | cut -d'/' -f2)
+            arch=$(echo "${arch}" | cut -d'/' -f1)
+          fi
+
+          data_json=$(skopeo inspect \
+            --override-os="${os}" \
+            --override-arch="${arch}" \
+            ${variant:+--override-variant="${variant}"} \
+            --format=json \
+            docker://docker.io/"${repo}" | jq .)
+
+          # 从 data_json 中提取各层的名称，按换行分隔
+          layers_text=$(echo "$data_json" | jq -r '.Layers[]')
+
+          echo "Layers for $repo:"
+          echo "$layers_text"
+
+          # 将层列表(多行文本)直接写入输出
+          echo "layers_text<<EOF" >> $GITHUB_OUTPUT
+          echo "$layers_text" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+  show-all-layers:
+    name: Show Aggregated Layers from All Matrix Jobs
+    runs-on: ubuntu-latest
+    needs: base
+    steps:
+      - name: Aggregated Output
+        run: |
+          echo "Aggregated Docker Layers outputs (JSON map):"
+          # 通过 toJSON 查看所有矩阵作业的输出 
+          all_outputs='${{ toJSON(needs.base.outputs) }}'
+          echo "$all_outputs"
+
+          echo "Now combining all layers_text into one big array..."
+          # 利用 jq 将所有矩阵下的 layers_text 条目收集成一个数组
+          # 其中 select(.) 判断有无空值，避免空输出导致的报错
+          combined=$(echo "$all_outputs" | jq -Rs '
+            . as $raw
+            | ($raw | fromjson?| to_entries | map(.value // "") ) as $vals
+            | [ $vals[] | select(.) ]
+          ')
+          echo "Combined layers array:"
+          echo "$combined" | jq .
