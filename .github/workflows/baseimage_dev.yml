@@ -89,7 +89,7 @@ jobs:
             echo "$layer_info_compressed"
             echo "EOF"  
           } >> $GITHUB_OUTPUT
-  show-all-layers:
+  collect:
     name: Show Aggregated Layers from All Matrix Jobs
     runs-on: ubuntu-latest
     needs: base
