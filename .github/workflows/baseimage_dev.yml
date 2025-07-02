@@ -108,7 +108,6 @@ jobs:
             if [[ -f "${json_file}" ]]; then
               jq --raw-output '
                 "📦 Image: \(.image) (\(.architecture))",
-                "   Total Layers: \(.layers | length)",
                 "   Size: \(.size // "null") bytes", 
                 "   Digest: \(.digest[0:19])...",
                 "   All Layer hashes:",
