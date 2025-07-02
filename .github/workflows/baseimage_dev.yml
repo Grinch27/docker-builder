@@ -33,6 +33,9 @@ jobs:
         run: |
           readonly repo="${{ matrix.docker }}"
           readonly arch="${{ matrix.arch }}"
+          # Create image info file with safe filename (replace colon with dash)
+          readonly safe_repo_name="${repo//:/-}"
+          readonly output_file="${{ env.DIR_ARTIFACT }}/image_${safe_repo_name/\//_}_${arch}.json"
 
           # Single skopeo call with all necessary data extraction
           data_json=$(skopeo inspect \
@@ -41,10 +44,6 @@ jobs:
             ${variant:+--override-variant="${variant}"} \
             --format=json \
             "docker://docker.io/${{ matrix.docker }}")
-
-          # Create image info file with safe filename (replace colon with dash)
-          readonly safe_repo_name="${repo//:/-}"
-          readonly output_file="${{ env.DIR_ARTIFACT }}/image_${safe_repo_name/\//_}_${arch}.json"
 
           # Create complete layer info in one jq operation and save to file
           echo "${data_json}" | jq --compact-output \
