@@ -67,10 +67,14 @@ jobs:
 
           echo "Saved layer info to: ${output_file}"
 
+          # Create safe artifact name and save to environment
+          readonly safe_artifact_name="layer-info-${safe_repo_name/\//_}-${arch}"
+          echo "ARTIFACT_NAME=${safe_artifact_name}" >> "${GITHUB_ENV}"
+
       - name: Upload Layer Info
         uses: actions/upload-artifact@v4
         with:
-          name: layer-info-${{ matrix.image_name }}-${{ matrix.arch }}
+          name: ${{ env.ARTIFACT_NAME }}
           path: /tmp/image_*.json
           retention-days: 1
 
