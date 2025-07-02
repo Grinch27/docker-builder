@@ -20,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        docker: ["alpine:latest", "debian:latest", "ubuntu:latest"]
+        docker: ["ubuntu:latest", "debian:latest", "alpine:latest"]
         arch: ["amd64", "arm64"]
     steps:
       - name: Setup environment
@@ -29,25 +29,15 @@ jobs:
           sudo -E apt-get -yqq install skopeo jq
           mkdir -p "${{ env.DIR_ARTIFACT }}"
 
-      - name: Fetch and Store Layer Info
+      - name: "Inspecting image ${{ matrix.docker }} for platform: linux/${{ matrix.arch }}"
         run: |
           readonly repo="${{ matrix.docker }}"
           readonly arch="${{ matrix.arch }}"
 
-          echo "Inspecting image: ${{ matrix.docker }} for platform: linux/${{ matrix.arch }}"
-
-          # Handle ARM variant extraction if needed
-          variant=""
-          current_arch="${{ matrix.arch }}"
-          if [[ "${arch}" =~ arm/v ]]; then
-            variant="${arch#*/}"
-            current_arch="${arch%/*}"
-          fi
-
           # Single skopeo call with all necessary data extraction
           data_json=$(skopeo inspect \
             --override-os="linux" \
-            --override-arch="${current_arch}" \
+            --override-arch="${{ matrix.arch }}" \
             ${variant:+--override-variant="${variant}"} \
             --format=json \
             "docker://docker.io/${{ matrix.docker }}")
