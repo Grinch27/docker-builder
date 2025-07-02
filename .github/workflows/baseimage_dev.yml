@@ -60,7 +60,6 @@ jobs:
               image: $image,
               architecture: $arch,
               layers: .Layers,
-              layer_count: (.Layers | length),
               size: .Size,
               digest: .Digest
             }' > "${output_file}"
@@ -103,26 +102,18 @@ jobs:
           fi
 
           echo "=== Individual Image Analysis ==="
-          echo
 
           # Process each JSON file
           for json_file in "${data_dir}"/*.json; do
             if [[ -f "${json_file}" ]]; then
               jq --raw-output '
                 "📦 Image: \(.image) (\(.architecture))",
-                "   Layers: \(.layer_count)",
+                "   Total Layers: \(.layers | length)",
                 "   Size: \(.size // "null") bytes", 
                 "   Digest: \(.digest[0:19])...",
-                if (.layer_count <= 5) then
-                  "   Layer hashes:",
-                  (.layers[] | "     - \(.)")
-                else
-                  "   Layer hashes (first 3 and last 2):",
-                  (.layers[0:3][] | "     - \(.)"),
-                  "     ... (\(.layer_count - 5) more layers) ...",
-                  (.layers[-2:][] | "     - \(.)")
-                end,
-                ""
+                "   All Layer hashes:",
+                (.layers[] | "     - \(.)")
               ' "${json_file}"
+              echo
             fi
           done
