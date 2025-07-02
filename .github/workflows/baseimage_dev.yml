@@ -15,12 +15,12 @@ env:
 
 jobs:
   base:
-    name: ${{ matrix.image_name }} - ${{ matrix.arch }}
+    name: ${{ matrix.docker }} - ${{ matrix.arch }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        image_name: ["alpine:latest", "debian:latest", "ubuntu:latest"]
+        docker: ["alpine:latest", "debian:latest", "ubuntu:latest"]
         arch: ["amd64", "arm64"]
     steps:
       - name: Setup environment
@@ -31,14 +31,14 @@ jobs:
 
       - name: Fetch and Store Layer Info
         run: |
-          readonly repo="${{ matrix.image_name }}"
+          readonly repo="${{ matrix.docker }}"
           readonly arch="${{ matrix.arch }}"
 
-          echo "Inspecting image: ${repo} for platform: linux/${arch}"
+          echo "Inspecting image: ${{ matrix.docker }} for platform: linux/${{ matrix.arch }}"
 
           # Handle ARM variant extraction if needed
           variant=""
-          current_arch="${arch}"
+          current_arch="${{ matrix.arch }}"
           if [[ "${arch}" =~ arm/v ]]; then
             variant="${arch#*/}"
             current_arch="${arch%/*}"
@@ -50,7 +50,7 @@ jobs:
             --override-arch="${current_arch}" \
             ${variant:+--override-variant="${variant}"} \
             --format=json \
-            "docker://docker.io/${repo}")
+            "docker://docker.io/${{ matrix.docker }}")
 
           # Create image info file with safe filename (replace colon with dash)
           readonly safe_repo_name="${repo//:/-}"
@@ -58,8 +58,8 @@ jobs:
 
           # Create complete layer info in one jq operation and save to file
           echo "${data_json}" | jq --compact-output \
-            --arg image "${repo}" \
-            --arg arch "${arch}" \
+            --arg image "${{ matrix.docker }}" \
+            --arg arch "${{ matrix.arch }}" \
             '{
               image: $image,
               architecture: $arch,
