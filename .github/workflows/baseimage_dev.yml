@@ -72,7 +72,7 @@ jobs:
           echo "ARTIFACT_NAME=${safe_artifact_name}" >> "${GITHUB_ENV}"
 
       - name: Upload Layer Info
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@main
         with:
           name: ${{ env.ARTIFACT_NAME }}
           path: /tmp/image_*.json
@@ -84,7 +84,7 @@ jobs:
     needs: base
     steps:
       - name: Download All Layer Info
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@main
         with:
           pattern: layer-info-*
           path: /tmp/layer-data
@@ -93,6 +93,7 @@ jobs:
       - name: Process Results
         run: |
           echo "=== Docker Base Images Layer Information ==="
+          echo
 
           readonly data_dir="/tmp/layer-data"
 
@@ -102,15 +103,14 @@ jobs:
             exit 1
           fi
 
-          echo "=== Individual Image Analysis ==="
-          echo
-
-          # Process each JSON file
+          # Process each JSON file with simple one-line output
           for json_file in "${data_dir}"/*.json; do
             if [[ -f "${json_file}" ]]; then
               jq --raw-output '
-                "📦 Image: \(.image) (\(.architecture))",
-                "   Layers: \(.layer_count)",
+                "\(.image)-\(.architecture): \(.layers | join(","))"
+              ' "${json_file}"
+            fi
+          done
                 "   Size: \(.size // "null") bytes", 
                 "   Digest: \(.digest[0:19])...",
                 if (.layer_count <= 5) then
@@ -126,107 +126,3 @@ jobs:
               ' "${json_file}"
             fi
           done
-
-      - name: Generate Summary Report
-        run: |
-          echo "=== Summary Report ==="
-
-          readonly data_dir="/tmp/layer-data"
-          readonly temp_combined="/tmp/combined_data.json"
-
-          # Combine all JSON files into a single array
-          jq -s '.' "${data_dir}"/*.json > "${temp_combined}"
-
-          # Generate comprehensive statistics
-          jq --raw-output '
-            map(select(. != null and has("architecture") and has("image"))) as $all_data |
-            if ($all_data | length) > 0 then
-              {
-                total_images: ($all_data | length),
-                images_by_arch: (
-                  $all_data |
-                  group_by(.architecture) |
-                  map({key: .[0].architecture, value: length}) |
-                  from_entries
-                ),
-                layer_stats: (
-                  $all_data |
-                  map(.layer_count) |
-                  {
-                    min: min, 
-                    max: max, 
-                    avg: (add / length | floor),
-                    distribution: (group_by(.) | map({layers: .[0], count: length}))
-                  }
-                ),
-                size_stats: (
-                  $all_data |
-                  map(.size // 0) |
-                  {
-                    min: min,
-                    max: max, 
-                    avg: (add / length | floor),
-                    total: add
-                  }
-                )
-              } |
-              "📊 Statistics:",
-              "Total images analyzed: \(.total_images)",
-              "",
-              "Images by architecture:",
-              (.images_by_arch | to_entries | map("  - \(.key): \(.value) images") | join("\n")),
-              "",
-              "Layer count statistics:",
-              "  - Min layers: \(.layer_stats.min)",
-              "  - Max layers: \(.layer_stats.max)", 
-              "  - Avg layers: \(.layer_stats.avg)",
-              "  - Layer distribution:",
-              (.layer_stats.distribution | map("    * \(.layers) layers: \(.count) images") | join("\n")),
-              "",
-              "Size statistics:",
-              "  - Total size: \(.size_stats.total) bytes",
-              "  - Avg size: \(.size_stats.avg) bytes",
-              "  - Size range: \(.size_stats.min) - \(.size_stats.max) bytes"
-            else
-              "No valid image data was collected."
-            end' "${temp_combined}"
-                    avg: (add / length),
-                    total: add
-                  }
-                )
-              }
-            else
-              {
-                total_images: 0,
-                images_by_arch: {},
-                layer_stats: {min: 0, max: 0, avg: 0, distribution: []},
-                size_stats: {min: 0, max: 0, avg: 0, total: 0}
-              }
-            end
-          ')
-          echo "📊 Statistics:"
-          total_count=$(echo "$summary" | jq -r '.total_images')
-          if [ "$total_count" -gt 0 ]; then
-            echo "$summary" | jq -r '
-              "Total images analyzed: \(.total_images)",
-              "",
-              "Images by architecture:",
-              (.images_by_arch | to_entries | map("  - \(.key): \(.value) images") | join("\n")),
-              "",
-              "Layer count statistics:",
-              "  - Min layers: \(.layer_stats.min)",
-              "  - Max layers: \(.layer_stats.max)", 
-              "  - Avg layers: \(.layer_stats.avg | floor)",
-              "  - Layer distribution:",
-              (.layer_stats.distribution | map("    * \(.layers) layers: \(.count) images") | join("\n")),
-              "",
-              "Size statistics:",
-              "  - Total size: \(.size_stats.total) bytes",
-              "  - Avg size: \(.size_stats.avg | floor) bytes",
-              "  - Size range: \(.size_stats.min) - \(.size_stats.max) bytes"
-            '
-          else
-            echo "No valid image data was collected."
-            echo "Debug info:"
-            echo "$all_outputs" | jq .
-          fi
