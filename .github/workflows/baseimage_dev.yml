@@ -36,16 +36,17 @@ jobs:
           echo "Inspecting image: ${repo} for platform: linux/${arch}"
 
           # Handle ARM variant extraction if needed
-          local variant=""
+          variant=""
+          current_arch="${arch}"
           if [[ "${arch}" =~ arm/v ]]; then
             variant="${arch#*/}"
-            arch="${arch%/*}"
+            current_arch="${arch%/*}"
           fi
 
           # Single skopeo call with all necessary data extraction
           data_json=$(skopeo inspect \
             --override-os="linux" \
-            --override-arch="${arch}" \
+            --override-arch="${current_arch}" \
             ${variant:+--override-variant="${variant}"} \
             --format=json \
             "docker://docker.io/${repo}")
