@@ -93,7 +93,6 @@ jobs:
       - name: Process Results
         run: |
           echo "=== Docker Base Images Layer Information ==="
-          echo
 
           readonly data_dir="/tmp/layer-data"
 
@@ -103,14 +102,15 @@ jobs:
             exit 1
           fi
 
-          # Process each JSON file with simple one-line output
+          echo "=== Individual Image Analysis ==="
+          echo
+
+          # Process each JSON file
           for json_file in "${data_dir}"/*.json; do
             if [[ -f "${json_file}" ]]; then
               jq --raw-output '
-                "\(.image)-\(.architecture): \(.layers | join(","))"
-              ' "${json_file}"
-            fi
-          done
+                "📦 Image: \(.image) (\(.architecture))",
+                "   Layers: \(.layer_count)",
                 "   Size: \(.size // "null") bytes", 
                 "   Digest: \(.digest[0:19])...",
                 if (.layer_count <= 5) then
