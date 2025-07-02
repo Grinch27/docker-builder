@@ -3,10 +3,10 @@ name: Base Image Info (Dev)
 on:
   push:
     paths:
-      - ".github/workflows/base_dev.yml"
+      - ".github/workflows/baseimage_dev.yml"
   pull_request:
     paths:
-      - ".github/workflows/base_dev.yml"
+      - ".github/workflows/baseimage_dev.yml"
   repository_dispatch:
   workflow_dispatch:
 
