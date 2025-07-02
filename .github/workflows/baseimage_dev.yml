@@ -95,19 +95,11 @@ jobs:
 
           readonly data_dir="/tmp/layer-data"
 
-          # Check if we have any data files
-          if [[ ! -d "${data_dir}" ]] || [[ -z "$(find "${data_dir}" -name "*.json" -type f)" ]]; then
-            echo "❌ No valid image data collected"
-            exit 1
-          fi
-
-          echo "=== Individual Image Analysis ==="
-
           # Process each JSON file
           for json_file in "${data_dir}"/*.json; do
             if [[ -f "${json_file}" ]]; then
               jq --raw-output '
-                "📦 Image: \(.image) (\(.architecture))",
+                " > Image: \(.image) (\(.architecture))",
                 "   Size: \(.size // "null") bytes", 
                 "   Digest: \(.digest[0:19])...",
                 "   All Layer hashes:",
