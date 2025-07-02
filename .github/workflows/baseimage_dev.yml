@@ -10,6 +10,9 @@ on:
   repository_dispatch:
   workflow_dispatch:
 
+env:
+  DIR_ARTIFACT: /tmp/layer-data
+
 jobs:
   base:
     name: ${{ matrix.image_name }} - ${{ matrix.arch }}
@@ -24,6 +27,7 @@ jobs:
         run: |
           sudo -E apt-get -yqq update
           sudo -E apt-get -yqq install skopeo jq
+          mkdir -p "${{ env.DIR_ARTIFACT }}"
 
       - name: Fetch and Store Layer Info
         run: |
@@ -50,7 +54,7 @@ jobs:
 
           # Create image info file with safe filename (replace colon with dash)
           readonly safe_repo_name="${repo//:/-}"
-          readonly output_file="/tmp/image_${safe_repo_name/\//_}_${arch}.json"
+          readonly output_file="${{ env.DIR_ARTIFACT }}/image_${safe_repo_name/\//_}_${arch}.json"
 
           # Create complete layer info in one jq operation and save to file
           echo "${data_json}" | jq --compact-output \
@@ -74,7 +78,7 @@ jobs:
         uses: actions/upload-artifact@main
         with:
           name: ${{ env.ARTIFACT_NAME }}
-          path: /tmp/image_*.json
+          path: ${{ env.DIR_ARTIFACT }}/image_*.json
           retention-days: 1
 
   collect:
@@ -86,14 +90,14 @@ jobs:
         uses: actions/download-artifact@main
         with:
           pattern: layer-info-*
-          path: /tmp/layer-data
+          path: ${{ env.DIR_ARTIFACT }}
           merge-multiple: true
 
       - name: Process Results
         run: |
           echo "=== Docker Base Images Layer Information ==="
 
-          readonly data_dir="/tmp/layer-data"
+          readonly data_dir="${{ env.DIR_ARTIFACT }}"
 
           # Process each JSON file
           for json_file in "${data_dir}"/*.json; do
