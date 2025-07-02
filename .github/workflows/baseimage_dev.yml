@@ -22,8 +22,8 @@ jobs:
     steps:
       - name: Setup environment
         run: |
-          sudo apt-get -qq update
-          sudo apt-get -qq install -y skopeo jq
+          sudo -E apt-get -yqq update
+          sudo -E apt-get -yqq install skopeo jq
 
       - name: Fetch and Store Layer Info
         run: |
@@ -101,7 +101,7 @@ jobs:
               jq --raw-output '
                 " > Image: \(.image) (\(.architecture))",
                 "   Size: \(.size // "null") bytes", 
-                "   Digest: \(.digest[0:19])...",
+                "   Digest: \(.digest[0:19])",
                 "   All Layer hashes:",
                 (.layers[] | "     - \(.)")
               ' "${json_file}"
