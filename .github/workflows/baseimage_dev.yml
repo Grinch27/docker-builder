@@ -71,7 +71,7 @@ jobs:
           retention-days: 1
 
   collect:
-    name: Show Aggregated Layers from All Matrix Jobs
+    name: Layers from All Matrix Jobs
     runs-on: ubuntu-latest
     needs: base
     steps:
