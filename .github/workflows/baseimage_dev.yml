@@ -98,7 +98,7 @@ jobs:
               jq --raw-output '
                 " > Image: \(.image) (\(.architecture))",
                 "   Size: \(.raw_data.Size // "null") bytes", 
-                "   Digest: \(.raw_data.Digest[0:19])",
+                "   Digest: \(.raw_data.Digest)",
                 "   All Layer hashes:",
                 (.raw_data.Layers[] | "     - \(.)")
               ' "${json_file}"
