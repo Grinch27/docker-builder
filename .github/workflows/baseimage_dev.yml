@@ -148,10 +148,8 @@ jobs:
               
               # 修正大小信息 - 先尝试从Size获取，如为null则从LayersData中计算
               size=$(jq -r '
-                if .raw_data.Size != null then 
-                  .raw_data.Size | tostring + " bytes"
-                elif .raw_data.LayersData != null then 
-                  (.raw_data.LayersData | map(.Size) | add | tostring) + " bytes (calculated from layers)"
+                if .raw_data.LayersData != null then 
+                  (.raw_data.LayersData | map(.Size) | add | tostring) + " bytes"
                 else 
                   "size unknown"
                 end
@@ -173,6 +171,3 @@ jobs:
               echo "  Reuse ratio: ${reuse_ratio}%"
             fi
           fi
-
-          # 清理临时文件
-          rm -f "${tmp_layers}"
