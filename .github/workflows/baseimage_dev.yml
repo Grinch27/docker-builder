@@ -130,14 +130,26 @@ jobs:
               fi
             done
             
-            # 2. 显示每个镜像的层数量
+            # 2. 显示每个镜像的层数量及修正大小显示
             echo -e "\n📊 Layer Count Per Image:"
             for json_file in "${data_dir}"/*.json; do
               [[ ! -f "${json_file}" ]] && continue
               img=$(jq -r '.image' "${json_file}")
               arch=$(jq -r '.architecture' "${json_file}")
               layer_count=$(jq -r '.raw_data.Layers | length' "${json_file}")
-              echo "  ${img} (${arch}): ${layer_count} layers"
+              
+              # 修正大小信息 - 先尝试从Size获取，如为null则从LayersData中计算
+              size=$(jq -r '
+                if .raw_data.Size != null then 
+                  .raw_data.Size | tostring + " bytes"
+                elif .raw_data.LayersData != null then 
+                  (.raw_data.LayersData | map(.Size) | add | tostring) + " bytes (calculated from layers)"
+                else 
+                  "size unknown"
+                end
+              ' "${json_file}")
+              
+              echo "  ${img} (${arch}): ${layer_count} layers, ${size}"
             done
             
             # 3. 显示所有唯一层的总体情况
@@ -146,7 +158,12 @@ jobs:
             echo -e "\n📈 Overall Statistics:"
             echo "  Total layers across all images: ${total_layers}"
             echo "  Unique layers: ${total_unique_layers}"
-            echo "  Reuse ratio: $(( (total_layers - total_unique_layers) * 100 / total_layers ))%"
+            
+            # 避免除以零错误
+            if [[ "${total_layers}" -gt 0 ]]; then
+              reuse_ratio=$(( (total_layers - total_unique_layers) * 100 / total_layers ))
+              echo "  Reuse ratio: ${reuse_ratio}%"
+            fi
           fi
 
           # 清理临时文件
