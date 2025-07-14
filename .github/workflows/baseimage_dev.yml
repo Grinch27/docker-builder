@@ -29,7 +29,8 @@ jobs:
           sudo -E apt-get -yqq install skopeo jq
           mkdir -p "${{ env.DIR_ARTIFACT }}"
 
-      - name: "Inspecting image ${{ matrix.docker }} for platform: linux/${{ matrix.arch }}"
+      - name: "skopeo inspect ${{ matrix.docker }} - linux/${{ matrix.arch }}"
+        id: skopeo-inspect
         run: |
           readonly repo="${{ matrix.docker }}"
           readonly arch="${{ matrix.arch }}"
@@ -44,6 +45,11 @@ jobs:
             ${variant:+--override-variant="${variant}"} \
             --format=json \
             "docker://docker.io/${{ matrix.docker }}")
+
+          # Debug: Print full raw data for troubleshooting
+          echo "=== DEBUG: Full skopeo inspect output for ${{ matrix.docker }} (${{ matrix.arch }}) ==="
+          echo "${data_json}" | jq '.'
+          echo "=== END DEBUG OUTPUT ==="
 
           # Create complete layer info in one jq operation and save to file
           echo "${data_json}" | jq --compact-output \
