@@ -58,12 +58,10 @@ jobs:
             '{
               image: $image,
               architecture: $arch,
-              layers: .Layers,
-              size: .Size,
-              digest: .Digest
+              raw_data: .
             }' > "${output_file}"
 
-          echo "Saved layer info to: ${output_file}"
+          echo "Saved complete image info to: ${output_file}"
 
           # Create safe artifact name and save to environment
           readonly safe_artifact_name="layer-info-${safe_repo_name/\//_}-${arch}"
@@ -99,11 +97,57 @@ jobs:
             if [[ -f "${json_file}" ]]; then
               jq --raw-output '
                 " > Image: \(.image) (\(.architecture))",
-                "   Size: \(.size // "null") bytes", 
-                "   Digest: \(.digest[0:19])",
+                "   Size: \(.raw_data.Size // "null") bytes", 
+                "   Digest: \(.raw_data.Digest[0:19])",
                 "   All Layer hashes:",
-                (.layers[] | "     - \(.)")
+                (.raw_data.Layers[] | "     - \(.)")
               ' "${json_file}"
               echo
             fi
           done
+
+          # 汇总所有层信息
+          echo "=== Layer Summary Across All Images ==="
+          tmp_layers=$(mktemp)
+
+          # 提取所有层信息到临时文件
+          for json_file in "${data_dir}"/*.json; do
+            [[ ! -f "${json_file}" ]] && continue
+            jq -r --arg img "$(jq -r '.image' "${json_file}")" \
+               --arg arch "$(jq -r '.architecture' "${json_file}")" \
+               '.raw_data.Layers[] | $img + "," + $arch + "," + .' "${json_file}" >> "${tmp_layers}"
+          done
+
+          # 分析层信息并输出
+          if [[ -s "${tmp_layers}" ]]; then
+            # 1. 显示共享层
+            echo "🔄 Shared Layers:"
+            sort "${tmp_layers}" | awk -F, '{print $3}' | sort | uniq -c | sort -nr | 
+            while read count layer; do
+              if [[ "${count}" -gt 1 ]]; then
+                echo "  ${layer:0:19}... (${count} images):"
+                grep "${layer}" "${tmp_layers}" | awk -F, '{print "   - " $1 " (" $2 ")"}' | sort
+              fi
+            done
+            
+            # 2. 显示每个镜像的层数量
+            echo -e "\n📊 Layer Count Per Image:"
+            for json_file in "${data_dir}"/*.json; do
+              [[ ! -f "${json_file}" ]] && continue
+              img=$(jq -r '.image' "${json_file}")
+              arch=$(jq -r '.architecture' "${json_file}")
+              layer_count=$(jq -r '.raw_data.Layers | length' "${json_file}")
+              echo "  ${img} (${arch}): ${layer_count} layers"
+            done
+            
+            # 3. 显示所有唯一层的总体情况
+            total_unique_layers=$(sort "${tmp_layers}" | awk -F, '{print $3}' | sort -u | wc -l)
+            total_layers=$(wc -l < "${tmp_layers}")
+            echo -e "\n📈 Overall Statistics:"
+            echo "  Total layers across all images: ${total_layers}"
+            echo "  Unique layers: ${total_unique_layers}"
+            echo "  Reuse ratio: $(( (total_layers - total_unique_layers) * 100 / total_layers ))%"
+          fi
+
+          # 清理临时文件
+          rm -f "${tmp_layers}"
