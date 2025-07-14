@@ -97,16 +97,8 @@ jobs:
             if [[ -f "${json_file}" ]]; then
               jq --raw-output '
                 " > Image: \(.image) (\(.architecture))",
-                "   Size: " + (
-                  if .raw_data.Size != null then 
-                    (.raw_data.Size | tostring) + " bytes"
-                  elif .raw_data.LayersData != null then
-                    (.raw_data.LayersData | map(.Size) | add | tostring)
-                  else 
-                    "unknown"
-                  end
-                ),
-                "   Digest: " + (.raw_data.Digest // "unknown"),
+                "   Size: " + (.raw_data.LayersData | map(.Size) | add | tostring),
+                "   Digest: " + (.raw_data.Digest ),
                 "   All Layer hashes:",
                 (.raw_data.Layers[] | "     - \(.)")
               ' "${json_file}"
@@ -163,6 +155,14 @@ jobs:
             total_layers=$(wc -l < "${tmp_layers}")
             echo -e "\n📈 Overall Statistics:"
             echo "  Total layers across all images: ${total_layers}"
+            echo "  Unique layers: ${total_unique_layers}"
+            
+            # 避免除以零错误
+            if [[ "${total_layers}" -gt 0 ]]; then
+              reuse_ratio=$(( (total_layers - total_unique_layers) * 100 / total_layers ))
+              echo "  Reuse ratio: ${reuse_ratio}%"
+            fi
+          fi
             echo "  Unique layers: ${total_unique_layers}"
             
             # 避免除以零错误
