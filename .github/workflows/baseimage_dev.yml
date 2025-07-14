@@ -97,8 +97,16 @@ jobs:
             if [[ -f "${json_file}" ]]; then
               jq --raw-output '
                 " > Image: \(.image) (\(.architecture))",
-                "   Size: \(.raw_data.LayersData.Size) bytes", 
-                "   Digest: \(.raw_data.Digest)",
+                "   Size: " + (
+                  if .raw_data.Size != null then 
+                    (.raw_data.Size | tostring) + " bytes"
+                  elif .raw_data.LayersData != null then
+                    (.raw_data.LayersData | map(.Size) | add | tostring) + " bytes (sum)"
+                  else 
+                    "unknown"
+                  end
+                ),
+                "   Digest: " + (.raw_data.Digest[0:19] // "unknown"),
                 "   All Layer hashes:",
                 (.raw_data.Layers[] | "     - \(.)")
               ' "${json_file}"
