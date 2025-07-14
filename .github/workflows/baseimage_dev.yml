@@ -101,12 +101,12 @@ jobs:
                   if .raw_data.Size != null then 
                     (.raw_data.Size | tostring) + " bytes"
                   elif .raw_data.LayersData != null then
-                    (.raw_data.LayersData | map(.Size) | add | tostring) + " bytes (sum)"
+                    (.raw_data.LayersData | map(.Size) | add | tostring)
                   else 
                     "unknown"
                   end
                 ),
-                "   Digest: " + (.raw_data.Digest[0:19] // "unknown"),
+                "   Digest: " + (.raw_data.Digest // "unknown"),
                 "   All Layer hashes:",
                 (.raw_data.Layers[] | "     - \(.)")
               ' "${json_file}"
