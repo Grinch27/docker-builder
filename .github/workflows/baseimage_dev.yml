@@ -91,7 +91,6 @@ jobs:
           echo "=== Docker Base Images Layer Information ==="
 
           readonly data_dir="${{ env.DIR_ARTIFACT }}"
-
           # Process each JSON file
           for json_file in "${data_dir}"/*.json; do
             if [[ -f "${json_file}" ]]; then
@@ -106,6 +105,9 @@ jobs:
             fi
           done
 
+      - name: Collect Layers
+        id: collect-layers
+        run: |
           # 汇总所有层信息
           echo "=== Layer Summary Across All Images ==="
           tmp_layers=$(mktemp)
