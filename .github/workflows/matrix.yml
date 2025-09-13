@@ -1,0 +1,289 @@
+name: Docker Matrix Pipeline
+
+run-name: Fetch and Build Docker Images
+
+on:
+  repository_dispatch:
+  workflow_dispatch:
+    inputs:
+      force_build:
+        description: "Force build all images"
+        type: boolean
+        default: false
+
+jobs:
+  # 第一阶段：获取基础镜像层信息
+  fetch-base-layers:
+    name: Fetch ${{ matrix.image_name }} - ${{ matrix.arch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image_name:
+          [
+            "debian:latest",
+            "ubuntu:latest",
+            "alpine:latest",
+            "debian:sid",
+            "ubuntu:devel",
+          ]
+        os: ["linux"]
+        arch: ["amd64", "arm64"]
+    steps:
+      - name: Setup environment
+        run: |
+          sudo apt-get -qq update
+          sudo apt-get -qq install -y ca-certificates curl gpg skopeo jq
+
+      - name: Fetch Layer Info
+        id: fetch-layers
+        run: |
+          repo="${{ matrix.image_name }}"
+          os="${{ matrix.os }}"
+          arch="${{ matrix.arch }}"
+          echo "Inspecting image: $repo for platform: $os/$arch"
+
+          variant=""
+          if echo "${arch}" | grep -q "arm/v"; then
+            variant=$(echo "${arch}" | cut -d'/' -f2)
+            arch=$(echo "${arch}" | cut -d'/' -f1)
+          fi
+
+          data_json=$(skopeo inspect \
+            --override-os="${os}" \
+            --override-arch="${arch}" \
+            ${variant:+--override-variant="${variant}"} \
+            --format=json \
+            docker://docker.io/"${repo}" | jq .)
+
+          # 从 data_json 中提取各层的名称，按换行分隔
+          layers_text=$(echo "$data_json" | jq -r '.Layers[]')
+
+          echo "Layers for $repo:"
+          echo "$layers_text"
+
+          # 创建唯一的输出名称，基于镜像名称和架构
+          output_name="layers_$(echo "$repo" | tr ':/' '_')_${arch}"
+
+          # 将层列表(多行文本)写入输出
+          echo "${output_name}<<EOF" >> $GITHUB_OUTPUT
+          echo "$layers_text" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+          # 为此镜像-架构组合创建标识符
+          echo "image_id=${repo}_${arch}" >> $GITHUB_OUTPUT
+
+      - name: Create layer information JSON
+        id: create-json
+        run: |
+          # 创建包含层信息的JSON文件
+          mkdir -p /tmp
+          echo "${{ steps.fetch-layers.outputs.layers_text }}" | jq -R -s 'split("\n") | map(select(length > 0))' > /tmp/layers.json
+
+      - name: Upload layer info
+        uses: actions/upload-artifact@v3
+        with:
+          name: layers-${{ matrix.image_name }}-${{ matrix.arch }}
+          path: /tmp/layers.json
+          retention-days: 1
+          if-no-files-found: warn
+
+  # 第二阶段：聚合所有层信息
+  aggregate-layers:
+    name: Aggregate Layer Information
+    needs: fetch-base-layers
+    runs-on: ubuntu-latest
+    outputs:
+      base_layers: ${{ steps.combine-layers.outputs.base_layers }}
+    steps:
+      - name: Download all layer artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: /tmp/layer-artifacts
+
+      - name: Combine layer information
+        id: combine-layers
+        run: |
+          # 创建基础JSON对象用于存储所有基础镜像的层信息
+          base_layers='{}'
+
+          # 处理所有矩阵任务的输出
+          for artifact_dir in /tmp/layer-artifacts/layers-*; do
+            if [ -d "$artifact_dir" ]; then
+              image_info=$(basename "$artifact_dir" | sed 's/layers-//')
+              if [ -f "$artifact_dir/layers.json" ]; then
+                # 读取层信息并添加到base_layers
+                layers_content=$(cat "$artifact_dir/layers.json")
+                base_layers=$(jq --arg image "$image_info" \
+                  --argjson layers "$layers_content" \
+                  '. + {($image): $layers}' <<< "$base_layers")
+              fi
+            fi
+          done
+
+          echo "Combined layers information:"
+          echo "$base_layers" | jq .
+
+          # 输出紧凑的JSON对象
+          echo "base_layers=$(echo "$base_layers" | jq -c .)" >> $GITHUB_OUTPUT
+
+      - name: Show aggregated layer information
+        run: |
+          echo "Aggregated layers information by image and architecture:"
+          echo '${{ steps.combine-layers.outputs.base_layers }}' | jq .
+
+  # 第三阶段：准备Docker构建矩阵并检查是否需要构建
+  prepare-build-matrix:
+    name: Prepare Build Matrix
+    runs-on: ubuntu-latest
+    needs: aggregate-layers
+    outputs:
+      build_matrix: ${{ steps.create-matrix.outputs.build_matrix }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@main
+
+      - name: Setup Environment
+        run: |
+          sudo apt-get -qq update
+          sudo apt-get -qq install -y ca-certificates curl gpg skopeo jq
+
+      - name: Create Build Matrix
+        id: create-matrix
+        run: |
+          # 读取基础镜像层信息
+          base_layers='${{ needs.aggregate-layers.outputs.base_layers }}'
+          echo "Base layers information:"
+          echo "$base_layers" | jq .
+
+          # 定义需要构建的镜像列表
+          build_matrix=$(cat <<EOF
+          {
+            "include": [
+              {
+                "app_branch": "cloudflare-warp",
+                "tag_repo": "latest",
+                "base_image": "ubuntu:latest",
+                "arch_branch": "linux/amd64,linux/arm64"
+              },
+              {
+                "app_branch": "adguardvpn-cli",
+                "tag_repo": "nightly",
+                "base_image": "debian:latest",
+                "custom_env": "build_arg='update_channel=nightly'",
+                "arch_branch": "linux/amd64,linux/arm64"
+              },
+              {
+                "app_branch": "adguardvpn-cli",
+                "tag_repo": "beta",
+                "base_image": "debian:latest",
+                "custom_env": "build_arg='update_channel=beta'",
+                "arch_branch": "linux/amd64,linux/arm64"
+              }
+            ]
+          }
+          EOF
+          )
+
+          # 这里可以添加检查逻辑，判断每个镜像是否需要重建
+          # 比如检查仓库镜像是否包含基础镜像的所有层
+
+          echo "build_matrix=$build_matrix" >> $GITHUB_OUTPUT
+
+  # 第四阶段：构建需要更新的Docker镜像
+  build-docker:
+    name: Build ${{ matrix.app_branch }}:${{ matrix.tag_repo }}
+    runs-on: ubuntu-latest
+    needs: prepare-build-matrix
+    if: ${{ inputs.force_build == true || needs.prepare-build-matrix.outputs.build_matrix != '[]' }}
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include: ${{ fromJson(needs.prepare-build-matrix.outputs.build_matrix).include }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@main
+
+      - name: Setup environment
+        run: |
+          sudo apt-get -qq update
+          sudo apt-get -qq install -y ca-certificates curl gpg skopeo jq xz-utils
+
+      - name: Setup Docker
+        run: |
+          sudo install -m 0755 -d /etc/apt/keyrings
+          sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+          sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+          echo \
+            "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+            $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+            sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+          sudo apt-get update
+
+          sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+          docker --version
+
+      - name: Setup QEMU
+        uses: docker/setup-qemu-action@master
+        with:
+          platforms: ${{ matrix.arch_branch }}
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@master
+        with:
+          version: latest
+          driver-opts: network=host
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@master
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Load environment variables
+        run: |
+          echo "app_branch=${{ matrix.app_branch }}" >> $GITHUB_ENV
+          echo "tag_repo=${{ matrix.tag_repo }}" >> $GITHUB_ENV
+          echo "base_image=${{ matrix.base_image }}" >> $GITHUB_ENV
+          echo "arch_branch=${{ matrix.arch_branch }}" >> $GITHUB_ENV
+          echo "registry_push=docker.io" >> $GITHUB_ENV
+          echo "dir_app=application/${{ matrix.app_branch }}" >> $GITHUB_ENV
+          echo "compress=true" >> $GITHUB_ENV
+
+          # 加载自定义环境变量
+          if [ -n "${{ matrix.custom_env }}" ]; then
+            echo "${{ matrix.custom_env }}" | tr ';' '\n' >> $GITHUB_ENV
+          fi
+
+      - name: Check image version
+        id: check-version
+        run: |
+          # 对比基础镜像与目标仓库镜像的层信息，确定是否需要更新
+          # 这里使用与fetch-base-layers相同的skopeo命令检查目标仓库镜像
+          # 然后确定是否需要构建新镜像
+
+          # 为简化示例，这里假设总是需要构建
+          echo "need_build=true" >> $GITHUB_OUTPUT
+          echo "version=$(date +%Y%m%d%H%M%S)" >> $GITHUB_OUTPUT
+
+      - name: Build Docker image
+        id: build
+        if: ${{ steps.check-version.outputs.need_build == 'true' || inputs.force_build == true }}
+        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
+        run: |
+          # 构建Docker镜像的代码，类似于原build-docker.yml中的构建步骤
+          # 设置本地registry等
+
+      - name: Push to Docker Hub
+        if: ${{ steps.build.outputs.status == 'success' }}
+        run: |
+          # 推送镜像到Docker Hub的代码，类似于原build-docker.yml中的推送步骤
+
+      - name: Generate artifacts
+        if: ${{ steps.build.outputs.status == 'success' }}
+        run: |
+          # 生成发布文件的代码，类似于原build-docker.yml中的输出步骤

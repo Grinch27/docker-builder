@@ -23,8 +23,6 @@ jobs:
           ]
         os: ["linux"]
         arch: ["amd64", "arm64"]
-    outputs:
-      layers_text: ${{ steps.fetch-layers.outputs.layers_text }}
     steps:
       - name: Setup environment
         run: |
@@ -58,30 +56,64 @@ jobs:
           echo "Layers for $repo:"
           echo "$layers_text"
 
-          # 将层列表(多行文本)直接写入输出
-          echo "layers_text<<EOF" >> $GITHUB_OUTPUT
+          # 创建唯一的输出名称，基于镜像名称和架构
+          output_name="layers_$(echo "$repo" | tr ':/' '_')_${arch}"
+
+          # 将层列表(多行文本)写入输出
+          echo "${output_name}<<EOF" >> $GITHUB_OUTPUT
           echo "$layers_text" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-  show-all-layers:
-    name: Show Aggregated Layers from All Matrix Jobs
-    runs-on: ubuntu-latest
-    needs: fetch-layers
-    steps:
-      - name: Aggregated Output
-        run: |
-          echo "Aggregated Docker Layers outputs (JSON map):"
-          # 通过 toJSON 查看所有矩阵作业的输出 
-          all_outputs='${{ toJSON(needs.fetch-layers.outputs) }}'
-          echo "$all_outputs"
+          # 为此镜像-架构组合创建标识符
+          echo "image_id=${repo}_${arch}" >> $GITHUB_OUTPUT
 
-          echo "Now combining all layers_text into one big array..."
-          # 利用 jq 将所有矩阵下的 layers_text 条目收集成一个数组
-          # 其中 select(.) 判断有无空值，避免空输出导致的报错
-          combined=$(echo "$all_outputs" | jq -Rs '
-            . as $raw
-            | ($raw | fromjson?| to_entries | map(.value // "") ) as $vals
-            | [ $vals[] | select(.) ]
-          ')
-          echo "Combined layers array:"
-          echo "$combined" | jq .
+      - name: Upload layer info
+        uses: actions/upload-artifact@v3
+        with:
+          name: layers-${{ matrix.image_name }}-${{ matrix.arch }}
+          path: /tmp/layers.json
+          retention-days: 1
+          if-no-files-found: warn
+
+  aggregate-layers:
+    name: Aggregate Layer Information
+    needs: fetch-layers
+    runs-on: ubuntu-latest
+    outputs:
+      base_layers: ${{ steps.combine-layers.outputs.base_layers }}
+    steps:
+      - name: Download all layer artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: /tmp/layer-artifacts
+
+      - name: Combine layer information
+        id: combine-layers
+        run: |
+          # 创建基础JSON对象用于存储所有基础镜像的层信息
+          base_layers='{}'
+
+          # 处理所有矩阵任务的输出
+          for artifact_dir in /tmp/layer-artifacts/layers-*; do
+            if [ -d "$artifact_dir" ]; then
+              image_name=$(basename "$artifact_dir" | cut -d'-' -f2-)
+              if [ -f "$artifact_dir/layers.json" ]; then
+                # 读取层信息并添加到base_layers
+                layers_content=$(cat "$artifact_dir/layers.json")
+                base_layers=$(jq --arg image "$image_name" \
+                  --argjson layers "$layers_content" \
+                  '. + {($image): $layers}' <<< "$base_layers")
+              fi
+            fi
+          done
+
+          echo "Combined layers information:"
+          echo "$base_layers" | jq .
+
+          # 输出紧凑的JSON对象
+          echo "base_layers=$(echo "$base_layers" | jq -c .)" >> $GITHUB_OUTPUT
+
+      - name: Show aggregated layer information
+        run: |
+          echo "Aggregated layers information by image and architecture:"
+          echo '${{ steps.combine-layers.outputs.base_layers }}' | jq .
