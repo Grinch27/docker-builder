@@ -67,6 +67,9 @@ jobs:
           # 为此镜像-架构组合创建标识符
           echo "image_id=${repo}_${arch}" >> $GITHUB_OUTPUT
 
+          # 将层信息写入JSON文件供上传
+          echo "$layers_text" | jq -R -s 'split("\n") | map(select(length > 0))' > /tmp/layers.json
+
       - name: Upload layer info
         uses: actions/upload-artifact@main
         with:
