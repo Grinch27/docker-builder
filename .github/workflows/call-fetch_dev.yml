@@ -70,10 +70,14 @@ jobs:
           # 将层信息写入JSON文件供上传
           echo "$layers_text" | jq -R -s 'split("\n") | map(select(length > 0))' > /tmp/layers.json
 
+          # 创建合法的制品名（替换冒号为下划线）
+          sanitized_name=$(echo "${{ matrix.image_name }}" | tr ':/' '_')
+          echo "sanitized_name=${sanitized_name}" >> $GITHUB_OUTPUT
+
       - name: Upload layer info
         uses: actions/upload-artifact@main
         with:
-          name: layers-${{ matrix.image_name }}-${{ matrix.arch }}
+          name: layers-${{ steps.fetch-layers.outputs.sanitized_name }}-${{ matrix.arch }}
           path: /tmp/layers.json
           retention-days: 1
           if-no-files-found: warn
@@ -99,11 +103,18 @@ jobs:
           # 处理所有矩阵任务的输出
           for artifact_dir in /tmp/layer-artifacts/layers-*; do
             if [ -d "$artifact_dir" ]; then
-              image_name=$(basename "$artifact_dir" | cut -d'-' -f2-)
+              # 提取镜像名称，将下划线转回冒号以匹配原始格式
+              artifact_base=$(basename "$artifact_dir")
+              image_part=$(echo "$artifact_base" | sed 's/^layers-\(.*\)-\(amd64\|arm64\)$/\1/')
+              arch_part=$(echo "$artifact_base" | sed 's/^layers-.*-\(amd64\|arm64\)$/\1/')
+              
+              # 将下划线转回冒号（仅第一个下划线，因为这是替换tag的冒号）
+              image_name=$(echo "$image_part" | sed 's/_/:/' | sed 's/_/\//')
+              
               if [ -f "$artifact_dir/layers.json" ]; then
                 # 读取层信息并添加到base_layers
                 layers_content=$(cat "$artifact_dir/layers.json")
-                base_layers=$(jq --arg image "$image_name" \
+                base_layers=$(jq --arg image "${image_name}_${arch_part}" \
                   --argjson layers "$layers_content" \
                   '. + {($image): $layers}' <<< "$base_layers")
               fi
