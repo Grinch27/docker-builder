@@ -13,7 +13,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image_name: ["alpine:latest", "debian:latest", "ubuntu:latest"]
+        image_name:
+          [
+            "debian:latest",
+            "ubuntu:latest",
+            "alpine:latest",
+            "debian:sid",
+            "ubuntu:devel",
+          ]
         os: ["linux"]
         arch: ["amd64", "arm64"]
     outputs:
