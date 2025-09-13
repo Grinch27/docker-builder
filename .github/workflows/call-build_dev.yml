@@ -6,7 +6,7 @@ run-name: Build Matrix for Docker
 on:
   schedule:
     # Run every day at 00:00 UTC
-    - cron: "0 0 * * *"
+    # - cron: "0 0 * * *"
   repository_dispatch:
   workflow_dispatch:
 
