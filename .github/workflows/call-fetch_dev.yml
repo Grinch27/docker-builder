@@ -36,6 +36,14 @@ jobs:
         with:
           path: /tmp/layer-artifacts
 
+      - name: Check every json
+        run: |
+          set -e
+          for f in /tmp/layer-artifacts/layers-*/layer-*.json; do
+            echo "Checking $f"
+            jq . "$f" || { echo "Invalid JSON in $f"; exit 1; }
+          done
+
       - name: Combine layer information
         id: combine-layers
         env:
