@@ -47,16 +47,10 @@ jobs:
           echo "Found linux platform variants:"
           echo "$platforms"
 
-          mkdir -p /tmp/layers
-
-          # 输出平台列表 JSON
-          echo "platforms_json<<EOF" >> $GITHUB_OUTPUT
-          echo "$platforms" | awk '{print $1 (length($2)?"/"$2:"")}' | jq -R -s 'split("\n")|map(select(length>0))' >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
           sanitized_name=$(echo "${{ inputs.image_name }}" | tr ':/' '_')
           echo "sanitized_name=${sanitized_name}" >> $GITHUB_OUTPUT
-
+          # 聚合结构
+          base_layers='{}'
           while read -r arch variant; do
             [ -z "$arch" ] && continue
             echo "Processing linux/$arch${variant:+/$variant}"
@@ -66,13 +60,23 @@ jobs:
               ${variant:+--override-variant="$variant"} \
               --format=json \
               docker://docker.io/"${repo}")
-            echo "$data_json" | jq -r '.Layers[]' | jq -R -s 'split("\n")|map(select(length>0))' > "/tmp/layers/linux_${arch}${variant:+_$variant}.json"
+            layers_array=$(echo "$data_json" | jq -r '.Layers[]' | jq -R -s 'split("\n")|map(select(length>0))')
+            key="linux_${arch}${variant:+_$variant}"
+            base_layers=$(jq --arg k "$key" --argjson v "$layers_array" '. + {($k): $v}' <<< "$base_layers")
           done <<< "$platforms"
+          # 平台列表输出
+          echo "platforms_json<<EOF" >> $GITHUB_OUTPUT
+          echo "$platforms" | awk '{print "linux/" $1 (length($2)?"/"$2:"")}' | jq -R -s 'split("\n")|map(select(length>0))' >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          # 写聚合文件
+          echo "$base_layers" | jq '.' > /tmp/all_layers.json
+          # 输出紧凑JSON
+          echo "base_layers=$(echo "$base_layers" | jq -c .)" >> $GITHUB_OUTPUT
 
       - name: Upload layer info
         uses: actions/upload-artifact@main
         with:
           name: layers-${{ steps.fetch.outputs.sanitized_name }}-linux
-          path: /tmp/layers
+          path: /tmp/all_layers.json
           retention-days: 1
           if-no-files-found: warn
