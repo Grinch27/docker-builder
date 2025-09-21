@@ -11,11 +11,14 @@ jobs:
   fetch:
     name: ${{ inputs.image_name }} - linux
     runs-on: ubuntu-latest
+    env:
+      OS: "linux"
     steps:
       - name: Setup environment
         run: |
           sudo apt-get -qq update
           sudo apt-get -qq install -y ca-certificates curl gpg skopeo jq
+
       - name: Fetch Layer Info
         id: fetch
         run: |
@@ -27,7 +30,7 @@ jobs:
           # 提取 multi-arch manifest 中的 linux 平台
           platforms=$(echo "$raw" | jq -r '
               (.manifests? // [])
-              | map(select(.platform.os=="linux"))
+              | map(select(.platform.os=="${{ env.OS }}"))
               | .[]
               | "\(.platform.architecture) \(.platform.variant // "")"
             ' | sort -u)
@@ -37,46 +40,51 @@ jobs:
             single_json=$(skopeo inspect docker://docker.io/"${repo}")
             arch=$(echo "$single_json" | jq -r '.Architecture')
             os=$(echo "$single_json" | jq -r '.Os')
-            if [ "$os" != "linux" ]; then
-              echo "Image OS ($os) 不是 linux，退出." >&2
+            if [ "$os" != "${{ env.OS }}" ]; then
+              echo "Image OS ($os) 不是 ${{ env.OS }}，退出." >&2
               exit 1
             fi
             platforms="$arch "
           fi
 
-          echo "Found linux platform variants:"
+          echo "Found ${{ env.OS }} platform variants:"
           echo "$platforms"
 
           sanitized_name=$(echo "${{ inputs.image_name }}" | tr ':/' '_')
           echo "sanitized_name=${sanitized_name}" >> $GITHUB_OUTPUT
+
           # 聚合结构
           base_layers='{}'
           while read -r arch variant; do
             [ -z "$arch" ] && continue
-            echo "Processing linux/$arch${variant:+/$variant}"
+            echo "Processing ${{ env.OS }}/$arch${variant:+/$variant}"
             data_json=$(skopeo inspect \
-              --override-os=linux \
+              --override-os="${{ env.OS }}" \
               --override-arch="$arch" \
               ${variant:+--override-variant="$variant"} \
               --format=json \
               docker://docker.io/"${repo}")
             layers_array=$(echo "$data_json" | jq -r '.Layers[]' | jq -R -s 'split("\n")|map(select(length>0))')
-            key="linux_${arch}${variant:+_$variant}"
+            key="${{ env.OS }}_${arch}${variant:+_$variant}"
             base_layers=$(jq --arg k "$key" --argjson v "$layers_array" '. + {($k): $v}' <<< "$base_layers")
           done <<< "$platforms"
+
           # 平台列表输出
           echo "platforms_json<<EOF" >> $GITHUB_OUTPUT
-          echo "$platforms" | awk '{print "linux/" $1 (length($2)?"/"$2:"")}' | jq -R -s 'split("\n")|map(select(length>0))' >> $GITHUB_OUTPUT
+          echo "$platforms" | awk '{print "${{ env.OS }}/" $1 (length($2)?"/"$2:"")}' | jq -R -s 'split("\n")|map(select(length>0))' >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
-          # 写聚合文件
-          echo "$base_layers" | jq '.' > /tmp/all_layers.json
+
+          # 写聚合文件 (改名以匹配 layer-* 通配符)
+          echo "$base_layers" | jq '.' > /tmp/layer-all.json
+          ls -l /tmp/layer-*.json || true
+
           # 输出紧凑JSON
           echo "base_layers=$(echo "$base_layers" | jq -c .)" >> $GITHUB_OUTPUT
 
       - name: Upload layer info
         uses: actions/upload-artifact@main
         with:
-          name: layers-${{ steps.fetch.outputs.sanitized_name }}-linux
-          path: /tmp/all_layers.json
+          name: layers-${{ steps.fetch.outputs.sanitized_name }}-${{ env.OS }}
+          path: /tmp/layer-*.json
           retention-days: 1
           if-no-files-found: warn

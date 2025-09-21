@@ -27,7 +27,7 @@ jobs:
       # os: ${{ matrix.os }}
       # arch: ${{ matrix.arch }}
 
-  aggregate-layers:
+  collect:
     name: Aggregate Layer Information
     needs: fetch
     runs-on: ubuntu-latest
