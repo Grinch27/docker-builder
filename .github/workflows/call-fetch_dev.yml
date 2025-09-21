@@ -28,7 +28,8 @@ jobs:
     needs: fetch
     runs-on: ubuntu-latest
     outputs:
-      FILE_LAYERS: ${{ steps.combine-merge.outputs.FILE_LAYERS }}
+      FILE_LAYERS: ${{ steps.json-combine.outputs.FILE_LAYERS }}
+      aggregated_layers_file: ${{ steps.merge-all.outputs.aggregated_layers_file }}
     steps:
       - name: Download all layer artifacts
         uses: actions/download-artifact@main
@@ -41,47 +42,44 @@ jobs:
           set -e
           for f in /tmp/layer-artifacts/layers-*/layer-*.json; do
             echo "Checking $f"
-            jq . "$f" >/dev/null || { echo "Invalid JSON in $f"; exit 1; }
+            jq . "$f" || { echo "Invalid JSON in $f"; exit 1; }
           done
 
-      - name: Combine & Merge Layers
-        id: combine-merge
+      - name: Combine layer information
+        id: json-combine
         env:
           FILE_LAYERS: /tmp/base_layers.json
         run: |
-          set -euo pipefail
-          outfile=/tmp/aggregated_layers.json
-          tmp=$(mktemp)
-          shopt -s nullglob
-          for f in /tmp/layer-artifacts/layers-*/layer-*.json; do
-            jq -r '.Layers[]?' "$f" >> "$tmp"
-          done
-          if [ ! -s "$tmp" ]; then
-            echo '{"Layers":[]}' > "$outfile"
-          else
-            sort -u "$tmp" | jq -R -s '{Layers:(split("\n")[:-1])}' > "$outfile"
-          fi
-          echo "FILE_LAYERS=$outfile" >> "$GITHUB_OUTPUT"
-          echo "Layer total:"
-          jq '.Layers|length as $n | {Total:$n}' "$outfile"
-          # 预览前若干
-          jq '.Layers' "$outfile" || true
+          set -e
+          base_layers='{}'
+          for artifact_dir in /tmp/layer-artifacts/layers-*; do
+            [ -d "$artifact_dir" ] || continue
+            artifact_base=$(basename "$artifact_dir")
+            sanitized=$(echo "$artifact_base" | sed 's/^layers-\(.*\)$/\1/')
+            image_name=$(echo "$sanitized" | sed 's/_/:/' | sed 's/_/\//g')
+            for json_file in "$artifact_dir"/layer-*.json; do
+              [ -f "$json_file" ] || continue
+              layers_content=$(cat "$json_file")
+              base_layers=$(jq --arg img "$image_name" --argjson obj "$layers_content" '
+                if has($img) then .[$img] = (.[$img] + $obj) else . + {($img): $obj} end
+              ' <<< "$base_layers")
+            done
           done
           echo "$base_layers" | jq . > ${{ env.FILE_LAYERS }}
           echo "Per-image layers saved to ${{ env.FILE_LAYERS }}"
           # 只输出文件名而非大 JSON
           echo "FILE_LAYERS=${{ env.FILE_LAYERS }}" >> "$GITHUB_OUTPUT"
 
-      # - name: Merge All Layers
-      #   id: merge-all
-      #   env:
-      #     FILE_LAYERS: ${{ steps.json-combine.outputs.FILE_LAYERS }}
-      #   run: |
-      #     set -e
-      #     [ -f "$FILE_LAYERS" ] || { echo "File $FILE_LAYERS not found"; exit 1; }
-      #     # 汇总所有镜像的 Layers，去重。允许缺失某些对象的 Layers 字段
-      #     jq '{Layers: ([ .[]? | .Layers?[] ] | unique)}' "$FILE_LAYERS" > aggregated_layers.json
-      #     echo "Aggregated unified layers (deduplicated):"
-      #     jq '. | {Total: (.Layers|length)}' aggregated_layers.json
-      #     jq . aggregated_layers.json
-      #     echo "aggregated_layers_file=aggregated_layers.json" >> "$GITHUB_OUTPUT"
+      - name: Merge All Layers
+        id: merge-all
+        env:
+          FILE_LAYERS: ${{ steps.json-combine.outputs.FILE_LAYERS }}
+        run: |
+          set -e
+          [ -f "$FILE_LAYERS" ] || { echo "File $FILE_LAYERS not found"; exit 1; }
+          # 汇总所有镜像的 Layers，去重。允许缺失某些对象的 Layers 字段
+          jq '{Layers: ([ .[]? | .Layers?[] ] | unique)}' "$FILE_LAYERS" > aggregated_layers.json
+          echo "Aggregated unified layers (deduplicated):"
+          jq '. | {Total: (.Layers|length)}' aggregated_layers.json
+          jq . aggregated_layers.json
+          echo "aggregated_layers_file=aggregated_layers.json" >> "$GITHUB_OUTPUT"
