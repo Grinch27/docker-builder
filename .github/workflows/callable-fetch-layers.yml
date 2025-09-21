@@ -50,6 +50,10 @@ jobs:
           echo "Found ${{ env.OS }} platform variants:"
           echo "$platforms"
 
+          # 仅生成文件/制品命名所需的清洗名
+          file_base=$(echo "${{ inputs.image_name }}" | sed 's#[/: ]#-#g')
+          echo "file_base=${file_base}" >> $GITHUB_OUTPUT
+
           # 聚合所有架构层到单一数组
           aggregated_layers='[]'
           while read -r arch variant; do
@@ -73,9 +77,6 @@ jobs:
           # 去重并生成最终结构
           unique_layers=$(echo "$aggregated_layers" | jq 'unique')
           final_json=$(jq -n --arg name "${{ inputs.image_name }}" --argjson layers "$unique_layers" '{image_name:$name, Layers:$layers}')
-
-          # 仅生成文件/制品命名所需的清洗名
-          file_base=$(echo "${{ inputs.image_name }}" | sed 's#[/: ]#-#g')
 
           # 写聚合文件 (仅文件名使用清洗)
           layer_file="/tmp/layer-${file_base}.json"
