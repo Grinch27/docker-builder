@@ -20,12 +20,8 @@ jobs:
             "debian:sid",
             "ubuntu:devel",
           ]
-        # os: ["linux"]
-        # arch: ["amd64", "arm64"]
     with:
       image_name: ${{ matrix.image_name }}
-      # os: ${{ matrix.os }}
-      # arch: ${{ matrix.arch }}
 
   collect:
     name: Collect Layers
