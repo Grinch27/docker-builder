@@ -50,9 +50,12 @@ jobs:
           echo "Found ${{ env.OS }} platform variants:"
           echo "$platforms"
 
-          # 统一清洗镜像名: / : 空格 -> -
-          sanitized_name=$(echo "${{ inputs.image_name }}" | sed 's#[/: ]#-#g')
+          # 原始镜像名直接作为输出（不再清洗）
+          sanitized_name="${{ inputs.image_name }}"
           echo "sanitized_name=${sanitized_name}" >> $GITHUB_OUTPUT
+          # 仅用于文件/制品命名的清洗名
+          file_base=$(echo "${{ inputs.image_name }}" | sed 's#[/: ]#-#g')
+          echo "file_base=${file_base}" >> $GITHUB_OUTPUT
 
           # 聚合所有架构层到单一数组
           aggregated_layers='[]'
@@ -78,8 +81,7 @@ jobs:
           unique_layers=$(echo "$aggregated_layers" | jq 'unique')
           final_json=$(jq -n --arg name "${{ inputs.image_name }}" --argjson layers "$unique_layers" '{image_name:$name, Layers:$layers}')
 
-          # 写聚合文件 (根据镜像名生成文件名: / : 空格 -> -)
-          file_base=$(echo "${{ inputs.image_name }}" | sed 's#[/: ]#-#g')
+          # 写聚合文件 (仅文件名使用清洗)
           layer_file="/tmp/layer-${file_base}.json"
           echo "$final_json" | jq '.' > "$layer_file"
           ls -l /tmp/layer-*.json || true
@@ -90,7 +92,7 @@ jobs:
       - name: Upload layer info
         uses: actions/upload-artifact@main
         with:
-          name: layers-${{ steps.fetch.outputs.sanitized_name }}-${{ env.OS }}
+          name: layers-${{ steps.fetch.outputs.file_base }}-${{ env.OS }}
           path: /tmp/layer-*.json
           retention-days: 1
           if-no-files-found: warn
