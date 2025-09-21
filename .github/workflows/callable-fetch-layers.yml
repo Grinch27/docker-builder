@@ -83,9 +83,6 @@ jobs:
           echo "$final_json" | jq '.' > "$layer_file"
           ls -l /tmp/layer-*.json || true
 
-          # 输出紧凑JSON（沿用 base_layers 变量名以兼容下游）
-          echo "base_layers=$(echo "$final_json" | jq -c .)" >> $GITHUB_OUTPUT
-
       - name: Upload layer info
         uses: actions/upload-artifact@main
         with:
