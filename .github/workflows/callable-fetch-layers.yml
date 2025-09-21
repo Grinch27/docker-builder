@@ -8,7 +8,7 @@ on:
         type: string
 
 jobs:
-  fetch-layers:
+  fetch:
     name: ${{ inputs.image_name }} - linux
     runs-on: ubuntu-latest
     steps:
@@ -17,7 +17,7 @@ jobs:
           sudo apt-get -qq update
           sudo apt-get -qq install -y ca-certificates curl gpg skopeo jq
       - name: Fetch Layer Info
-        id: fetch-layers
+        id: fetch
         run: |
           repo="${{ inputs.image_name }}"
           echo "Inspecting image (all linux platforms): $repo"
@@ -72,7 +72,7 @@ jobs:
       - name: Upload layer info
         uses: actions/upload-artifact@main
         with:
-          name: layers-${{ steps.fetch-layers.outputs.sanitized_name }}-linux
+          name: layers-${{ steps.fetch.outputs.sanitized_name }}-linux
           path: /tmp/layers
           retention-days: 1
           if-no-files-found: warn
