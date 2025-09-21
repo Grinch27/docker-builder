@@ -24,8 +24,8 @@ jobs:
         arch: ["amd64", "arm64"]
     with:
       image_name: ${{ matrix.image_name }}
-      os: ${{ matrix.os }}
-      arch: ${{ matrix.arch }}
+      # os: ${{ matrix.os }}
+      # arch: ${{ matrix.arch }}
 
   aggregate-layers:
     name: Aggregate Layer Information

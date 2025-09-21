@@ -6,62 +6,73 @@ on:
       image_name:
         required: true
         type: string
-      os:
-        required: true
-        type: string
-      arch:
-        required: true
-        type: string
 
 jobs:
   fetch-layers:
-    name: ${{ inputs.image_name }} - ${{ inputs.arch }}
+    name: ${{ inputs.image_name }} - linux-all
     runs-on: ubuntu-latest
     steps:
       - name: Setup environment
         run: |
           sudo apt-get -qq update
           sudo apt-get -qq install -y ca-certificates curl gpg skopeo jq
-
       - name: Fetch Layer Info
         id: fetch-layers
         run: |
           repo="${{ inputs.image_name }}"
-          os="${{ inputs.os }}"
-            arch="${{ inputs.arch }}"
-          echo "Inspecting image: $repo for platform: $os/$arch"
+          echo "Inspecting image (all linux platforms): $repo"
 
-          variant=""
-          if echo "${arch}" | grep -q "arm/v"; then
-            variant=$(echo "${arch}" | cut -d'/' -f2)
-            arch=$(echo "${arch}" | cut -d'/' -f1)
+          raw=$(skopeo inspect --raw docker://docker.io/"${repo}" || true)
+
+          # 提取 multi-arch manifest 中的 linux 平台
+          platforms=$(echo "$raw" | jq -r '
+              (.manifests? // [])
+              | map(select(.platform.os=="linux"))
+              | .[]
+              | "\(.platform.architecture) \(.platform.variant // "")"
+            ' | sort -u)
+
+          if [ -z "$platforms" ]; then
+            echo "No manifest list entries, fallback single inspect."
+            single_json=$(skopeo inspect docker://docker.io/"${repo}")
+            arch=$(echo "$single_json" | jq -r '.Architecture')
+            os=$(echo "$single_json" | jq -r '.Os')
+            if [ "$os" != "linux" ]; then
+              echo "Image OS ($os) 不是 linux，退出." >&2
+              exit 1
+            fi
+            platforms="$arch "
           fi
 
-          data_json=$(skopeo inspect \
-            --override-os="${os}" \
-            --override-arch="${arch}" \
-            ${variant:+--override-variant="${variant}"} \
-            --format=json \
-            docker://docker.io/"${repo}" | jq .)
+          echo "Found linux platform variants:"
+          echo "$platforms"
 
-          layers_text=$(echo "$data_json" | jq -r '.Layers[]')
-          echo "Layers for $repo:"
-          echo "$layers_text"
+          mkdir -p /tmp/layers
 
-          output_name="layers_$(echo "$repo" | tr ':/' '_')_${arch}"
-          echo "${output_name}<<EOF" >> $GITHUB_OUTPUT
-          echo "$layers_text" >> $GITHUB_OUTPUT
+          # 输出平台列表 JSON
+          echo "platforms_json<<EOF" >> $GITHUB_OUTPUT
+          echo "$platforms" | awk '{print $1 (length($2)?"/"$2:"")}' | jq -R -s 'split("\n")|map(select(length>0))' >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
-          echo "image_id=${repo}_${arch}" >> $GITHUB_OUTPUT
 
-          echo "$layers_text" | jq -R -s 'split("\n") | map(select(length > 0))' > /tmp/layers.json
           sanitized_name=$(echo "${{ inputs.image_name }}" | tr ':/' '_')
           echo "sanitized_name=${sanitized_name}" >> $GITHUB_OUTPUT
+
+          while read -r arch variant; do
+            [ -z "$arch" ] && continue
+            echo "Processing linux/$arch${variant:+/$variant}"
+            data_json=$(skopeo inspect \
+              --override-os=linux \
+              --override-arch="$arch" \
+              ${variant:+--override-variant="$variant"} \
+              --format=json \
+              docker://docker.io/"${repo}")
+            echo "$data_json" | jq -r '.Layers[]' | jq -R -s 'split("\n")|map(select(length>0))' > "/tmp/layers/linux_${arch}${variant:+_$variant}.json"
+          done <<< "$platforms"
 
       - name: Upload layer info
         uses: actions/upload-artifact@main
         with:
-          name: layers-${{ steps.fetch-layers.outputs.sanitized_name }}-${{ inputs.arch }}
-          path: /tmp/layers.json
+          name: layers-${{ steps.fetch-layers.outputs.sanitized_name }}-linux
+          path: /tmp/layers
           retention-days: 1
           if-no-files-found: warn
