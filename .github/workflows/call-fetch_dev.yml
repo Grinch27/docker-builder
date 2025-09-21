@@ -20,8 +20,8 @@ jobs:
             "debian:sid",
             "ubuntu:devel",
           ]
-        os: ["linux"]
-        arch: ["amd64", "arm64"]
+        # os: ["linux"]
+        # arch: ["amd64", "arm64"]
     with:
       image_name: ${{ matrix.image_name }}
       # os: ${{ matrix.os }}

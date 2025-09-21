@@ -9,7 +9,7 @@ on:
 
 jobs:
   fetch-layers:
-    name: ${{ inputs.image_name }} - linux-all
+    name: ${{ inputs.image_name }} - linux
     runs-on: ubuntu-latest
     steps:
       - name: Setup environment
