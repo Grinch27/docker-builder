@@ -55,7 +55,7 @@ jobs:
           for artifact_dir in /tmp/layer-artifacts/layers-*; do
             [ -d "$artifact_dir" ] || continue
             artifact_base=$(basename "$artifact_dir")
-            sanitized=$(echo "$artifact_base" | sed 's/^layers-\(.*\)-linux$/\1/')
+            sanitized=$(echo "$artifact_base" | sed 's/^layers-\(.*\)$/\1/')
             image_name=$(echo "$sanitized" | sed 's/_/:/' | sed 's/_/\//g')
             for json_file in "$artifact_dir"/layer-*.json; do
               [ -f "$json_file" ] || continue

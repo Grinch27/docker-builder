@@ -99,7 +99,7 @@ jobs:
       - name: Upload layer info
         uses: actions/upload-artifact@main
         with:
-          name: layers-${{ steps.fetch.outputs.file_base }}-${{ env.OS }}
+          name: layers-${{ steps.fetch.outputs.file_base }}
           path: /tmp/layer-*.json
           retention-days: 1
           if-no-files-found: warn
