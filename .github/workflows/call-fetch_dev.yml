@@ -28,7 +28,7 @@ jobs:
     needs: fetch
     runs-on: ubuntu-latest
     outputs:
-      base_layers_file: ${{ steps.combine-layers.outputs.base_layers_file }}
+      file_layers: ${{ steps.combine-layers.outputs.file_layers }}
       aggregated_layers_file: ${{ steps.merge-all.outputs.aggregated_layers_file }}
     steps:
       - name: Download all layer artifacts
@@ -36,7 +36,8 @@ jobs:
         with:
           path: /tmp/layer-artifacts
 
-      - name: Check every json
+      - name: Check json file
+        id: json-check
         run: |
           set -e
           for f in /tmp/layer-artifacts/layers-*/layer-*.json; do
@@ -45,9 +46,9 @@ jobs:
           done
 
       - name: Combine layer information
-        id: combine-layers
+        id: json-combine
         env:
-          BASE_LAYERS_FILE: /tmp/base_layers.json
+          FILE_LAYERS: /tmp/base_layers.json
         run: |
           set -e
           base_layers='{}'
@@ -64,20 +65,20 @@ jobs:
               ' <<< "$base_layers")
             done
           done
-          echo "$base_layers" | jq . > ${{ env.BASE_LAYERS_FILE }}
-          echo "Per-image layers saved to ${{ env.BASE_LAYERS_FILE }}"
+          echo "$base_layers" | jq . > ${{ env.FILE_LAYERS }}
+          echo "Per-image layers saved to ${{ env.FILE_LAYERS }}"
           # 只输出文件名而非大 JSON
-          echo "base_layers_file=${{ env.BASE_LAYERS_FILE }}" >> "$GITHUB_OUTPUT"
+          echo "file_layers=${{ env.FILE_LAYERS }}" >> "$GITHUB_OUTPUT"
 
       - name: Merge All Layers
         id: merge-all
         env:
-          BASE_LAYERS_FILE: ${{ steps.combine-layers.outputs.base_layers_file }}
+          FILE_LAYERS: ${{ steps.json-combine.outputs.file_layers }}
         run: |
           set -e
-          [ -f "$BASE_LAYERS_FILE" ] || { echo "File $BASE_LAYERS_FILE not found"; exit 1; }
+          [ -f "$FILE_LAYERS" ] || { echo "File $FILE_LAYERS not found"; exit 1; }
           # 汇总所有镜像的 Layers，去重。允许缺失某些对象的 Layers 字段
-          jq '{Layers: ([ .[]? | .Layers?[] ] | unique)}' "$BASE_LAYERS_FILE" > aggregated_layers.json
+          jq '{Layers: ([ .[]? | .Layers?[] ] | unique)}' "$FILE_LAYERS" > aggregated_layers.json
           echo "Aggregated unified layers (deduplicated):"
           jq '. | {Total: (.Layers|length)}' aggregated_layers.json
           jq . aggregated_layers.json
