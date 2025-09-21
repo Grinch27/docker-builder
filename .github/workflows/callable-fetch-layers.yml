@@ -1,0 +1,67 @@
+name: Reusable Fetch Layers
+
+on:
+  workflow_call:
+    inputs:
+      image_name:
+        required: true
+        type: string
+      os:
+        required: true
+        type: string
+      arch:
+        required: true
+        type: string
+
+jobs:
+  fetch-layers:
+    name: ${{ inputs.image_name }} - ${{ inputs.arch }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup environment
+        run: |
+          sudo apt-get -qq update
+          sudo apt-get -qq install -y ca-certificates curl gpg skopeo jq
+
+      - name: Fetch Layer Info
+        id: fetch-layers
+        run: |
+          repo="${{ inputs.image_name }}"
+          os="${{ inputs.os }}"
+            arch="${{ inputs.arch }}"
+          echo "Inspecting image: $repo for platform: $os/$arch"
+
+          variant=""
+          if echo "${arch}" | grep -q "arm/v"; then
+            variant=$(echo "${arch}" | cut -d'/' -f2)
+            arch=$(echo "${arch}" | cut -d'/' -f1)
+          fi
+
+          data_json=$(skopeo inspect \
+            --override-os="${os}" \
+            --override-arch="${arch}" \
+            ${variant:+--override-variant="${variant}"} \
+            --format=json \
+            docker://docker.io/"${repo}" | jq .)
+
+          layers_text=$(echo "$data_json" | jq -r '.Layers[]')
+          echo "Layers for $repo:"
+          echo "$layers_text"
+
+          output_name="layers_$(echo "$repo" | tr ':/' '_')_${arch}"
+          echo "${output_name}<<EOF" >> $GITHUB_OUTPUT
+          echo "$layers_text" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          echo "image_id=${repo}_${arch}" >> $GITHUB_OUTPUT
+
+          echo "$layers_text" | jq -R -s 'split("\n") | map(select(length > 0))' > /tmp/layers.json
+          sanitized_name=$(echo "${{ inputs.image_name }}" | tr ':/' '_')
+          echo "sanitized_name=${sanitized_name}" >> $GITHUB_OUTPUT
+
+      - name: Upload layer info
+        uses: actions/upload-artifact@main
+        with:
+          name: layers-${{ steps.fetch-layers.outputs.sanitized_name }}-${{ inputs.arch }}
+          path: /tmp/layers.json
+          retention-days: 1
+          if-no-files-found: warn
