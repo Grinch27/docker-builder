@@ -46,6 +46,8 @@ jobs:
 
       - name: Combine & Merge Layers
         id: combine-merge
+        env:
+          FILE_LAYERS: /tmp/base_layers.json
         run: |
           set -euo pipefail
           outfile=/tmp/aggregated_layers.json
