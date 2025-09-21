@@ -24,6 +24,7 @@ jobs:
           sudo apt-get -qq install -y ca-certificates curl gpg skopeo jq
 
       - name: (Log in) Docker Hub
+        id: login-dockerhub
         if: ${{ inputs.login_docker }}
         uses: docker/login-action@master
         with:
