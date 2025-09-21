@@ -28,7 +28,8 @@ jobs:
     needs: fetch
     runs-on: ubuntu-latest
     outputs:
-      base_layers: ${{ steps.combine-layers.outputs.base_layers }}
+      base_layers_file: ${{ steps.combine-layers.outputs.base_layers_file }}
+      aggregated_layers_file: ${{ steps.merge-all.outputs.aggregated_layers_file }}
     steps:
       - name: Download all layer artifacts
         uses: actions/download-artifact@main
@@ -38,37 +39,36 @@ jobs:
       - name: Combine layer information
         id: combine-layers
         run: |
-          # 创建基础JSON对象用于存储所有基础镜像的层信息
+          set -e
           base_layers='{}'
-
-          # 处理所有矩阵任务的输出
           for artifact_dir in /tmp/layer-artifacts/layers-*; do
             [ -d "$artifact_dir" ] || continue
             artifact_base=$(basename "$artifact_dir")
-            # 去掉前缀/后缀获得下划线版本镜像名 (layers-<sanitized>-linux)
             sanitized=$(echo "$artifact_base" | sed 's/^layers-\(.*\)-linux$/\1/')
-            # 还原镜像名: 第一个 _ -> : 其余 _ -> /
             image_name=$(echo "$sanitized" | sed 's/_/:/' | sed 's/_/\//g')
-
-            # 遍历匹配 layer-*.json (允许未来扩展多个文件)
             for json_file in "$artifact_dir"/layer-*.json; do
               [ -f "$json_file" ] || continue
               layers_content=$(cat "$json_file")
-              # 若已存在同镜像键则合并内部对象
               base_layers=$(jq --arg img "$image_name" --argjson obj "$layers_content" '
-                . as $root
-                | if has($img) then .[$img] = (.[$img] + $obj) else . + {($img): $obj} end
+                if has($img) then .[$img] = (.[$img] + $obj) else . + {($img): $obj} end
               ' <<< "$base_layers")
             done
           done
+          echo "$base_layers" | jq . > base_layers.json
+          echo "Per-image layers saved to base_layers.json"
+          # 只输出文件名而非大 JSON
+          echo "base_layers_file=base_layers.json" >> "$GITHUB_OUTPUT"
 
-          echo "Combined layers information:"
-          echo "$base_layers" | jq .
-
-          # 输出紧凑的JSON对象
-          echo "base_layers=$(echo "$base_layers" | jq -c .)" >> $GITHUB_OUTPUT
-
-      - name: Show aggregated layer information
+      - name: Merge All Layers
+        id: merge-all
+        env:
+          BASE_LAYERS_FILE: ${{ steps.combine-layers.outputs.base_layers_file }}
         run: |
-          echo "Aggregated layers information by image and architecture:"
-          echo '${{ steps.combine-layers.outputs.base_layers }}' | jq .
+          set -e
+          [ -f "$BASE_LAYERS_FILE" ] || { echo "File $BASE_LAYERS_FILE not found"; exit 1; }
+          # 汇总所有镜像的 Layers，去重。允许缺失某些对象的 Layers 字段
+          jq '{Layers: ([ .[]? | .Layers?[] ] | unique)}' "$BASE_LAYERS_FILE" > aggregated_layers.json
+          echo "Aggregated unified layers (deduplicated):"
+          jq '. | {Total: (.Layers|length)}' aggregated_layers.json
+          jq . aggregated_layers.json
+          echo "aggregated_layers_file=aggregated_layers.json" >> "$GITHUB_OUTPUT"
