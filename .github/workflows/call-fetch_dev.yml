@@ -47,23 +47,23 @@ jobs:
 
           # 处理所有矩阵任务的输出
           for artifact_dir in /tmp/layer-artifacts/layers-*; do
-            if [ -d "$artifact_dir" ]; then
-              # 提取镜像名称，将下划线转回冒号以匹配原始格式
-              artifact_base=$(basename "$artifact_dir")
-              image_part=$(echo "$artifact_base" | sed 's/^layers-\(.*\)-\(amd64\|arm64\)$/\1/')
-              arch_part=$(echo "$artifact_base" | sed 's/^layers-.*-\(amd64\|arm64\)$/\1/')
-              
-              # 将下划线转回冒号（仅第一个下划线，因为这是替换tag的冒号）
-              image_name=$(echo "$image_part" | sed 's/_/:/' | sed 's/_/\//')
-              
-              if [ -f "$artifact_dir/layers.json" ]; then
-                # 读取层信息并添加到base_layers
-                layers_content=$(cat "$artifact_dir/layers.json")
-                base_layers=$(jq --arg image "${image_name}_${arch_part}" \
-                  --argjson layers "$layers_content" \
-                  '. + {($image): $layers}' <<< "$base_layers")
-              fi
-            fi
+            [ -d "$artifact_dir" ] || continue
+            artifact_base=$(basename "$artifact_dir")
+            # 去掉前缀/后缀获得下划线版本镜像名 (layers-<sanitized>-linux)
+            sanitized=$(echo "$artifact_base" | sed 's/^layers-\(.*\)-linux$/\1/')
+            # 还原镜像名: 第一个 _ -> : 其余 _ -> /
+            image_name=$(echo "$sanitized" | sed 's/_/:/' | sed 's/_/\//g')
+
+            # 遍历匹配 layer-*.json (允许未来扩展多个文件)
+            for json_file in "$artifact_dir"/layer-*.json; do
+              [ -f "$json_file" ] || continue
+              layers_content=$(cat "$json_file")
+              # 若已存在同镜像键则合并内部对象
+              base_layers=$(jq --arg img "$image_name" --argjson obj "$layers_content" '
+                . as $root
+                | if has($img) then .[$img] = (.[$img] + $obj) else . + {($img): $obj} end
+              ' <<< "$base_layers")
+            done
           done
 
           echo "Combined layers information:"

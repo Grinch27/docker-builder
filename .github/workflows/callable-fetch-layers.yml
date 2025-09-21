@@ -50,11 +50,12 @@ jobs:
           echo "Found ${{ env.OS }} platform variants:"
           echo "$platforms"
 
-          sanitized_name=$(echo "${{ inputs.image_name }}" | tr ':/' '_')
+          # 统一清洗镜像名: / : 空格 -> -
+          sanitized_name=$(echo "${{ inputs.image_name }}" | sed 's#[/: ]#-#g')
           echo "sanitized_name=${sanitized_name}" >> $GITHUB_OUTPUT
 
-          # 聚合结构
-          base_layers='{}'
+          # 聚合所有架构层到单一数组
+          aggregated_layers='[]'
           while read -r arch variant; do
             [ -z "$arch" ] && continue
             echo "Processing ${{ env.OS }}/$arch${variant:+/$variant}"
@@ -65,21 +66,26 @@ jobs:
               --format=json \
               docker://docker.io/"${repo}")
             layers_array=$(echo "$data_json" | jq -r '.Layers[]' | jq -R -s 'split("\n")|map(select(length>0))')
-            key="${{ env.OS }}_${arch}${variant:+_$variant}"
-            base_layers=$(jq --arg k "$key" --argjson v "$layers_array" '. + {($k): $v}' <<< "$base_layers")
+            aggregated_layers=$(echo "$aggregated_layers" | jq --argjson new "$layers_array" '. + $new')
           done <<< "$platforms"
 
-          # 平台列表输出
+          # 平台列表输出（保留）
           echo "platforms_json<<EOF" >> $GITHUB_OUTPUT
           echo "$platforms" | awk '{print "${{ env.OS }}/" $1 (length($2)?"/"$2:"")}' | jq -R -s 'split("\n")|map(select(length>0))' >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-          # 写聚合文件 (改名以匹配 layer-* 通配符)
-          echo "$base_layers" | jq '.' > /tmp/layer-all.json
+          # 去重并生成最终结构
+          unique_layers=$(echo "$aggregated_layers" | jq 'unique')
+          final_json=$(jq -n --arg name "${{ inputs.image_name }}" --argjson layers "$unique_layers" '{image_name:$name, Layers:$layers}')
+
+          # 写聚合文件 (根据镜像名生成文件名: / : 空格 -> -)
+          file_base=$(echo "${{ inputs.image_name }}" | sed 's#[/: ]#-#g')
+          layer_file="/tmp/layer-${file_base}.json"
+          echo "$final_json" | jq '.' > "$layer_file"
           ls -l /tmp/layer-*.json || true
 
-          # 输出紧凑JSON
-          echo "base_layers=$(echo "$base_layers" | jq -c .)" >> $GITHUB_OUTPUT
+          # 输出紧凑JSON（沿用 base_layers 变量名以兼容下游）
+          echo "base_layers=$(echo "$final_json" | jq -c .)" >> $GITHUB_OUTPUT
 
       - name: Upload layer info
         uses: actions/upload-artifact@main
