@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  fetch-layers:
+  fetch:
     uses: ./.github/workflows/callable-fetch-layers.yml
     strategy:
       fail-fast: false
@@ -29,7 +29,7 @@ jobs:
 
   aggregate-layers:
     name: Aggregate Layer Information
-    needs: fetch-layers
+    needs: fetch
     runs-on: ubuntu-latest
     outputs:
       base_layers: ${{ steps.combine-layers.outputs.base_layers }}
