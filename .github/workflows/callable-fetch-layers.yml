@@ -1,4 +1,4 @@
-name: Reusable Fetch Layers
+name: Fetch Docker Layers
 
 on:
   workflow_call:
@@ -6,10 +6,14 @@ on:
       image_name:
         required: true
         type: string
+      login_docker:
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   fetch:
-    name: ${{ inputs.image_name }} - linux
+    name: ${{ inputs.image_name }}
     runs-on: ubuntu-latest
     env:
       OS: "linux"
@@ -18,6 +22,14 @@ jobs:
         run: |
           sudo apt-get -qq update
           sudo apt-get -qq install -y ca-certificates curl gpg skopeo jq
+
+      - name: (Log in) Docker Hub
+        if: ${{ inputs.login_docker }}
+        uses: docker/login-action@master
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Fetch Layer Info
         id: fetch
