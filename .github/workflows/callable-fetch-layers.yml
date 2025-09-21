@@ -50,10 +50,7 @@ jobs:
           echo "Found ${{ env.OS }} platform variants:"
           echo "$platforms"
 
-          # 原始镜像名直接作为输出（不再清洗）
-          sanitized_name="${{ inputs.image_name }}"
-          echo "sanitized_name=${sanitized_name}" >> $GITHUB_OUTPUT
-          # 仅用于文件/制品命名的清洗名
+          # 仅生成文件/制品命名所需的清洗名
           file_base=$(echo "${{ inputs.image_name }}" | sed 's#[/: ]#-#g')
           echo "file_base=${file_base}" >> $GITHUB_OUTPUT
 
