@@ -38,6 +38,8 @@ jobs:
 
       - name: Combine layer information
         id: combine-layers
+        env:
+          BASE_LAYERS_FILE: /tmp/base_layers.json
         run: |
           set -e
           base_layers='{}'
@@ -54,10 +56,10 @@ jobs:
               ' <<< "$base_layers")
             done
           done
-          echo "$base_layers" | jq . > base_layers.json
-          echo "Per-image layers saved to base_layers.json"
+          echo "$base_layers" | jq . > ${{ env.BASE_LAYERS_FILE }}
+          echo "Per-image layers saved to ${{ env.BASE_LAYERS_FILE }}"
           # 只输出文件名而非大 JSON
-          echo "base_layers_file=base_layers.json" >> "$GITHUB_OUTPUT"
+          echo "base_layers_file=${{ env.BASE_LAYERS_FILE }}" >> "$GITHUB_OUTPUT"
 
       - name: Merge All Layers
         id: merge-all
