@@ -1,0 +1,105 @@
+name: Fetch Docker Layers
+
+on:
+  workflow_call:
+    inputs:
+      image_name:
+        required: true
+        type: string
+      login_docker:
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  fetch:
+    name: ${{ inputs.image_name }}
+    runs-on: ubuntu-latest
+    env:
+      OS: "linux"
+    steps:
+      - name: Setup environment
+        run: |
+          sudo apt-get -qq update
+          sudo apt-get -qq install -y ca-certificates curl gpg skopeo jq
+
+      - name: (Log in) Docker Hub
+        id: login-dockerhub
+        if: ${{ inputs.login_docker }}
+        uses: docker/login-action@master
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Fetch Layer Info
+        id: fetch
+        run: |
+          repo="${{ inputs.image_name }}"
+          echo "Inspecting image (all linux platforms): $repo"
+
+          raw=$(skopeo inspect --raw docker://docker.io/"${repo}" || true)
+
+          # 提取 multi-arch manifest 中的 linux 平台
+          platforms=$(echo "$raw" | jq -r '
+              (.manifests? // [])
+              | map(select(.platform.os=="${{ env.OS }}"))
+              | .[]
+              | "\(.platform.architecture) \(.platform.variant // "")"
+            ' | sort -u)
+
+          if [ -z "$platforms" ]; then
+            echo "No manifest list entries, fallback single inspect."
+            single_json=$(skopeo inspect docker://docker.io/"${repo}")
+            arch=$(echo "$single_json" | jq -r '.Architecture')
+            os=$(echo "$single_json" | jq -r '.Os')
+            if [ "$os" != "${{ env.OS }}" ]; then
+              echo "Image OS ($os) 不是 ${{ env.OS }}，退出." >&2
+              exit 1
+            fi
+            platforms="$arch "
+          fi
+
+          echo "Found ${{ env.OS }} platform variants:"
+          echo "$platforms"
+
+          # 仅生成文件/制品命名所需的清洗名
+          file_base=$(echo "${{ inputs.image_name }}" | sed 's#[/: ]#-#g')
+          echo "file_base=${file_base}" >> $GITHUB_OUTPUT
+
+          # 聚合所有架构层到单一数组
+          aggregated_layers='[]'
+          while read -r arch variant; do
+            [ -z "$arch" ] && continue
+            echo "Processing ${{ env.OS }}/$arch${variant:+/$variant}"
+            data_json=$(skopeo inspect \
+              --override-os="${{ env.OS }}" \
+              --override-arch="$arch" \
+              ${variant:+--override-variant="$variant"} \
+              --format=json \
+              docker://docker.io/"${repo}")
+            layers_array=$(echo "$data_json" | jq -r '.Layers[]' | jq -R -s 'split("\n")|map(select(length>0))')
+            aggregated_layers=$(echo "$aggregated_layers" | jq --argjson new "$layers_array" '. + $new')
+          done <<< "$platforms"
+
+          # 平台列表输出（保留）
+          echo "platforms_json<<EOF" >> $GITHUB_OUTPUT
+          echo "$platforms" | awk '{print "${{ env.OS }}/" $1 (length($2)?"/"$2:"")}' | jq -R -s 'split("\n")|map(select(length>0))' >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+          # 去重并生成最终结构
+          unique_layers=$(echo "$aggregated_layers" | jq 'unique')
+          final_json=$(jq -n --arg name "${{ inputs.image_name }}" --argjson layers "$unique_layers" '{image_name:$name, Layers:$layers}')
+
+          # 写聚合文件 (仅文件名使用清洗)
+          layer_file="/tmp/layer-${file_base}.json"
+          echo "$final_json" | jq '.' > "$layer_file"
+          ls -l /tmp/layer-*.json || true
+
+      - name: Upload layer info
+        uses: actions/upload-artifact@main
+        with:
+          name: layers-${{ steps.fetch.outputs.file_base }}
+          path: /tmp/layer-*.json
+          retention-days: 1
+          if-no-files-found: warn
