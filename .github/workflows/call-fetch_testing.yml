@@ -1,4 +1,4 @@
-name: Fetch (Testing)
+name: Fetch (Dev)
 
 run-name: Fetch Matrix for Docker
 
@@ -7,9 +7,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  fetch-layers:
-    name: ${{ matrix.image_name }} - ${{ matrix.arch }}
-    runs-on: ubuntu-latest
+  fetch:
+    uses: ./.github/workflows/callable-fetch-layers.yml
     strategy:
       fail-fast: false
       matrix:
@@ -21,113 +20,66 @@ jobs:
             "debian:sid",
             "ubuntu:devel",
           ]
-        os: ["linux"]
-        arch: ["amd64", "arm64"]
-    steps:
-      - name: Setup environment
-        run: |
-          sudo apt-get -qq update
-          sudo apt-get -qq install -y ca-certificates curl gpg skopeo jq
+    with:
+      image_name: ${{ matrix.image_name }}
 
-      - name: Fetch Layer Info
-        id: fetch-layers
-        run: |
-          repo="${{ matrix.image_name }}"
-          os="${{ matrix.os }}"
-          arch="${{ matrix.arch }}"
-          echo "Inspecting image: $repo for platform: $os/$arch"
-
-          variant=""
-          if echo "${arch}" | grep -q "arm/v"; then
-            variant=$(echo "${arch}" | cut -d'/' -f2)
-            arch=$(echo "${arch}" | cut -d'/' -f1)
-          fi
-
-          data_json=$(skopeo inspect \
-            --override-os="${os}" \
-            --override-arch="${arch}" \
-            ${variant:+--override-variant="${variant}"} \
-            --format=json \
-            docker://docker.io/"${repo}" | jq .)
-
-          # 从 data_json 中提取各层的名称，按换行分隔
-          layers_text=$(echo "$data_json" | jq -r '.Layers[]')
-
-          echo "Layers for $repo:"
-          echo "$layers_text"
-
-          # 创建唯一的输出名称，基于镜像名称和架构
-          output_name="layers_$(echo "$repo" | tr ':/' '_')_${arch}"
-
-          # 将层列表(多行文本)写入输出
-          echo "${output_name}<<EOF" >> $GITHUB_OUTPUT
-          echo "$layers_text" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
-          # 为此镜像-架构组合创建标识符
-          echo "image_id=${repo}_${arch}" >> $GITHUB_OUTPUT
-
-          # 将层信息写入JSON文件供上传
-          echo "$layers_text" | jq -R -s 'split("\n") | map(select(length > 0))' > /tmp/layers.json
-
-          # 创建合法的制品名（替换冒号为下划线）
-          sanitized_name=$(echo "${{ matrix.image_name }}" | tr ':/' '_')
-          echo "sanitized_name=${sanitized_name}" >> $GITHUB_OUTPUT
-
-      - name: Upload layer info
-        uses: actions/upload-artifact@main
-        with:
-          name: layers-${{ steps.fetch-layers.outputs.sanitized_name }}-${{ matrix.arch }}
-          path: /tmp/layers.json
-          retention-days: 1
-          if-no-files-found: warn
-
-  aggregate-layers:
-    name: Aggregate Layer Information
-    needs: fetch-layers
+  collect:
+    name: Collect Layers
+    needs: fetch
     runs-on: ubuntu-latest
     outputs:
-      base_layers: ${{ steps.combine-layers.outputs.base_layers }}
+      FILE_LAYERS: ${{ steps.json-combine.outputs.FILE_LAYERS }}
+      aggregated_layers_file: ${{ steps.merge-all.outputs.aggregated_layers_file }}
     steps:
       - name: Download all layer artifacts
         uses: actions/download-artifact@main
         with:
           path: /tmp/layer-artifacts
 
-      - name: Combine layer information
-        id: combine-layers
+      - name: Check json file
+        id: json-check
         run: |
-          # 创建基础JSON对象用于存储所有基础镜像的层信息
-          base_layers='{}'
-
-          # 处理所有矩阵任务的输出
-          for artifact_dir in /tmp/layer-artifacts/layers-*; do
-            if [ -d "$artifact_dir" ]; then
-              # 提取镜像名称，将下划线转回冒号以匹配原始格式
-              artifact_base=$(basename "$artifact_dir")
-              image_part=$(echo "$artifact_base" | sed 's/^layers-\(.*\)-\(amd64\|arm64\)$/\1/')
-              arch_part=$(echo "$artifact_base" | sed 's/^layers-.*-\(amd64\|arm64\)$/\1/')
-              
-              # 将下划线转回冒号（仅第一个下划线，因为这是替换tag的冒号）
-              image_name=$(echo "$image_part" | sed 's/_/:/' | sed 's/_/\//')
-              
-              if [ -f "$artifact_dir/layers.json" ]; then
-                # 读取层信息并添加到base_layers
-                layers_content=$(cat "$artifact_dir/layers.json")
-                base_layers=$(jq --arg image "${image_name}_${arch_part}" \
-                  --argjson layers "$layers_content" \
-                  '. + {($image): $layers}' <<< "$base_layers")
-              fi
-            fi
+          set -e
+          for f in /tmp/layer-artifacts/layers-*/layer-*.json; do
+            echo "Checking $f"
+            jq . "$f" || { echo "Invalid JSON in $f"; exit 1; }
           done
 
-          echo "Combined layers information:"
-          echo "$base_layers" | jq .
-
-          # 输出紧凑的JSON对象
-          echo "base_layers=$(echo "$base_layers" | jq -c .)" >> $GITHUB_OUTPUT
-
-      - name: Show aggregated layer information
+      - name: Combine layer information
+        id: json-combine
+        env:
+          FILE_LAYERS: /tmp/base_layers.json
         run: |
-          echo "Aggregated layers information by image and architecture:"
-          echo '${{ steps.combine-layers.outputs.base_layers }}' | jq .
+          set -e
+          base_layers='{}'
+          for artifact_dir in /tmp/layer-artifacts/layers-*; do
+            [ -d "$artifact_dir" ] || continue
+            artifact_base=$(basename "$artifact_dir")
+            sanitized=$(echo "$artifact_base" | sed 's/^layers-\(.*\)$/\1/')
+            image_name=$(echo "$sanitized" | sed 's/_/:/' | sed 's/_/\//g')
+            for json_file in "$artifact_dir"/layer-*.json; do
+              [ -f "$json_file" ] || continue
+              layers_content=$(cat "$json_file")
+              base_layers=$(jq --arg img "$image_name" --argjson obj "$layers_content" '
+                if has($img) then .[$img] = (.[$img] + $obj) else . + {($img): $obj} end
+              ' <<< "$base_layers")
+            done
+          done
+          echo "$base_layers" | jq . > ${{ env.FILE_LAYERS }}
+          echo "Per-image layers saved to ${{ env.FILE_LAYERS }}"
+          # 只输出文件名而非大 JSON
+          echo "FILE_LAYERS=${{ env.FILE_LAYERS }}" >> "$GITHUB_OUTPUT"
+
+      - name: Merge All Layers
+        id: merge-all
+        env:
+          FILE_LAYERS: ${{ steps.json-combine.outputs.FILE_LAYERS }}
+        run: |
+          set -e
+          [ -f "$FILE_LAYERS" ] || { echo "File $FILE_LAYERS not found"; exit 1; }
+          # 汇总所有镜像的 Layers，去重。允许缺失某些对象的 Layers 字段
+          jq '{Layers: ([ .[]? | .Layers?[] ] | unique)}' "$FILE_LAYERS" > aggregated_layers.json
+          echo "Aggregated unified layers (deduplicated):"
+          jq '. | {Total: (.Layers|length)}' aggregated_layers.json
+          jq . aggregated_layers.json
+          echo "aggregated_layers_file=aggregated_layers.json" >> "$GITHUB_OUTPUT"
