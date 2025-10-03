@@ -1,4 +1,4 @@
-name: Build Docker
+name: (Dev) Build Docker
 
 on:
   repository_dispatch:
@@ -72,6 +72,7 @@ env:
   dir_app: "application/${{ inputs.app_branch }}"
   compress: "true"
   custom_env: ${{ inputs.custom_env || '' }}
+  path_build: "/build"
 
 jobs:
   check:
@@ -185,6 +186,56 @@ jobs:
         uses: docker/setup-qemu-action@master
         with:
           platforms: ${{ env.arch_branch }}
+
+      - name: Create simulated physical disk
+        id: disk
+        env:
+          path_build: ${{ env.path_build }}
+          root_num: 4
+          mnt_num: 1
+        working-directory: /
+        run: |
+          echo "Current working directory: $(pwd)"
+
+          # 获取 /mnt 和 / 分区的剩余空间
+          mnt_available=$(df -B1 /mnt | tail -1 | awk '{print $4}')
+          root_available=$(df -B1 / | tail -1 | awk '{print $4}')
+          echo "Raw available space in /mnt (bytes): ${mnt_available}"
+          echo "Raw available space in / (bytes): ${root_available}"
+
+          # 减去缓冲空间：/mnt 和 / 分区分别减去缓冲
+          gb2bytes=$((1024 * 1024 * 1024))
+          mnt_size=$((${mnt_available} - ${{ env.mnt_num }} * ${gb2bytes}))
+          root_size=$((${root_available} - ${{ env.root_num }} * ${gb2bytes}))
+          echo "Available space in /mnt (bytes): ${mnt_size}"
+          echo "Available space in / (bytes): ${root_size}"
+
+          # 创建磁盘映像文件
+          sudo truncate -s "${mnt_size}" /mnt/mnt.img
+          sudo truncate -s "${root_size}" /root.img
+
+          # 动态分配可用的循环设备
+          LOOP_MNT=$(sudo losetup --find --show /mnt/mnt.img)
+          LOOP_ROOT=$(sudo losetup --find --show /root.img)
+          echo "Assigned loop device for /mnt/mnt.img: ${LOOP_MNT}"
+          echo "Assigned loop device for /root.img: ${LOOP_ROOT}"
+
+          # 创建物理卷
+          sudo pvcreate "${LOOP_MNT}"
+          sudo pvcreate "${LOOP_ROOT}"
+          # 创建卷组
+          sudo vgcreate github "${LOOP_MNT}" "${LOOP_ROOT}"
+
+          # 在 github 卷组上创建一个名为 runner 的逻辑卷，使用所有可用空间, 并格式化为XFS文件系统
+          sudo lvcreate -n runner -l 100%FREE github
+          sudo mkfs.xfs /dev/github/runner
+
+          # 创建一个挂载点 ${path_build}, 将 runner 逻辑卷挂载到 ${path_build}, 将 ${path_build} 的所有者和组更改为 runner
+          sudo mkdir -p "${path_build}"
+          sudo mount /dev/github/runner "${path_build}"
+          sudo chown -R runner:runner "${path_build}"
+
+          df -Th
 
       - name: (MetaData) from DockerHub
         id: meta-image
@@ -444,6 +495,7 @@ jobs:
             "skopeo"
             "jq"
             "xz-utils"
+            "coreutils"
           )
           sudo -E apt-get -y -qq update
           sudo -E apt-get -y -qq install "${packages_install[@]}"
@@ -530,6 +582,56 @@ jobs:
         with:
           version: latest
           driver-opts: network=host
+
+      - name: Create simulated physical disk
+        id: disk
+        env:
+          path_build: ${{ env.path_build }}
+          root_num: 4
+          mnt_num: 1
+        working-directory: /
+        run: |
+          echo "Current working directory: $(pwd)"
+
+          # 获取 /mnt 和 / 分区的剩余空间
+          mnt_available=$(df -B1 /mnt | tail -1 | awk '{print $4}')
+          root_available=$(df -B1 / | tail -1 | awk '{print $4}')
+          echo "Raw available space in /mnt (bytes): ${mnt_available}"
+          echo "Raw available space in / (bytes): ${root_available}"
+
+          # 减去缓冲空间：/mnt 和 / 分区分别减去缓冲
+          gb2bytes=$((1024 * 1024 * 1024))
+          mnt_size=$((${mnt_available} - ${{ env.mnt_num }} * ${gb2bytes}))
+          root_size=$((${root_available} - ${{ env.root_num }} * ${gb2bytes}))
+          echo "Available space in /mnt (bytes): ${mnt_size}"
+          echo "Available space in / (bytes): ${root_size}"
+
+          # 创建磁盘映像文件
+          sudo truncate -s "${mnt_size}" /mnt/mnt.img
+          sudo truncate -s "${root_size}" /root.img
+
+          # 动态分配可用的循环设备
+          LOOP_MNT=$(sudo losetup --find --show /mnt/mnt.img)
+          LOOP_ROOT=$(sudo losetup --find --show /root.img)
+          echo "Assigned loop device for /mnt/mnt.img: ${LOOP_MNT}"
+          echo "Assigned loop device for /root.img: ${LOOP_ROOT}"
+
+          # 创建物理卷
+          sudo pvcreate "${LOOP_MNT}"
+          sudo pvcreate "${LOOP_ROOT}"
+          # 创建卷组
+          sudo vgcreate github "${LOOP_MNT}" "${LOOP_ROOT}"
+
+          # 在 github 卷组上创建一个名为 runner 的逻辑卷，使用所有可用空间, 并格式化为XFS文件系统
+          sudo lvcreate -n runner -l 100%FREE github
+          sudo mkfs.xfs /dev/github/runner
+
+          # 创建一个挂载点 ${path_build}, 将 runner 逻辑卷挂载到 ${path_build}, 将 ${path_build} 的所有者和组更改为 runner
+          sudo mkdir -p "${path_build}"
+          sudo mount /dev/github/runner "${path_build}"
+          sudo chown -R runner:runner "${path_build}"
+
+          df -Th
 
       - name: (Service) Local Registry
         id: registry
@@ -661,7 +763,7 @@ jobs:
         id: output
         # if: ${{ 'true' == 'false' }} # disable
         env:
-          dir_output: "${{ github.workspace }}/${{ env.dir_app }}/output"
+          dir_output: "${{ env.path_build }}/${{ env.dir_app }}/output"
           target_ext: "tar"
         working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
@@ -692,17 +794,22 @@ jobs:
           echo "target_ext=${target_ext}" | tee -a ${GITHUB_OUTPUT}
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
-      - name: (Output) Compress
+      - name: (Output) Compress and Split
         id: output-compress
         if: ${{ env.compress == 'true' }}
         env:
           dir_output: ${{ env.dir_output }}
           target_ext: "${{ env.target_ext }}"
+          split_size: "1G" # 每个分卷大小为 1GB
         working-directory: "${{ env.dir_output }}"
         run: |
           echo -e "Current working directory: $(pwd)"
           ls -lh ./
 
+          # 安装分割工具
+          sudo apt-get install -y coreutils
+
+          # 设置内存限制
           free -h
           available_mem=$(free -m | awk '/^Mem:/{print $7}')
           echo "Available memory: ${available_mem} MiB"
@@ -715,21 +822,35 @@ jobs:
           fi
           echo "Set memlimit: ${memlimit}"
 
-          for file in ${{ env.dir_output }}/*.${{ env.target_ext }}; do
+          # 处理所有tar文件
+          for file in ./*.${{ env.target_ext }}; do
             if [[ ! -d "${file}" ]]; then
-              # For compression level -9, each thread may use approximately 67 MiB to 768 MiB or more of memory
-              # check: crc32, sha256, sha512
-              xz --compress \
-                --threads=0 \
-                -9 \
-                --extreme \
-                --memlimit-compress=${memlimit} \
-                --check=sha256 \
-                --verbose \
-                --keep \
-                "${file}"
+              base_name=$(basename "${file}")
+              file_size=$(du -b "${file}" | cut -f1)
+              echo "Processing ${base_name} ($(numfmt --to=iec-i --suffix=B ${file_size}))"
+              
+              # 压缩文件
+              xz --compress --threads=0 -9 --extreme --memlimit-compress=${memlimit} --check=sha256 --verbose "${file}"
+              compressed_file="${file}.xz"
+              
+              # 检查是否需要分卷
+              compressed_size=$(du -b "${compressed_file}" | cut -f1)
+              split_threshold=$((1024 * 1024 * 1024)) # 1GB in bytes
+              
+              if [ ${compressed_size} -gt ${split_threshold} ]; then
+                echo "Splitting ${compressed_file} into ${split_size} parts"
+                # 分割文件并添加序号后缀
+                split -b ${{ env.split_size }} --numeric-suffixes=1 --suffix-length=3 "${compressed_file}" "${compressed_file}.part"
+                # 删除原始的压缩文件
+                rm "${compressed_file}"
+                # 列出所有分卷
+                ls -lh "${compressed_file}.part"*
+              fi
             fi
           done
+
+          # 删除原始tar文件
+          find . -name "*.${{ env.target_ext }}" -type f -delete
 
           ls -lh ./
           echo "target_ext=xz" | tee -a $GITHUB_ENV
@@ -807,6 +928,18 @@ jobs:
             echo "docker load < \*.tar" >> ${{ env.release_md }}
           done
 
+          # 添加分卷合并指南
+          echo -e "\n### 如何处理分卷文件\n" >> ${{ env.release_md }}
+          echo "如果文件被分卷压缩，您可以通过以下方式合并还原：" >> ${{ env.release_md }}
+          echo '```bash' >> ${{ env.release_md }}
+          echo "# 合并分卷文件" >> ${{ env.release_md }}
+          echo "cat 文件名.xz.part* > 文件名.xz" >> ${{ env.release_md }}
+          echo "# 解压缩" >> ${{ env.release_md }}
+          echo "xz --decompress --verbose 文件名.xz" >> ${{ env.release_md }}
+          echo "# 加载Docker镜像" >> ${{ env.release_md }}
+          echo "docker load < 文件名" >> ${{ env.release_md }}
+          echo '```' >> ${{ env.release_md }}
+
           sum_json_content=$(jq '.' "${{ env.metadata_sum_path }}")
           record_to_markdown "sha256sum" "${sum_json_content}" "json"
 
@@ -856,9 +989,7 @@ jobs:
 
       - name: (Upload) to Release
         id: upload-release
-        # 修改条件判断，不再依赖push步骤的状态，只检查output步骤的状态
         if: steps.output.outputs.status == 'success' && !cancelled()
-        # if: ${{ 'true' == 'false' }} # disable
         uses: ncipollo/release-action@main
         env:
           dir_output: "${{ env.dir_output }}"
@@ -867,7 +998,7 @@ jobs:
         with:
           name: "${{ env.repo_dockerhub }}"
           tag: "${{ env.app_branch }}"
-          artifacts: "${{ env.dir_output }}/*.${{ env.target_ext }}"
+          artifacts: "${{ env.dir_output }}/*.${{ env.target_ext }},${{ env.dir_output }}/*.${{ env.target_ext }}.part*"
           allowUpdates: true
           removeArtifacts: false
           replacesArtifacts: true
