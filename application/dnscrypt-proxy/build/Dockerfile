@@ -1,14 +1,12 @@
-ARG base_image=debian:sid-slim
+ARG base_image=alpine:edge
 FROM ${base_image} AS builder
 
 # 安装基本工具
 RUN set -x \
-    && export DEBIAN_FRONTEND=noninteractive \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends \
+    && apk update \
+    && apk add --no-cache \
         ca-certificates \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /var/cache/apk/* \
     && rm -rf /var/log/*.log
 
 # 创建 dnscrypt-proxy 配置 - 关闭 SNI
@@ -32,7 +30,7 @@ keepalive = 30\n\
 \n\
 # 缓存设置\n\
 cache = true\n\
-cache_size = 4096\n\
+cache_size = 8192\n\
 cache_min_ttl = 300\n\
 cache_max_ttl = 86400\n\
 cache_neg_min_ttl = 60\n\
@@ -45,7 +43,7 @@ use_syslog = false\n\
 \n\
 # IPv4/IPv6 设置\n\
 ipv4_servers = true\n\
-ipv6_servers = false\n\
+ipv6_servers = true\n\
 block_ipv6 = false\n\
 block_unqualified = false\n\
 block_undelegated = false\n\
@@ -64,35 +62,26 @@ ignore_system_dns = true\n\
 ' > /etc/dnscrypt-proxy/dnscrypt-proxy.toml
 
 # 创建启动脚本
-RUN echo '#!/bin/bash\n\
+RUN echo '#!/bin/sh\n\
 \n\
 uname -a\n\
 \n\
 set -e\n\
 \n\
 exec dnscrypt-proxy --config /etc/dnscrypt-proxy/dnscrypt-proxy.toml\n\
-\n\
-set +e\n\
-\n\
-& sleep infinity\n\
 ' > /start.sh \
     && chmod +x /start.sh
 
 # 第二阶段：安装必要软件并复制配置
 FROM ${base_image}
 
-# 环境变量配置
-ENV DEBIAN_FRONTEND=noninteractive 
-
 # 安装必要软件 (仅保留必要组件)
 RUN set -x \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends \
+    && apk update \
+    && apk add --no-cache \
         ca-certificates \
         dnscrypt-proxy \
-    && apt-get autoremove --purge -y \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /var/cache/apk/* \
     && rm -rf /var/log/*.log
 
 # 从构建阶段复制配置文件
@@ -106,5 +95,4 @@ RUN chmod 644 /etc/dnscrypt-proxy/dnscrypt-proxy.toml \
 # 仅暴露需要的端口
 EXPOSE 53/tcp 53/udp
 
-# uname -a && exec dnscrypt-proxy -config /etc/dnscrypt-proxy/dnscrypt-proxy.toml && sleep infinity
 ENTRYPOINT ["/start.sh"]
