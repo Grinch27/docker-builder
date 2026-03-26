@@ -10,15 +10,13 @@ RUN set -x \
     && rm -rf /var/cache/apk/* \
     && rm -rf /var/log/*.log
 
-# 复制配置文件和启动脚本
+# 复制配置文件
 COPY dnscrypt-proxy.toml /etc/dnscrypt-proxy/dnscrypt-proxy.toml
-COPY start.sh /start.sh
 
 # 设置权限
-RUN chmod 644 /etc/dnscrypt-proxy/dnscrypt-proxy.toml \
-    && chmod 755 /start.sh
+RUN chmod 644 /etc/dnscrypt-proxy/dnscrypt-proxy.toml
 
 # # 仅暴露需要的端口
 # EXPOSE 53/tcp 53/udp
 
-ENTRYPOINT ["/start.sh"]
+ENTRYPOINT ["dnscrypt-proxy", "--config", "/etc/dnscrypt-proxy/dnscrypt-proxy.toml"]
