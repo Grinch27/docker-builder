@@ -2,4 +2,5 @@
 
 set -e
 
-exec dnscrypt-proxy --config /etc/dnscrypt-proxy/dnscrypt-proxy.toml
+# exec dnscrypt-proxy --config /etc/dnscrypt-proxy/dnscrypt-proxy.toml
+dnscrypt-proxy --config /etc/dnscrypt-proxy/dnscrypt-proxy.toml
