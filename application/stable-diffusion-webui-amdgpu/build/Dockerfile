@@ -1,119 +1,84 @@
-ARG base_image=ubuntu:latest
+ARG base_image=rocm/dev-ubuntu-24.04
 FROM ${base_image}
 
-RUN set -x \
-	&& export DEBIAN_FRONTEND=noninteractive \
-    # ===== apt dependencies =====
-	&& apt-get update --ignore-missing -y -qq \
-    # && apt-get install --no-install-recommends --no-install-suggests --fix-missing -y -qq \
-    #     ca-certificates \
-    #     sudo \
-    # Debian-based:
-    && apt-get install --no-install-recommends --no-install-suggests --fix-missing -y \
+ARG DEBIAN_FRONTEND=noninteractive
+ARG webui_repo=https://github.com/lshqqytiger/stable-diffusion-webui-amdgpu.git
+ARG webui_ref=master
+ARG webui_dir=/opt/stable-diffusion-webui
+ARG venv_dir=/opt/venv
+ARG rocm_torch_index_primary=https://download.pytorch.org/whl/rocm7.2
+ARG rocm_torch_index_fallback=https://download.pytorch.org/whl/rocm7.0
+ARG torch_packages="torch torchvision torchaudio"
+ARG build_arg=""
+
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    VIRTUAL_ENV=${venv_dir} \
+    PATH=${venv_dir}/bin:/opt/rocm/bin:${PATH} \
+    WEBUI_DIR=${webui_dir} \
+    GRADIO_SERVER_NAME=0.0.0.0 \
+    COMMANDLINE_ARGS="--listen --port 7860 --skip-torch-cuda-test --medvram --opt-sdp-attention --enable-insecure-extension-access" \
+    TORCH_COMMAND="pip install --index-url https://download.pytorch.org/whl/rocm7.2 torch torchvision torchaudio" \
+    HSA_ENABLE_SDMA=0 \
+    PYTORCH_HIP_ALLOC_CONF=expandable_segments:True
+
+RUN set -eux; \
+    apt-get update -y; \
+    apt-get install --no-install-recommends -y \
+        bash \
         ca-certificates \
-        software-properties-common \
-        wget \
-        curl \
+        ffmpeg \
         git \
-        # python3.11 \
-        # python3-pip \
-        # python3-venv \
         libgl1 \
         libglib2.0-0 \
-    # ubuntu install python3.11 or python3.10
-    # uninstall default python
-    && apt-get remove -y python* \
-
-    && add-apt-repository ppa:deadsnakes/ppa \
-    && apt-get update --ignore-missing -y -qq \
-    && apt-get install -y \
-        python3.11 \
+        libnuma1 \
+        python3 \
         python3-pip \
         python3-venv \
-    && export python_cmd="python3.11" \
-    # ===== Clean apt =====
-    && apt-get autoremove --purge -y -qq \
-    && apt-get clean -y -qq \
-    && rm -rf /var/lib/apt/lists/* \
-    && rm -rf /var/log/*.log \
-    # # ===== samba configuration =====
-    # # && echo -e "password\npassword" | smbpasswd -a root \
-    # # ===== docker-entrypoint.sh =====
-    # && sh_entrypoint="/docker-entrypoint.sh" \
-    # && echo "#!/usr/bin/env bash" >> ${sh_entrypoint} \
-    # # ----- start samba -----
-	# && sh_samba="/start-samba.sh" \
-	# && echo "smbd" >> ${sh_samba} \
-	# && chmod +x ${sh_samba} \
-	# && echo "${sh_samba} &" >> ${sh_entrypoint} \
-    # # ----- end of docker-entrypoint.sh -----
-    # && echo "uname -a" >> ${sh_entrypoint} \
-	# && echo "sleep infinity" >> ${sh_entrypoint} \
-	# && chmod +x ${sh_entrypoint}
-    # ========== user ==========
-    && unset DEBIAN_FRONTEND \
-    && useradd -m sduser \
-    && echo "sduser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+        tini; \
+    rm -rf /var/lib/apt/lists/*
 
-# # 创建一个非root用户
-# RUN useradd -m sduser
-# USER sduser
-# WORKDIR /home/sduser
+RUN set -eux; \
+    git clone --depth 1 --branch "${webui_ref}" "${webui_repo}" "${webui_dir}"; \
+    python3 -m venv "${venv_dir}"; \
+    "${venv_dir}/bin/pip" install --upgrade pip setuptools wheel; \
+    if ! "${venv_dir}/bin/pip" install --index-url "${rocm_torch_index_primary}" ${torch_packages}; then \
+        "${venv_dir}/bin/pip" install --index-url "${rocm_torch_index_fallback}" ${torch_packages}; \
+    fi; \
+    "${venv_dir}/bin/pip" install -r "${webui_dir}/requirements_versions.txt"
 
-# # 创建非root用户
-# RUN useradd -m sduser \
-#     && echo "sduser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+RUN set -eux; \
+    mkdir -p /data/models /data/outputs; \
+    printf '%s\n' \
+      '#!/usr/bin/env bash' \
+      'set -euo pipefail' \
+      '' \
+      'WEBUI_DIR="${WEBUI_DIR:-/opt/stable-diffusion-webui}"' \
+      'export PATH="${VIRTUAL_ENV:-/opt/venv}/bin:${PATH}"' \
+      '' \
+      'if [[ -x /opt/rocm/bin/rocminfo ]]; then' \
+      '  if /opt/rocm/bin/rocminfo 2>/dev/null | grep -q "gfx1103" && [[ -z "${HSA_OVERRIDE_GFX_VERSION:-}" ]]; then' \
+      '    export HSA_OVERRIDE_GFX_VERSION=11.0.0' \
+      '    echo "[entrypoint] Detected gfx1103 (Radeon 780M), set HSA_OVERRIDE_GFX_VERSION=${HSA_OVERRIDE_GFX_VERSION}"' \
+      '  fi' \
+      'fi' \
+      '' \
+      'if [[ ! -e /dev/kfd || ! -d /dev/dri ]]; then' \
+      '  echo "[entrypoint] AMD GPU devices are not mapped."' \
+      '  echo "[entrypoint] Please run with: --device=/dev/kfd --device=/dev/dri --group-add video --group-add render"' \
+      '  echo "[entrypoint] Entering idle mode for CI/test compatibility."' \
+      '  exec sleep infinity' \
+      'fi' \
+      '' \
+      'cd "${WEBUI_DIR}"' \
+      'exec bash ./webui.sh' \
+      > /usr/local/bin/entrypoint.sh; \
+    chmod +x /usr/local/bin/entrypoint.sh
 
-    # 克隆AMD支持版本的仓库
-RUN git clone https://github.com/lshqqytiger/stable-diffusion-webui-amdgpu.git /home/sduser/stable-diffusion-webui --depth=1 \
-    && chown -R sduser:sduser /home/sduser/stable-diffusion-webui
-
-USER sduser
-WORKDIR /home/sduser/stable-diffusion-webui
-
-RUN bash webui.sh
-    # && export COMMANDLINE_ARGS="--use-directml --listen --port 7860"
-
-# # 设置工作目录
-# WORKDIR /home/sduser/webui
-
-# 暴露端口
+WORKDIR ${webui_dir}
 EXPOSE 7860
+VOLUME ["/data"]
 
-# 启动服务
-# ENTRYPOINT ["/home/webui/webui.sh", "--use-directml", "--listen", "--port", "7860"]
-# uname -a sleep infinity
-ENTRYPOINT ["sleep", "infinity"]
-
-# ARG base_image=debian:testing-slim
-# FROM ${base_image}
-
-# RUN set -x \
-#     # ===== apt dependencies =====
-# 	&& export DEBIAN_FRONTEND=noninteractive \
-# 	&& apt-get update --ignore-missing -y -qq \
-#     && apt-get install --no-install-recommends --no-install-suggests --fix-missing -y -qq \
-# 		ca-certificates \
-# 		samba \
-#     # ===== Clean apt =====
-#     && apt-get autoremove --purge -y -qq \
-#     && apt-get clean -y -qq \
-#     && rm -rf /var/lib/apt/lists/* \
-#     && rm -rf /var/log/*.log \
-# 	&& unset DEBIAN_FRONTEND \
-#     # ===== samba configuration =====
-#     # && echo -e "password\npassword" | smbpasswd -a root \
-#     # ===== docker-entrypoint.sh =====
-#     && sh_entrypoint="/docker-entrypoint.sh" \
-#     && echo "#!/usr/bin/env bash" >> ${sh_entrypoint} \
-#     # ----- start samba -----
-# 	&& sh_samba="/start-samba.sh" \
-# 	&& echo "smbd" >> ${sh_samba} \
-# 	&& chmod +x ${sh_samba} \
-# 	&& echo "${sh_samba} &" >> ${sh_entrypoint} \
-#     # ----- end of docker-entrypoint.sh -----
-#     && echo "uname -a" >> ${sh_entrypoint} \
-# 	&& echo "sleep infinity" >> ${sh_entrypoint} \
-# 	&& chmod +x ${sh_entrypoint}
-
-# ENTRYPOINT ["/docker-entrypoint.sh"]
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/entrypoint.sh"]
