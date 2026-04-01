@@ -1,0 +1,299 @@
+name: Version Compare And Conditional Build
+
+run-name: Version Compare -> Conditional Build
+
+on:
+  schedule:
+    - cron: "0 1 * * *"
+  workflow_dispatch:
+    inputs:
+      force_build:
+        description: "Force build for all tracked build targets"
+        type: choice
+        required: false
+        default: "false"
+        options:
+          - "true"
+          - "false"
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    name: Prepare Matrices
+    runs-on: ubuntu-24.04
+    outputs:
+      version_matrix: ${{ steps.prepare.outputs.version_matrix }}
+      build_targets: ${{ steps.prepare.outputs.build_targets }}
+      force_build: ${{ steps.prepare.outputs.force_build }}
+    steps:
+      - name: Checkout ${{ github.repository }}
+        uses: actions/checkout@main
+
+      - name: Prepare matrix data
+        id: prepare
+        run: |
+          set -e
+
+          apps_json=$(find application -mindepth 1 -maxdepth 1 -type d -printf '%f\n' \
+            | grep -v '^\.example$' \
+            | sort \
+            | jq -R -s 'split("\n") | map(select(length > 0))')
+
+          version_matrix=$(jq -c '{include: map({app_branch: ., tag_repo: "latest", custom_env: "", runner_image: "ubuntu-24.04"})}' <<< "${apps_json}")
+
+          build_targets_static=$(cat <<'JSON'
+          {
+            "include": [
+              {"app_branch": "cloudflare-warp", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-24.04"},
+              {"app_branch": "adguardvpn-cli", "tag_repo": "nightly", "custom_env": "build_arg='update_channel=nightly'", "runner_image": "ubuntu-24.04"},
+              {"app_branch": "adguardvpn-cli", "tag_repo": "beta", "custom_env": "build_arg='update_channel=beta'", "runner_image": "ubuntu-24.04"},
+              {"app_branch": "adguardvpn-cli", "tag_repo": "release", "custom_env": "build_arg='update_channel=release'", "runner_image": "ubuntu-24.04"},
+              {"app_branch": "expressvpn", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-24.04"},
+              {"app_branch": "nordvpn", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-24.04"},
+              {"app_branch": "squid", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-24.04"},
+              {"app_branch": "vlmcsd", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-24.04"},
+              {"app_branch": "novnc", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-24.04"},
+              {"app_branch": "baidunetdisk", "tag_repo": "dev", "custom_env": "", "runner_image": "ubuntu-24.04"},
+              {"app_branch": "steamcmd", "tag_repo": "dev", "custom_env": "", "runner_image": "ubuntu-24.04"},
+              {"app_branch": "runner", "tag_repo": "dev", "custom_env": "", "runner_image": "ubuntu-24.04"},
+              {"app_branch": "runner", "tag_repo": "slim", "custom_env": "dockerfile=slim.Dockerfile", "runner_image": "ubuntu-24.04"},
+              {"app_branch": "runner", "tag_repo": "actions", "custom_env": "dockerfile=actions.Dockerfile", "runner_image": "ubuntu-24.04"},
+              {"app_branch": "runner", "tag_repo": "actions-slim", "custom_env": "dockerfile=actions-slim.Dockerfile", "runner_image": "ubuntu-24.04"},
+              {"app_branch": "openwrt", "tag_repo": "main", "custom_env": "", "runner_image": "ubuntu-24.04"},
+              {"app_branch": "privoxy", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-24.04"},
+              {"app_branch": "aria2", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-24.04"},
+              {"app_branch": "samba", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-24.04"},
+              {"app_branch": "samba", "tag_repo": "alpine", "custom_env": "dockerfile=alpine.Dockerfile", "runner_image": "ubuntu-24.04"},
+              {"app_branch": "dnscrypt-proxy", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-24.04"}
+            ]
+          }
+          JSON
+          )
+
+          known_apps=$(jq -r '.include[].app_branch' <<< "${build_targets_static}" | sort -u | jq -R -s 'split("\n") | map(select(length > 0))')
+          missing_apps=$(jq -n --argjson all "${apps_json}" --argjson known "${known_apps}" '$all - $known')
+          missing_targets=$(jq -c '{include: map({app_branch: ., tag_repo: "latest", custom_env: "", runner_image: "ubuntu-24.04"})}' <<< "${missing_apps}")
+
+          build_targets=$(jq -c --argjson base "${build_targets_static}" --argjson extra "$(jq '.include' <<< "${missing_targets}")" '{include: ($base.include + $extra)}')
+
+          force_build="${{ inputs.force_build || 'false' }}"
+
+          echo "version_matrix=${version_matrix}" >> "$GITHUB_OUTPUT"
+          echo "build_targets=${build_targets}" >> "$GITHUB_OUTPUT"
+          echo "force_build=${force_build}" >> "$GITHUB_OUTPUT"
+
+  fetch-versions:
+    name: Fetch ${{ matrix.app_branch }}
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.prepare.outputs.version_matrix).include }}
+    uses: ./.github/workflows/callable-fetch-app-version.yml
+    with:
+      app_branch: ${{ matrix.app_branch }}
+      tag_repo: ${{ matrix.tag_repo }}
+      custom_env: ${{ matrix.custom_env || '' }}
+      runner_image: ${{ matrix.runner_image || 'ubuntu-24.04' }}
+
+  compare-and-update:
+    name: Compare Versions And Update README
+    runs-on: ubuntu-24.04
+    needs: [prepare, fetch-versions]
+    outputs:
+      changed_count: ${{ steps.compare.outputs.changed_count }}
+      changed_apps: ${{ steps.compare.outputs.changed_apps }}
+      changed_build_matrix: ${{ steps.compare.outputs.changed_build_matrix }}
+      readme_changed: ${{ steps.compare.outputs.readme_changed }}
+    steps:
+      - name: Checkout ${{ github.repository }}
+        uses: actions/checkout@main
+
+      - name: Download app version artifacts
+        uses: actions/download-artifact@main
+        with:
+          path: /tmp/app-version-artifacts
+          pattern: app-version-*
+          merge-multiple: true
+
+      - name: Compare versions and update README
+        id: compare
+        env:
+          BUILD_TARGETS: ${{ needs.prepare.outputs.build_targets }}
+          FORCE_BUILD: ${{ needs.prepare.outputs.force_build }}
+          README_PATH: README.md
+        run: |
+          set -e
+          python - <<'PY'
+          import json
+          import os
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          readme_path = Path(os.environ["README_PATH"])
+          build_targets = json.loads(os.environ["BUILD_TARGETS"])
+          force_build = os.environ.get("FORCE_BUILD", "false").lower() == "true"
+
+          artifact_root = Path("/tmp/app-version-artifacts")
+          version_files = sorted(artifact_root.glob("version-*.json"))
+          new_versions = []
+          for vf in version_files:
+            try:
+              new_versions.append(json.loads(vf.read_text(encoding="utf-8")))
+            except Exception:
+              pass
+          new_versions = sorted(new_versions, key=lambda x: x.get("app_branch", ""))
+
+          start_json = "<!-- app-version-json:start -->"
+          end_json = "<!-- app-version-json:end -->"
+          start_table = "<!-- app-version-table:start -->"
+          end_table = "<!-- app-version-table:end -->"
+
+          text = readme_path.read_text(encoding="utf-8") if readme_path.exists() else ""
+
+          old_versions = []
+          if start_json in text and end_json in text and text.index(start_json) < text.index(end_json):
+            segment = text.split(start_json, 1)[1].split(end_json, 1)[0].strip()
+            if segment.startswith("```json"):
+              segment = segment[len("```json"):].strip()
+            if segment.endswith("```"):
+              segment = segment[:-3].strip()
+            try:
+              old_versions = json.loads(segment)
+            except Exception:
+              old_versions = []
+
+          old_map = {}
+          for item in old_versions:
+            key = f"{item.get('app_branch','')}|{item.get('repo_dockerhub','')}"
+            old_map[key] = item.get("version", "")
+
+          changed_apps = []
+          changed_set = set()
+          for item in new_versions:
+            key = f"{item.get('app_branch','')}|{item.get('repo_dockerhub','')}"
+            old_ver = old_map.get(key)
+            new_ver = item.get("version", "")
+            if old_ver != new_ver:
+              app = item.get("app_branch", "")
+              if app and app not in changed_set:
+                changed_set.add(app)
+                changed_apps.append(app)
+
+          if force_build:
+            changed_apps = sorted({x.get("app_branch", "") for x in build_targets.get("include", []) if x.get("app_branch")})
+
+          changed_build = []
+          for target in build_targets.get("include", []):
+            if target.get("app_branch") in changed_apps:
+              changed_build.append(target)
+
+          now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+          table_lines = [
+            "| app_branch | tag_repo | repo_dockerhub | version | base_image | arch_branch | platform_used | status | updated_at |",
+            "|---|---|---|---|---|---|---|---|---|",
+          ]
+          for item in new_versions:
+            table_lines.append(
+              "| {app} | {tag} | {repo} | {ver} | {base} | {arch} | {plat} | {status} | {updated} |".format(
+                app=item.get("app_branch", ""),
+                tag=item.get("tag_repo", ""),
+                repo=item.get("repo_dockerhub", ""),
+                ver=item.get("version", ""),
+                base=item.get("base_image", ""),
+                arch=item.get("arch_branch", ""),
+                plat=item.get("platform_used", ""),
+                status=item.get("status", ""),
+                updated=item.get("updated_at", ""),
+              )
+            )
+
+          table_block = "\n".join([
+            "Auto-generated by .github/workflows/version-compare-build.yml",
+            f"Last refresh (UTC): {now_utc}",
+            "",
+            *table_lines,
+          ])
+
+          json_block = "```json\n" + json.dumps(new_versions, ensure_ascii=False, indent=2) + "\n```"
+
+          def replace_or_append(src: str, start: str, end: str, content: str) -> str:
+            if start in src and end in src and src.index(start) < src.index(end):
+              pre = src.split(start, 1)[0]
+              post = src.split(end, 1)[1]
+              return pre + start + "\n" + content + "\n" + end + post
+            suffix = ""
+            if not src.endswith("\n"):
+              suffix = "\n"
+            return src + suffix + "\n" + start + "\n" + content + "\n" + end + "\n"
+
+          new_text = text
+          if "## Container Version Matrix" not in new_text:
+            header = "\n## Container Version Matrix\n\nThis section is maintained automatically by GitHub Actions.\n"
+            if not new_text.endswith("\n"):
+              new_text += "\n"
+            new_text += header
+
+          new_text = replace_or_append(new_text, start_table, end_table, table_block)
+          new_text = replace_or_append(new_text, start_json, end_json, json_block)
+
+          readme_changed = (new_text != text)
+          readme_path.write_text(new_text, encoding="utf-8")
+
+          Path("/tmp/new_versions.json").write_text(json.dumps(new_versions, ensure_ascii=False, indent=2), encoding="utf-8")
+          Path("/tmp/changed_apps.json").write_text(json.dumps(changed_apps, ensure_ascii=False), encoding="utf-8")
+          Path("/tmp/changed_build_matrix.json").write_text(json.dumps({"include": changed_build}, ensure_ascii=False), encoding="utf-8")
+          Path("/tmp/readme_changed.txt").write_text("true" if readme_changed else "false", encoding="utf-8")
+          PY
+
+          changed_count=$(jq '.include | length' /tmp/changed_build_matrix.json)
+          changed_apps=$(cat /tmp/changed_apps.json)
+          changed_build_matrix=$(cat /tmp/changed_build_matrix.json)
+          readme_changed=$(cat /tmp/readme_changed.txt)
+
+          echo "changed_count=${changed_count}" >> "$GITHUB_OUTPUT"
+          echo "changed_apps=${changed_apps}" >> "$GITHUB_OUTPUT"
+          echo "changed_build_matrix=${changed_build_matrix}" >> "$GITHUB_OUTPUT"
+          echo "readme_changed=${readme_changed}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload version summary artifact
+        uses: actions/upload-artifact@main
+        with:
+          name: app-version-summary
+          path: /tmp/new_versions.json
+          retention-days: 7
+
+      - name: Commit README updates
+        if: ${{ steps.compare.outputs.readme_changed == 'true' }}
+        run: |
+          set -e
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "ci: update container version matrix in README"
+          git push
+
+  build-needed:
+    name: Build ${{ matrix.app_branch }}:${{ matrix.tag_repo }}
+    needs: compare-and-update
+    if: ${{ needs.compare-and-update.outputs.changed_count != '0' }}
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include: ${{ fromJson(needs.compare-and-update.outputs.changed_build_matrix).include }}
+    uses: ./.github/workflows/build-docker.yml
+    with:
+      app_branch: ${{ matrix.app_branch }}
+      tag_repo: ${{ matrix.tag_repo }}
+      force_push: "false"
+      custom_env: ${{ matrix.custom_env || '' }}
+      runner_image: ${{ matrix.runner_image || 'ubuntu-24.04' }}
+    secrets:
+      DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+      DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}

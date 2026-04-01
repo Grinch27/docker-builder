@@ -1,0 +1,193 @@
+name: Fetch App Version
+
+on:
+  workflow_call:
+    inputs:
+      app_branch:
+        description: "Application folder name under application/"
+        required: true
+        type: string
+      tag_repo:
+        description: "Tag label for record (not used for registry pull)"
+        required: false
+        default: "latest"
+        type: string
+      custom_env:
+        description: "Custom env: key=value;key=value"
+        required: false
+        default: ""
+        type: string
+      runner_image:
+        description: "Runner image"
+        required: false
+        default: "ubuntu-24.04"
+        type: string
+
+jobs:
+  fetch:
+    name: ${{ inputs.app_branch }}
+    runs-on: ${{ inputs.runner_image || 'ubuntu-24.04' }}
+    permissions:
+      contents: read
+    env:
+      app_branch: ${{ inputs.app_branch }}
+      tag_repo: ${{ inputs.tag_repo || 'latest' }}
+      custom_env: ${{ inputs.custom_env || '' }}
+      dir_app: application/${{ inputs.app_branch }}
+      platform_prefer: linux/amd64
+      fallback_version: unknown
+    outputs:
+      version: ${{ steps.meta-app.outputs.version }}
+      repo_dockerhub: ${{ steps.meta-app.outputs.repo_dockerhub }}
+      base_image: ${{ steps.meta-app.outputs.base_image }}
+      arch_branch: ${{ steps.meta-app.outputs.arch_branch }}
+      platform_used: ${{ steps.meta-app.outputs.platform_used }}
+      status: ${{ steps.meta-app.outputs.status }}
+    steps:
+      - name: Checkout ${{ github.repository }}
+        uses: actions/checkout@main
+
+      - name: Load app env files
+        id: env-app
+        working-directory: ${{ github.workspace }}/${{ env.dir_app }}
+        run: |
+          set -e
+          echo "Current working directory: $(pwd)"
+
+          dir_step="env"
+          if [ -d "${dir_step}" ]; then
+            for env_file in "${dir_step}"/*.env; do
+              [ -f "${env_file}" ] || continue
+              echo "Loading env file: ${env_file}"
+              awk -F= '/^[a-zA-Z_][a-zA-Z0-9_]*=/ {printf "%s=%s\n", $1, $2}' "${env_file}" >> "$GITHUB_ENV"
+            done
+          fi
+
+      - name: Load custom env inputs
+        if: ${{ env.custom_env != '' }}
+        env:
+          flag_split: ";"
+        run: |
+          echo "${{ env.custom_env }}" | tr "${{ env.flag_split }}" '\n' >> "$GITHUB_ENV"
+
+      - name: Collect version from meta-app scripts
+        id: meta-app
+        env:
+          container_name: version-meta-app
+          dir_container: /tmp
+        working-directory: ${{ github.workspace }}/${{ env.dir_app }}
+        run: |
+          set +e
+          echo "Current working directory: $(pwd)"
+
+          if [ -z "${arch_branch}" ]; then
+            arch_branch="linux/amd64"
+          fi
+          if [ -z "${base_image}" ]; then
+            base_image="ubuntu:latest"
+          fi
+
+          platform_used="${platform_prefer}"
+          if ! echo ",${arch_branch}," | grep -q ",${platform_prefer},"; then
+            platform_used=$(echo "${arch_branch}" | cut -d',' -f1)
+          fi
+
+          echo "Using base_image=${base_image}"
+          echo "Using arch_branch=${arch_branch}"
+          echo "Using platform=${platform_used}"
+
+          log_container=$(mktemp)
+          status="success"
+          version="${fallback_version}"
+
+          docker pull --platform "${platform_used}" "${base_image}" >/dev/null 2>&1
+          if [ $? -ne 0 ]; then
+            status="pull_failed"
+          else
+            docker run \
+              --name "${container_name}" \
+              --rm \
+              --detach \
+              --platform "${platform_used}" \
+              "${base_image}" \
+              /bin/sh -c "uname -a && sleep infinity" >/dev/null 2>&1
+
+            if [ $? -ne 0 ]; then
+              status="run_failed"
+            else
+              docker exec "${container_name}" mkdir -p "${dir_container}" >/dev/null 2>&1
+
+              env_temp=$(mktemp)
+              printf "%s\n" "${custom_env}" | tr ';' '\n' > "${env_temp}"
+              docker cp "${env_temp}" "${container_name}:/tmp/build.env" >/dev/null 2>&1
+
+              dir_step="meta-app"
+              if [ -d "${dir_step}" ]; then
+                for script_file in "${dir_step}"/*.sh; do
+                  [ -f "${script_file}" ] || continue
+                  container_script="${dir_container}/$(basename "${script_file}")"
+                  script_temp=$(mktemp)
+                  {
+                    echo "#!/bin/sh"
+                    printenv | awk -F= '/^[a-zA-Z_][a-zA-Z0-9_]*=/ {printf "%s=\"%s\"\n", $1, $2}'
+                    cat "${script_file}"
+                  } > "${script_temp}"
+
+                  docker cp "${script_temp}" "${container_name}:${container_script}" >/dev/null 2>&1
+                  docker exec "${container_name}" chmod +x "${container_script}" >/dev/null 2>&1
+                  docker exec "${container_name}" sh -c "${container_script}" | tee -a "${log_container}" >/dev/null
+                done
+              else
+                status="meta_app_missing"
+              fi
+
+              docker stop "${container_name}" >/dev/null 2>&1 || true
+            fi
+          fi
+
+          parsed_version=$(awk -F= '/^version=/{print $2}' "${log_container}" | tail -n 1)
+          if [ -n "${parsed_version}" ]; then
+            version="${parsed_version}"
+          fi
+
+          now_utc=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          mkdir -p "${RUNNER_TEMP}/app-version"
+          version_json="${RUNNER_TEMP}/app-version/version-${app_branch}.json"
+          jq -n \
+            --arg app_branch "${app_branch}" \
+            --arg tag_repo "${tag_repo}" \
+            --arg repo_dockerhub "${repo_dockerhub:-}" \
+            --arg base_image "${base_image}" \
+            --arg arch_branch "${arch_branch}" \
+            --arg platform_used "${platform_used}" \
+            --arg version "${version}" \
+            --arg status "${status}" \
+            --arg updated_at "${now_utc}" \
+            '{
+              app_branch: $app_branch,
+              tag_repo: $tag_repo,
+              repo_dockerhub: $repo_dockerhub,
+              base_image: $base_image,
+              arch_branch: $arch_branch,
+              platform_used: $platform_used,
+              version: $version,
+              status: $status,
+              updated_at: $updated_at
+            }' > "${version_json}"
+
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "repo_dockerhub=${repo_dockerhub:-}" >> "$GITHUB_OUTPUT"
+          echo "base_image=${base_image}" >> "$GITHUB_OUTPUT"
+          echo "arch_branch=${arch_branch}" >> "$GITHUB_OUTPUT"
+          echo "platform_used=${platform_used}" >> "$GITHUB_OUTPUT"
+          echo "status=${status}" >> "$GITHUB_OUTPUT"
+          echo "artifact_file=${version_json}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload app version artifact
+        uses: actions/upload-artifact@main
+        with:
+          name: app-version-${{ inputs.app_branch }}
+          path: ${{ steps.meta-app.outputs.artifact_file }}
+          if-no-files-found: error
+          retention-days: 1
