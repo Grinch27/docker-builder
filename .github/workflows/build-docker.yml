@@ -736,7 +736,7 @@ jobs:
 
       - name: (Optimize) Free Disk Before Compress
         id: optimize-disk
-        if: ${{ steps.output.outputs.status == 'success' && env.app_branch == 'stable-diffusion-webui-amdgpu' }}
+        if: ${{ steps.output.outputs.status == 'success' && (env.app_branch == 'stable-diffusion-webui-amdgpu' || env.app_branch == 'sdnext') }}
         working-directory: /
         run: |
           echo "Current working directory: $(pwd)"

@@ -67,7 +67,8 @@ jobs:
               {"app_branch": "aria2", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-24.04"},
               {"app_branch": "samba", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-24.04"},
               {"app_branch": "samba", "tag_repo": "alpine", "custom_env": "dockerfile=alpine.Dockerfile", "runner_image": "ubuntu-24.04"},
-              {"app_branch": "dnscrypt-proxy", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-24.04"}
+              {"app_branch": "dnscrypt-proxy", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-24.04"},
+              {"app_branch": "sdnext", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-24.04"}
             ]
           }
           JSON
