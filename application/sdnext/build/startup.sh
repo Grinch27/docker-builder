@@ -4,6 +4,19 @@ set -eu
 APP_DIR="${APP_DIR:-/app}"
 SDNEXT_REPO="${SDNEXT_REPO:-https://github.com/vladmandic/sdnext.git}"
 SDNEXT_REF="${SDNEXT_REF:-master}"
+APP_DIR_FALLBACK="${APP_DIR_FALLBACK:-/tmp/sdnext-app}"
+
+# In some deployments /app is bind-mounted and may not be writable.
+if [ ! -d "${APP_DIR}" ]; then
+  mkdir -p "${APP_DIR}" 2>/dev/null || true
+fi
+
+if [ ! -d "${APP_DIR}" ] || [ ! -w "${APP_DIR}" ]; then
+  echo "[entrypoint] APP_DIR is not writable: ${APP_DIR}"
+  APP_DIR="${APP_DIR_FALLBACK}"
+  echo "[entrypoint] Fallback APP_DIR: ${APP_DIR}"
+  mkdir -p "${APP_DIR}"
+fi
 
 if [ ! -d "${APP_DIR}/.git" ]; then
   git clone --depth 1 --branch "${SDNEXT_REF}" "${SDNEXT_REPO}" "${APP_DIR}"

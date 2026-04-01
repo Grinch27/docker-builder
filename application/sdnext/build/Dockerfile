@@ -103,7 +103,7 @@ RUN chmod 755 /bin/startup.sh
 
 # actually run sdnext
 WORKDIR /app
-ENTRYPOINT [ "startup.sh", "-f", "--use-rocm", "--uv", "--listen", "--debug", "--api-log", "--log", "sdnext.log" ]
+ENTRYPOINT [ "/bin/startup.sh", "-f", "--use-rocm", "--uv", "--listen", "--debug", "--api-log", "--log", "sdnext.log" ]
 
 # expose port
 EXPOSE 7860
