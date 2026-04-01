@@ -13,7 +13,10 @@ services:
     # ports:
     #   - "7860:7860"
     environment:
-      COMMANDLINE_ARGS: "--listen --port 7860 --skip-torch-cuda-test --skip-ort --medvram --opt-split-attention --enable-insecure-extension-access"
+      COMMANDLINE_ARGS: "--listen --port 7860 --skip-torch-cuda-test --skip-ort --skip-version-check --medvram --disable-opt-split-attention --skip-load-model-at-start --enable-insecure-extension-access"
+      NO_TCMALLOC: "True"
+      PYTHONWARNINGS: "ignore::FutureWarning,ignore::DeprecationWarning,ignore::SyntaxWarning"
+      HSA_OVERRIDE_GFX_VERSION: "11.0.0"
       HSA_ENABLE_SDMA: "0"
       PYTORCH_HIP_ALLOC_CONF: "expandable_segments:True"
     devices:
@@ -28,11 +31,12 @@ services:
       - /bin/bash
       - -lc
       - >-
+        git -C /opt/stable-diffusion-webui fetch --tags --depth=1 >/dev/null 2>&1 || true;
         if ! grep -q 'webui.sh -f' /usr/local/bin/entrypoint.sh; then
           sed -i 's#exec bash ./webui.sh#exec bash ./webui.sh -f#' /usr/local/bin/entrypoint.sh;
         fi;
         exec /usr/local/bin/entrypoint.sh
     # shm_size: "8gb"
-
-# volumes:
-#   - ./data:/data
+    # volumes:
+    #   - ./data/models:/data/models
+    #   - ./data/outputs:/data/outputs
