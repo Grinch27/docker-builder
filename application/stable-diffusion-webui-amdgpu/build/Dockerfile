@@ -6,13 +6,13 @@ ARG webui_repo=https://github.com/lshqqytiger/stable-diffusion-webui-amdgpu.git
 ARG webui_ref=master
 ARG webui_dir=/opt/stable-diffusion-webui
 ARG venv_dir=/opt/venv
-ARG rocm_torch_index_primary=https://download.pytorch.org/whl/rocm7.2
-ARG rocm_torch_index_fallback=https://download.pytorch.org/whl/rocm7.0
+ARG rocm_torch_index=https://download.pytorch.org/whl/rocm7.2
 ARG torch_packages="torch torchvision torchaudio"
 ARG build_arg=""
 
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_NO_CACHE_DIR=1 \
+    PIP_PREFER_BINARY=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     VIRTUAL_ENV=${venv_dir} \
@@ -20,7 +20,7 @@ ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
     WEBUI_DIR=${webui_dir} \
     GRADIO_SERVER_NAME=0.0.0.0 \
     COMMANDLINE_ARGS="--listen --port 7860 --skip-torch-cuda-test --medvram --opt-sdp-attention --enable-insecure-extension-access" \
-    TORCH_COMMAND="pip install --index-url https://download.pytorch.org/whl/rocm7.2 torch torchvision torchaudio" \
+    TORCH_COMMAND="pip install --index-url ${rocm_torch_index} ${torch_packages}" \
     HSA_ENABLE_SDMA=0 \
     PYTORCH_HIP_ALLOC_CONF=expandable_segments:True
 
@@ -33,21 +33,25 @@ RUN set -eux; \
         git \
         libgl1 \
         libglib2.0-0 \
+        libjpeg-dev \
         libnuma1 \
+        libpng-dev \
+        pkg-config \
         python3 \
         python3-pip \
         python3-venv \
-        tini; \
+        tini \
+        zlib1g-dev; \
     rm -rf /var/lib/apt/lists/*
 
 RUN set -eux; \
-    git clone --depth 1 --branch "${webui_ref}" "${webui_repo}" "${webui_dir}"; \
     python3 -m venv "${venv_dir}"; \
     "${venv_dir}/bin/pip" install --upgrade pip setuptools wheel; \
-    if ! "${venv_dir}/bin/pip" install --index-url "${rocm_torch_index_primary}" ${torch_packages}; then \
-        "${venv_dir}/bin/pip" install --index-url "${rocm_torch_index_fallback}" ${torch_packages}; \
-    fi; \
-    "${venv_dir}/bin/pip" install -r "${webui_dir}/requirements_versions.txt"
+    "${venv_dir}/bin/pip" install --index-url "${rocm_torch_index}" ${torch_packages}
+
+RUN set -eux; \
+    git clone --depth 1 --branch "${webui_ref}" "${webui_repo}" "${webui_dir}"; \
+    "${venv_dir}/bin/pip" install --prefer-binary -r "${webui_dir}/requirements_versions.txt"
 
 RUN set -eux; \
     mkdir -p /data/models /data/outputs; \
