@@ -81,9 +81,15 @@ jobs:
 
           force_build="${{ inputs.force_build || 'false' }}"
 
-          echo "version_matrix=${version_matrix}" >> "$GITHUB_OUTPUT"
-          echo "build_targets=${build_targets}" >> "$GITHUB_OUTPUT"
-          echo "force_build=${force_build}" >> "$GITHUB_OUTPUT"
+          {
+            echo "version_matrix<<__JSON__"
+            echo "${version_matrix}"
+            echo "__JSON__"
+            echo "build_targets<<__JSON__"
+            echo "${build_targets}"
+            echo "__JSON__"
+            echo "force_build=${force_build}"
+          } >> "$GITHUB_OUTPUT"
 
   fetch-versions:
     name: Fetch ${{ matrix.app_branch }}
@@ -134,7 +140,14 @@ jobs:
           from pathlib import Path
 
           readme_path = Path(os.environ["README_PATH"])
-          build_targets = json.loads(os.environ["BUILD_TARGETS"])
+          build_targets_raw = os.environ.get("BUILD_TARGETS", "").strip()
+          if not build_targets_raw:
+            build_targets = {"include": []}
+          else:
+            try:
+              build_targets = json.loads(build_targets_raw)
+            except Exception:
+              build_targets = {"include": []}
           force_build = os.environ.get("FORCE_BUILD", "false").lower() == "true"
 
           artifact_root = Path("/tmp/app-version-artifacts")
