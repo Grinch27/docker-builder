@@ -96,7 +96,8 @@ ENV PYTHONUNBUFFERED=1
 # ENV HSA_OVERRIDE_GFX_VERSION=10.0.0
 
 # git clone and run sdnext
-
+RUN mkdir -p "${app_dir}" /mnt/data /mnt/models /mnt/python /root/.cache/huggingface && \
+    chmod 0777 "${app_dir}" /mnt/data /mnt/models /mnt/python
 COPY startup.sh /bin/startup.sh
 RUN chmod 755 /bin/startup.sh
 
