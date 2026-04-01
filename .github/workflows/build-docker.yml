@@ -72,6 +72,7 @@ env:
   dir_app: "application/${{ inputs.app_branch }}"
   compress: "true"
   custom_env: ${{ inputs.custom_env || '' }}
+  path_build: "/build"
 
 jobs:
   check:
@@ -151,6 +152,14 @@ jobs:
           echo "${{ env.custom_env }}" | tr '${{ env.flag_split }}' '\n' | tee -a $GITHUB_ENV
 
       # ========== General Environment Setup: Start ==========
+      - name: (Disk) Expand workspace
+        id: disk
+        uses: Grinch27/github-actions/.github/actions/setup-disk@main
+        with:
+          path_build: ${{ env.path_build }}
+          root_num: 4
+          mnt_num: 1
+
       - name: (Clean) Docker Images
         id: clean-docker
         uses: Grinch27/github-actions/.github/actions/clean-docker_image@main
@@ -160,8 +169,38 @@ jobs:
         # if: ${{ env.docker_install == 'true' }}
         uses: Grinch27/github-actions/.github/actions/setup-docker@main
 
+      - name: (Setup) Docker Data Root
+        id: setup-docker-root
+        env:
+          docker_data_root: "${{ env.path_build }}/docker-data"
+        working-directory: /
+        run: |
+          echo "Current working directory: $(pwd)"
+
+          sudo mkdir -p "${docker_data_root}"
+
+          daemon_file="/etc/docker/daemon.json"
+          temp_file=$(mktemp)
+          if sudo test -s "${daemon_file}"; then
+            sudo cat "${daemon_file}" | jq --arg root "${docker_data_root}" '. + {"data-root": $root}' > "${temp_file}"
+          else
+            jq -n --arg root "${docker_data_root}" '{"data-root": $root}' > "${temp_file}"
+          fi
+          sudo cp "${temp_file}" "${daemon_file}"
+
+          if command -v systemctl >/dev/null 2>&1; then
+            sudo systemctl daemon-reload || true
+            sudo systemctl restart docker
+          else
+            sudo service docker restart
+          fi
+
+          docker info --format 'DockerRootDir={{ .DockerRootDir }}'
+          echo "status=success" | tee -a ${GITHUB_OUTPUT}
+
       - name: (Setup) QEMU
         id: setup-qemu
+        if: ${{ env.arch_branch != 'linux/amd64' }}
         # if: ${{ env.qemu_install == 'true' }}
         uses: docker/setup-qemu-action@master
         with:
@@ -472,6 +511,14 @@ jobs:
           echo "${{ env.custom_env }}" | tr '${{ env.flag_split }}' '\n' | tee -a $GITHUB_ENV
 
       # ========== General Environment Setup: Start ==========
+      - name: (Disk) Expand workspace
+        id: disk
+        uses: Grinch27/github-actions/.github/actions/setup-disk@main
+        with:
+          path_build: ${{ env.path_build }}
+          root_num: 4
+          mnt_num: 1
+
       - name: (Clean) Docker Images
         id: clean-docker
         uses: Grinch27/github-actions/.github/actions/clean-docker_image@main
@@ -481,8 +528,38 @@ jobs:
         # if: ${{ env.docker_install == 'true' }}
         uses: Grinch27/github-actions/.github/actions/setup-docker@main
 
+      - name: (Setup) Docker Data Root
+        id: setup-docker-root
+        env:
+          docker_data_root: "${{ env.path_build }}/docker-data"
+        working-directory: /
+        run: |
+          echo "Current working directory: $(pwd)"
+
+          sudo mkdir -p "${docker_data_root}"
+
+          daemon_file="/etc/docker/daemon.json"
+          temp_file=$(mktemp)
+          if sudo test -s "${daemon_file}"; then
+            sudo cat "${daemon_file}" | jq --arg root "${docker_data_root}" '. + {"data-root": $root}' > "${temp_file}"
+          else
+            jq -n --arg root "${docker_data_root}" '{"data-root": $root}' > "${temp_file}"
+          fi
+          sudo cp "${temp_file}" "${daemon_file}"
+
+          if command -v systemctl >/dev/null 2>&1; then
+            sudo systemctl daemon-reload || true
+            sudo systemctl restart docker
+          else
+            sudo service docker restart
+          fi
+
+          docker info --format 'DockerRootDir={{ .DockerRootDir }}'
+          echo "status=success" | tee -a ${GITHUB_OUTPUT}
+
       - name: (Setup) QEMU
         id: setup-qemu
+        if: ${{ env.arch_branch != 'linux/amd64' }}
         # if: ${{ env.qemu_install == 'true' }}
         uses: docker/setup-qemu-action@master
         with:
@@ -626,7 +703,7 @@ jobs:
         id: output
         # if: ${{ 'true' == 'false' }} # disable
         env:
-          dir_output: "${{ github.workspace }}/${{ env.dir_app }}/output"
+          dir_output: "${{ env.path_build }}/${{ env.dir_app }}/output"
           target_ext: "tar"
         working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
@@ -656,6 +733,18 @@ jobs:
           echo "target_ext=${target_ext}" | tee -a $GITHUB_ENV
           echo "target_ext=${target_ext}" | tee -a ${GITHUB_OUTPUT}
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
+
+      - name: (Optimize) Free Disk Before Compress
+        id: optimize-disk
+        if: ${{ steps.output.outputs.status == 'success' && env.app_branch == 'stable-diffusion-webui-amdgpu' }}
+        working-directory: /
+        run: |
+          echo "Current working directory: $(pwd)"
+          docker system df || true
+          docker image prune --all --force || true
+          docker builder prune --all --force || true
+          docker system df || true
+          df -hT
 
       - name: (Output) Compress
         id: output-compress
@@ -691,7 +780,6 @@ jobs:
                 --memlimit-compress=${memlimit} \
                 --check=sha256 \
                 --verbose \
-                --keep \
                 "${file}"
             fi
           done
@@ -707,7 +795,7 @@ jobs:
         env:
           metadata_sum_path: "${{ github.workspace }}/metadata_sum.json"
           category: "files"
-          target_ext: "${{ steps.output.outputs.target_ext }}"
+          target_ext: "${{ env.target_ext }}"
         working-directory: "${{ env.dir_output }}"
         run: |
           echo -e "Current working directory: $(pwd)"
