@@ -13,7 +13,7 @@ services:
     # ports:
     #   - "7860:7860"
     environment:
-      COMMANDLINE_ARGS: "--listen --port 7860 --skip-torch-cuda-test --skip-ort --medvram --opt-sdp-attention --enable-insecure-extension-access"
+      COMMANDLINE_ARGS: "--listen --port 7860 --skip-torch-cuda-test --skip-ort --medvram --opt-split-attention --enable-insecure-extension-access"
       HSA_ENABLE_SDMA: "0"
       PYTORCH_HIP_ALLOC_CONF: "expandable_segments:True"
     devices:
