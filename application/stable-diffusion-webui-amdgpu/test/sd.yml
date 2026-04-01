@@ -1,10 +1,17 @@
+# sudo docker compose -f /home/user/github/docker-builder/application/stable-diffusion-webui-amdgpu/test/sd.yml up -d
+# sudo docker compose -f /home/user/github/docker-builder/application/stable-diffusion-webui-amdgpu/test/sd.yml down
 services:
   sd-webui:
     image: grinch27/stable-diffusion-webui-amdgpu:latest
     container_name: stable-diffusion-webui-amdgpu
     restart: unless-stopped
-    ports:
-      - "7860:7860"
+    network_mode: host
+    dns:
+      - "127.0.0.1"
+      - "::1"
+    privileged: false
+    # ports:
+    #   - "7860:7860"
     environment:
       COMMANDLINE_ARGS: "--listen --port 7860 --skip-torch-cuda-test --medvram --opt-sdp-attention --enable-insecure-extension-access"
       HSA_ENABLE_SDMA: "0"
@@ -15,6 +22,16 @@ services:
     group_add:
       - video
       - render
+    entrypoint:
+      - /usr/bin/tini
+      - --
+      - /bin/bash
+      - -lc
+      - >-
+        if ! grep -q 'webui.sh -f' /usr/local/bin/entrypoint.sh; then
+          sed -i 's#exec bash ./webui.sh#exec bash ./webui.sh -f#' /usr/local/bin/entrypoint.sh;
+        fi;
+        exec /usr/local/bin/entrypoint.sh
     # shm_size: "8gb"
 
 # volumes:
