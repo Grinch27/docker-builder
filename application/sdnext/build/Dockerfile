@@ -102,7 +102,7 @@ COPY startup.sh /bin/startup.sh
 RUN chmod 755 /bin/startup.sh
 
 # actually run sdnext
-WORKDIR /app
+WORKDIR /home
 ENTRYPOINT [ "/bin/startup.sh", "-f", "--use-rocm", "--uv", "--listen", "--debug", "--api-log", "--log", "sdnext.log" ]
 
 # expose port
