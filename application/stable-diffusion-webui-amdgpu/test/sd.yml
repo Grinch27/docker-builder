@@ -1,0 +1,21 @@
+services:
+  sd-webui:
+    image: grinch27/stable-diffusion-webui-amdgpu:latest
+    container_name: stable-diffusion-webui-amdgpu
+    restart: unless-stopped
+    ports:
+      - "7860:7860"
+    environment:
+      COMMANDLINE_ARGS: "--listen --port 7860 --skip-torch-cuda-test --medvram --opt-sdp-attention --enable-insecure-extension-access"
+      HSA_ENABLE_SDMA: "0"
+      PYTORCH_HIP_ALLOC_CONF: "expandable_segments:True"
+    devices:
+      - /dev/kfd
+      - /dev/dri
+    group_add:
+      - video
+      - render
+    # shm_size: "8gb"
+
+# volumes:
+#   - ./data:/data
