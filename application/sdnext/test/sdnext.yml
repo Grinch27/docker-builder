@@ -1,0 +1,34 @@
+# sudo docker compose -f /home/user/github/docker-builder/application/sdnext/test/sdnext.yml up -d
+# sudo docker compose -f /home/user/github/docker-builder/application/sdnext/test/sdnext.yml down
+services:
+  sdnext:
+    image: grinch27/sdnext:latest
+    container_name: sdnext
+    restart: unless-stopped
+    network_mode: host
+    dns:
+      - "127.0.0.1"
+      - "::1"
+    privileged: false
+    # ports:
+    #   - "7860:7860"
+    environment:
+      APP_DIR: "/app"
+      SDNEXT_REPO: "https://github.com/vladmandic/sdnext.git"
+      SDNEXT_REF: "master"
+      HSA_OVERRIDE_GFX_VERSION: "11.0.0"
+      HSA_ENABLE_SDMA: "0"
+      PYTORCH_HIP_ALLOC_CONF: "expandable_segments:True"
+    devices:
+      - /dev/kfd
+      - /dev/dri
+    group_add:
+      - video
+      - render
+    # volumes:
+    #   - ./data/app:/app
+    #   - ./data/models:/mnt/models
+    #   - ./data/data:/mnt/data
+    #   - ./data/python:/mnt/python
+    #   - ./data/huggingface:/root/.cache/huggingface
+    # shm_size: "8gb"
