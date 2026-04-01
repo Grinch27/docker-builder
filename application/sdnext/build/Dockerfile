@@ -31,6 +31,11 @@ ARG rocm_torch_index=https://download.pytorch.org/whl/rocm7.2
 ARG torch_packages="torch torchvision torchaudio"
 ARG build_arg=""
 
+# fix for startup.sh
+ENV APP_DIR=${app_dir}
+ENV SDNEXT_REPO=${sdnext_repo}
+ENV SDNEXT_REF=${sdnext_ref}
+
 # essentials
 RUN apt-get update && \
     apt-get install -y --no-install-recommends --fix-missing \
@@ -85,14 +90,15 @@ ENV PYTHONUNBUFFERED=1
 # VOLUME [ "/mnt/models" ]
 # VOLUME [ "/mnt/python" ]
 # VOLUME [ "/root/.cache/huggingface" ]
+# RUN mkdir -p "${app_dir}" /mnt/data /mnt/models /mnt/python /root/.cache/huggingface
 
 # override gpu architecture for unsupported gpus
 # ENV HSA_OVERRIDE_GFX_VERSION=10.0.0
 
 # git clone and run sdnext
-RUN mkdir -p "${app_dir}" /mnt/data /mnt/models /mnt/python /root/.cache/huggingface && \
-    echo '#!/bin/bash\nset -euo pipefail\nif [[ ! -d /app/.git ]]; then git clone --depth 1 --branch "'"${sdnext_ref}"'" "'"${sdnext_repo}"'" /app; fi\nif [[ -x /opt/rocm/bin/rocminfo ]] && /opt/rocm/bin/rocminfo 2>/dev/null | grep -q "gfx1103" && [[ -z "${HSA_OVERRIDE_GFX_VERSION:-}" ]]; then export HSA_OVERRIDE_GFX_VERSION=11.0.0; fi\nif [[ ! -e /dev/kfd || ! -d /dev/dri ]]; then echo "[entrypoint] AMD GPU devices are not mapped."; echo "[entrypoint] Please run with: --device=/dev/kfd --device=/dev/dri --group-add video --group-add render"; exec sleep infinity; fi\ncd /app\nexec /app/webui.sh "$@"' > /bin/startup.sh && \
-    chmod 755 /bin/startup.sh
+
+COPY startup.sh /bin/startup.sh
+RUN chmod 755 /bin/startup.sh
 
 # actually run sdnext
 WORKDIR /app
