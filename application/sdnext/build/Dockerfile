@@ -28,7 +28,7 @@ ARG sdnext_repo=https://github.com/vladmandic/sdnext.git
 ARG sdnext_ref=master
 ARG app_dir=/app
 ARG rocm_torch_index=https://download.pytorch.org/whl/rocm7.2
-ARG torch_packages="torch torchvision torchaudio"
+ARG torch_packages="torch==2.11.0+rocm7.2 torchvision==0.26.0+rocm7.2"
 ARG build_arg=""
 
 # fix for startup.sh
@@ -78,7 +78,7 @@ ENV SD_DATADIR="/mnt/data"
 ENV SD_MODELSDIR="/mnt/models"
 ENV venv_dir="/mnt/python/venv"
 ENV ROCM_TORCH_INDEX=${rocm_torch_index}
-ENV TORCH_COMMAND="pip install --index-url ${rocm_torch_index} ${torch_packages}"
+ENV TORCH_COMMAND="${torch_packages} --index-url ${rocm_torch_index}"
 ENV HSA_ENABLE_SDMA=0
 ENV PYTORCH_HIP_ALLOC_CONF=expandable_segments:True
 ENV PYTHONDONTWRITEBYTECODE=1

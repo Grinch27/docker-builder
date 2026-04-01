@@ -16,6 +16,7 @@ services:
       APP_DIR: "/app"
       SDNEXT_REPO: "https://github.com/vladmandic/sdnext.git"
       SDNEXT_REF: "master"
+      TORCH_COMMAND: "torch==2.11.0+rocm7.2 torchvision==0.26.0+rocm7.2 --index-url https://download.pytorch.org/whl/rocm7.2"
       HSA_OVERRIDE_GFX_VERSION: "11.0.0"
       HSA_ENABLE_SDMA: "0"
       PYTORCH_HIP_ALLOC_CONF: "expandable_segments:True"
