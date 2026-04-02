@@ -84,6 +84,12 @@ ENV PYTORCH_HIP_ALLOC_CONF=expandable_segments:True
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
+### copilot fix
+ENV GIT_TERMINAL_PROMPT=0
+ENV PIP_DEFAULT_TIMEOUT=180
+ENV VIRTUAL_ENV=${venv_dir}
+ENV PATH=${venv_dir}/bin:${PATH}
+
 # paths used by sdnext can be a volume if necessary
 # VOLUME [ "/app" ]
 # VOLUME [ "/mnt/data" ]
@@ -96,8 +102,36 @@ ENV PYTHONUNBUFFERED=1
 # ENV HSA_OVERRIDE_GFX_VERSION=10.0.0
 
 # git clone and run sdnext
-RUN mkdir -p "${app_dir}" /mnt/data /mnt/models /mnt/python /root/.cache/huggingface && \
-    chmod 0777 "${app_dir}" /mnt/data /mnt/models /mnt/python
+### copilot fix
+RUN set -eux; \
+        mkdir -p "${app_dir}" /mnt/data /mnt/models /mnt/python /root/.cache/huggingface; \
+        chmod 0777 "${app_dir}" /mnt/data /mnt/models /mnt/python; \
+        git clone --depth 1 --branch "${sdnext_ref}" "${sdnext_repo}" "${app_dir}"; \
+        python3 -m venv "${venv_dir}"; \
+        "${venv_dir}/bin/python" -m pip install --upgrade pip setuptools wheel uv; \
+        "${venv_dir}/bin/python" -m pip install --constraint "${app_dir}/constraints.txt" \
+            gradio \
+            gradio-client \
+            fastapi \
+            websockets \
+            aiofiles \
+            ffmpy \
+            pydub \
+            uvicorn \
+            semantic-version \
+            altair \
+            python-multipart \
+            matplotlib; \
+        "${venv_dir}/bin/python" -m pip install --index-url "${rocm_torch_index}" ${torch_packages}; \
+        "${venv_dir}/bin/python" -m pip install --constraint "${app_dir}/constraints.txt" -r "${app_dir}/requirements.txt"; \
+        "${venv_dir}/bin/python" - <<'PY'
+import gradio
+import torch
+print("torch =", torch.__version__)
+print("hip =", getattr(torch.version, "hip", None))
+print("cuda_available =", torch.cuda.is_available())
+print("gradio =", gradio.__version__)
+PY
 COPY startup.sh /bin/startup.sh
 RUN chmod 755 /bin/startup.sh
 
