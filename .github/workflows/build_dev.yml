@@ -172,15 +172,19 @@ jobs:
           echo "Current working directory: $(pwd)"
 
           dir_step="build"
+          build_script="build.sh"
           dir_original=$(pwd)
           if [ -d "${dir_step}" ]; then
             cd ./${dir_step}
             echo "Changed to directory: $(pwd)"
 
-            for script_file in ./*.sh; do
-              chmod +x "${script_file}"
-              sh "${script_file}"
-            done
+            if [ ! -f "${build_script}" ]; then
+              echo "Missing build script: ${build_script}"
+              exit 1
+            fi
+
+            chmod +x "./${build_script}"
+            sh "./${build_script}"
 
             cd "${dir_original}"
             echo "Changed back to original directory: $(pwd)"
