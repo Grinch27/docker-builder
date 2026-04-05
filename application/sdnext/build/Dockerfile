@@ -29,6 +29,7 @@ ARG sdnext_ref=master
 ARG app_dir=/app
 ARG rocm_torch_index=https://download.pytorch.org/whl/rocm7.2
 ARG torch_packages="torch==2.11.0+rocm7.2 torchvision==0.26.0+rocm7.2"
+ARG gradio_packages="gradio==3.43.2 gradio-client==0.5.0"
 ARG build_arg=""
 
 # fix for startup.sh
@@ -110,8 +111,7 @@ RUN set -eux; \
         python3 -m venv "${venv_dir}"; \
         "${venv_dir}/bin/python" -m pip install --upgrade pip setuptools wheel uv; \
         "${venv_dir}/bin/python" -m pip install --constraint "${app_dir}/constraints.txt" \
-            gradio \
-            gradio-client \
+            ${gradio_packages} \
             fastapi \
             websockets \
             aiofiles \

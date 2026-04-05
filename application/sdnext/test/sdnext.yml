@@ -2,7 +2,7 @@
 # sudo docker compose -f /home/user/github/docker-builder/application/sdnext/test/sdnext.yml down
 services:
   sdnext:
-    image: grinch27/sdnext:latest
+    image: ${SDNEXT_IMAGE:-grinch27/sdnext:latest}
     container_name: sdnext
     restart: unless-stopped
     network_mode: host
