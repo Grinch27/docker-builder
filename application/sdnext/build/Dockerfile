@@ -29,8 +29,6 @@ ARG sdnext_ref=master
 ARG app_dir=/app
 ARG rocm_torch_index=https://download.pytorch.org/whl/rocm7.2
 ARG torch_packages="torch==2.11.0+rocm7.2 torchvision==0.26.0+rocm7.2"
-ARG gradio_version=3.43.2
-ARG gradio_client_version=0.5.0
 ARG build_arg=""
 
 # fix for startup.sh
@@ -39,31 +37,29 @@ ENV SDNEXT_REPO=${sdnext_repo}
 ENV SDNEXT_REF=${sdnext_ref}
 
 # essentials
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends --fix-missing \
-    software-properties-common \
-    build-essential \
-    ca-certificates \
-    wget \
-    gpg \
-    git \
-    curl \
-    ffmpeg \
-    bash \
-    libgl1 \
-    libglib2.0-0 \
-    python3 \
-    python3-dev \
-    python3-venv \
-    python3-pip \
-    libjemalloc-dev && \
-    /usr/sbin/ldconfig && \
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends --fix-missing \
+        software-properties-common \
+        build-essential \
+        ca-certificates \
+        wget \
+        gpg \
+        git \
+        curl \
+        ffmpeg \
+        bash \
+        libgl1 \
+        libglib2.0-0 \
+        python3 \
+        python3-dev \
+        python3-venv \
+        python3-pip \
+        libjemalloc-dev \
+    && /usr/sbin/ldconfig \
     # ===== Clean apt =====
     && apt-get autoremove --purge -y -qq \
     && apt-get clean -y -qq \
-    && rm -rf /var/lib/apt/lists/* \
-    && rm -rf /var/log/*.log \
-	# && unset DEBIAN_FRONTEND \
+    && rm -rf /var/lib/apt/lists/* /var/log/*.log
 
 # jemalloc is not required but it is highly recommended
 ENV LD_PRELOAD=libjemalloc.so.2
@@ -104,16 +100,20 @@ ENV PATH=${venv_dir}/bin:${PATH}
 
 # git clone and run sdnext
 ### copilot fix
-RUN mkdir -p "${app_dir}" /mnt/data /mnt/models /mnt/python /root/.cache/huggingface && \
-    chmod 0777 "${app_dir}" /mnt/data /mnt/models /mnt/python && \
-    git clone --depth 1 --branch "${sdnext_ref}" "${sdnext_repo}" "${app_dir}" && \
-    python3 -m venv "${venv_dir}" && \
-    "${venv_dir}/bin/python" -m pip install --upgrade pip setuptools wheel uv && \
-    "${venv_dir}/bin/python" -m pip install --no-deps \
+RUN mkdir -p "${app_dir}" /mnt/data /mnt/models /mnt/python /root/.cache/huggingface \
+    && chmod 0777 "${app_dir}" /mnt/data /mnt/models /mnt/python \
+    && git clone --depth 1 --branch "${sdnext_ref}" "${sdnext_repo}" "${app_dir}" \
+    && python3 -m venv "${venv_dir}" \
+    && "${venv_dir}/bin/python" -m pip install --upgrade \
+        pip \
+        setuptools \
+        wheel \
+        uv \
+    && "${venv_dir}/bin/python" -m pip install --no-deps \
         "compel==2.3.1" \
-        "gradio==${gradio_version}" \
-        "gradio-client==${gradio_client_version}" && \
-    "${venv_dir}/bin/python" -m pip install --constraint "${app_dir}/constraints.txt" \
+        "gradio==3.43.2" \
+        "gradio-client==0.5.0" \
+    && "${venv_dir}/bin/python" -m pip install --constraint "${app_dir}/constraints.txt" \
         addict \
         hf_transfer \
         fastapi \
@@ -128,10 +128,10 @@ RUN mkdir -p "${app_dir}" /mnt/data /mnt/models /mnt/python /root/.cache/hugging
         altair \
         python-multipart \
         matplotlib \
-        yapf && \
-    "${venv_dir}/bin/python" -m pip install --index-url "${rocm_torch_index}" ${torch_packages} && \
-    "${venv_dir}/bin/python" -m pip install --constraint "${app_dir}/constraints.txt" -r "${app_dir}/requirements.txt" && \
-    "${venv_dir}/bin/python" -m pip cache purge
+        yapf \
+    && "${venv_dir}/bin/python" -m pip install --index-url "${rocm_torch_index}" ${torch_packages} \
+    && "${venv_dir}/bin/python" -m pip install --constraint "${app_dir}/constraints.txt" -r "${app_dir}/requirements.txt" \
+    && "${venv_dir}/bin/python" -m pip cache purge
 
 COPY startup.sh /bin/startup.sh
 RUN chmod 755 /bin/startup.sh
