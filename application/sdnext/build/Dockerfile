@@ -119,6 +119,8 @@ RUN set -eux; \
             websockets \
             aiofiles \
             ffmpy \
+            onnx \
+            onnxruntime \
             pydub \
             uvicorn \
             semantic-version \
@@ -126,15 +128,7 @@ RUN set -eux; \
             python-multipart \
             matplotlib; \
         "${venv_dir}/bin/python" -m pip install --index-url "${rocm_torch_index}" ${torch_packages}; \
-        "${venv_dir}/bin/python" -m pip install --constraint "${app_dir}/constraints.txt" -r "${app_dir}/requirements.txt"; \
-        "${venv_dir}/bin/python" - <<'PY'
-import gradio
-import torch
-print("torch =", torch.__version__)
-print("hip =", getattr(torch.version, "hip", None))
-print("cuda_available =", torch.cuda.is_available())
-print("gradio =", gradio.__version__)
-PY
+        "${venv_dir}/bin/python" -m pip install --constraint "${app_dir}/constraints.txt" -r "${app_dir}/requirements.txt"
 COPY startup.sh /bin/startup.sh
 RUN chmod 755 /bin/startup.sh
 
