@@ -112,9 +112,12 @@ RUN set -eux; \
         python3 -m venv "${venv_dir}"; \
         "${venv_dir}/bin/python" -m pip install --upgrade pip setuptools wheel uv; \
         "${venv_dir}/bin/python" -m pip install --no-deps \
+            "compel==2.3.1" \
             "gradio==${gradio_version}" \
             "gradio-client==${gradio_client_version}"; \
         "${venv_dir}/bin/python" -m pip install --constraint "${app_dir}/constraints.txt" \
+            addict \
+            hf_transfer \
             fastapi \
             websockets \
             aiofiles \
@@ -126,7 +129,8 @@ RUN set -eux; \
             semantic-version \
             altair \
             python-multipart \
-            matplotlib; \
+            matplotlib \
+            yapf; \
         "${venv_dir}/bin/python" -m pip install --index-url "${rocm_torch_index}" ${torch_packages}; \
         "${venv_dir}/bin/python" -m pip install --constraint "${app_dir}/constraints.txt" -r "${app_dir}/requirements.txt"
 COPY startup.sh /bin/startup.sh
