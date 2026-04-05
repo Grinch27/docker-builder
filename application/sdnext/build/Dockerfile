@@ -110,8 +110,8 @@ RUN set -eux; \
         git clone --depth 1 --branch "${sdnext_ref}" "${sdnext_repo}" "${app_dir}"; \
         python3 -m venv "${venv_dir}"; \
         "${venv_dir}/bin/python" -m pip install --upgrade pip setuptools wheel uv; \
+        "${venv_dir}/bin/python" -m pip install --no-deps ${gradio_packages}; \
         "${venv_dir}/bin/python" -m pip install --constraint "${app_dir}/constraints.txt" \
-            ${gradio_packages} \
             fastapi \
             websockets \
             aiofiles \
