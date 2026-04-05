@@ -58,8 +58,12 @@ RUN apt-get update && \
     python3-pip \
     libjemalloc-dev && \
     /usr/sbin/ldconfig && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+    # ===== Clean apt =====
+    && apt-get autoremove --purge -y -qq \
+    && apt-get clean -y -qq \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /var/log/*.log \
+	# && unset DEBIAN_FRONTEND \
 
 # jemalloc is not required but it is highly recommended
 ENV LD_PRELOAD=libjemalloc.so.2
@@ -83,7 +87,7 @@ ENV PYTHONUNBUFFERED=1
 
 ### copilot fix
 ENV GIT_TERMINAL_PROMPT=0
-ENV PIP_DEFAULT_TIMEOUT=180
+# ENV PIP_DEFAULT_TIMEOUT=180
 ENV VIRTUAL_ENV=${venv_dir}
 ENV PATH=${venv_dir}/bin:${PATH}
 
