@@ -703,6 +703,46 @@ jobs:
           done
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
+      - name: (Push) Image to ${{ env.registry_push }}
+        id: push
+        continue-on-error: true # 允许此步骤失败但继续执行后续步骤
+        # if: ${{ 'true' == 'false' }} # disable
+        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
+        run: |
+          echo "Current working directory: $(pwd)"
+          declare -a tag_array=("${{ env.tag_repo }}")
+          tag_version="${{ env.tag_repo }}-${{ env.version }}"
+
+          dir_step="push"
+          dir_original=$(pwd)
+          if [ -d "${dir_step}" ]; then
+            cd ./${dir_step}
+            echo "Changed to directory: $(pwd)"
+
+            for script_file in ./*.sh; do
+              chmod +x "${script_file}"
+              source "${script_file}"
+            done
+
+            cd "${dir_original}"
+            echo "Changed back to original directory: $(pwd)"
+          else
+            echo "No directory found"
+          fi
+
+          if [ "${{ env.consistent }}" == "true" ] && [ -n "${tag_version}" ]; then
+            tag_array+=("${tag_version}")
+          fi
+
+          IFS=',' read -ra registries <<< "${{ env.registry_push }}"
+          for registry_remote in "${registries[@]}"; do
+            for tag_each in "${tag_array[@]}"; do
+              docker buildx imagetools create --tag "${registry_remote}/${{ env.repo_dockerhub }}:${tag_each}" "${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}" || echo "Failed to push ${tag_each} to ${registry_remote}, but continuing..."
+            done
+          done
+
+          echo "status=success" | tee -a ${GITHUB_OUTPUT}
+
       - name: (Output) Save
         id: output
         # if: ${{ 'true' == 'false' }} # disable
@@ -894,46 +934,6 @@ jobs:
 
           cat ${{ env.release_md }}
           echo "release_md=${release_md}" | tee -a $GITHUB_ENV
-          echo "status=success" | tee -a ${GITHUB_OUTPUT}
-
-      - name: (Push) Image to ${{ env.registry_push }}
-        id: push
-        continue-on-error: true # 允许此步骤失败但继续执行后续步骤
-        # if: ${{ 'true' == 'false' }} # disable
-        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
-        run: |
-          echo "Current working directory: $(pwd)"
-          declare -a tag_array=("${{ env.tag_repo }}")
-          tag_version="${{ env.tag_repo }}-${{ env.version }}"
-
-          dir_step="push"
-          dir_original=$(pwd)
-          if [ -d "${dir_step}" ]; then
-            cd ./${dir_step}
-            echo "Changed to directory: $(pwd)"
-
-            for script_file in ./*.sh; do
-              chmod +x "${script_file}"
-              source "${script_file}"
-            done
-
-            cd "${dir_original}"
-            echo "Changed back to original directory: $(pwd)"
-          else
-            echo "No directory found"
-          fi
-
-          if [ "${{ env.consistent }}" == "true" ] && [ -n "${tag_version}" ]; then
-            tag_array+=("${tag_version}")
-          fi
-
-          IFS=',' read -ra registries <<< "${{ env.registry_push }}"
-          for registry_remote in "${registries[@]}"; do
-            for tag_each in "${tag_array[@]}"; do
-              docker buildx imagetools create --tag "${registry_remote}/${{ env.repo_dockerhub }}:${tag_each}" "${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}" || echo "Failed to push ${tag_each} to ${registry_remote}, but continuing..."
-            done
-          done
-
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
       - name: (Upload) to Release
