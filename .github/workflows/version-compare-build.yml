@@ -23,7 +23,7 @@ permissions:
 jobs:
   prepare:
     name: Prepare Matrices
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     outputs:
       version_matrix: ${{ steps.prepare.outputs.version_matrix }}
       build_targets: ${{ steps.prepare.outputs.build_targets }}
@@ -42,33 +42,33 @@ jobs:
             | sort \
             | jq -R -s 'split("\n") | map(select(length > 0))')
 
-          version_matrix=$(jq -c '{include: map({app_branch: ., tag_repo: "latest", custom_env: "", runner_image: "ubuntu-24.04"})}' <<< "${apps_json}")
+          version_matrix=$(jq -c '{include: map({app_branch: ., tag_repo: "latest", custom_env: "", runner_image: "ubuntu-latest"})}' <<< "${apps_json}")
 
           build_targets_static=$(cat <<'JSON'
           {
             "include": [
-              {"app_branch": "cloudflare-warp", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-24.04"},
-              {"app_branch": "adguardvpn-cli", "tag_repo": "nightly", "custom_env": "build_arg='update_channel=nightly'", "runner_image": "ubuntu-24.04"},
-              {"app_branch": "adguardvpn-cli", "tag_repo": "beta", "custom_env": "build_arg='update_channel=beta'", "runner_image": "ubuntu-24.04"},
-              {"app_branch": "adguardvpn-cli", "tag_repo": "release", "custom_env": "build_arg='update_channel=release'", "runner_image": "ubuntu-24.04"},
-              {"app_branch": "expressvpn", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-24.04"},
-              {"app_branch": "nordvpn", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-24.04"},
-              {"app_branch": "squid", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-24.04"},
-              {"app_branch": "vlmcsd", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-24.04"},
-              {"app_branch": "novnc", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-24.04"},
-              {"app_branch": "baidunetdisk", "tag_repo": "dev", "custom_env": "", "runner_image": "ubuntu-24.04"},
-              {"app_branch": "steamcmd", "tag_repo": "dev", "custom_env": "", "runner_image": "ubuntu-24.04"},
-              {"app_branch": "runner", "tag_repo": "dev", "custom_env": "", "runner_image": "ubuntu-24.04"},
-              {"app_branch": "runner", "tag_repo": "slim", "custom_env": "dockerfile=slim.Dockerfile", "runner_image": "ubuntu-24.04"},
-              {"app_branch": "runner", "tag_repo": "actions", "custom_env": "dockerfile=actions.Dockerfile", "runner_image": "ubuntu-24.04"},
-              {"app_branch": "runner", "tag_repo": "actions-slim", "custom_env": "dockerfile=actions-slim.Dockerfile", "runner_image": "ubuntu-24.04"},
-              {"app_branch": "openwrt", "tag_repo": "main", "custom_env": "", "runner_image": "ubuntu-24.04"},
-              {"app_branch": "privoxy", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-24.04"},
-              {"app_branch": "aria2", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-24.04"},
-              {"app_branch": "samba", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-24.04"},
-              {"app_branch": "samba", "tag_repo": "alpine", "custom_env": "dockerfile=alpine.Dockerfile", "runner_image": "ubuntu-24.04"},
-              {"app_branch": "dnscrypt-proxy", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-24.04"},
-              {"app_branch": "sdnext", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-24.04"}
+              {"app_branch": "cloudflare-warp", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-latest"},
+              {"app_branch": "adguardvpn-cli", "tag_repo": "nightly", "custom_env": "build_arg='update_channel=nightly'", "runner_image": "ubuntu-latest"},
+              {"app_branch": "adguardvpn-cli", "tag_repo": "beta", "custom_env": "build_arg='update_channel=beta'", "runner_image": "ubuntu-latest"},
+              {"app_branch": "adguardvpn-cli", "tag_repo": "release", "custom_env": "build_arg='update_channel=release'", "runner_image": "ubuntu-latest"},
+              {"app_branch": "expressvpn", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-latest"},
+              {"app_branch": "nordvpn", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-latest"},
+              {"app_branch": "squid", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-latest"},
+              {"app_branch": "vlmcsd", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-latest"},
+              {"app_branch": "novnc", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-latest"},
+              {"app_branch": "baidunetdisk", "tag_repo": "dev", "custom_env": "", "runner_image": "ubuntu-latest"},
+              {"app_branch": "steamcmd", "tag_repo": "dev", "custom_env": "", "runner_image": "ubuntu-latest"},
+              {"app_branch": "runner", "tag_repo": "dev", "custom_env": "", "runner_image": "ubuntu-latest"},
+              {"app_branch": "runner", "tag_repo": "slim", "custom_env": "dockerfile=slim.Dockerfile", "runner_image": "ubuntu-latest"},
+              {"app_branch": "runner", "tag_repo": "actions", "custom_env": "dockerfile=actions.Dockerfile", "runner_image": "ubuntu-latest"},
+              {"app_branch": "runner", "tag_repo": "actions-slim", "custom_env": "dockerfile=actions-slim.Dockerfile", "runner_image": "ubuntu-latest"},
+              {"app_branch": "openwrt", "tag_repo": "main", "custom_env": "", "runner_image": "ubuntu-latest"},
+              {"app_branch": "privoxy", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-latest"},
+              {"app_branch": "aria2", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-latest"},
+              {"app_branch": "samba", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-latest"},
+              {"app_branch": "samba", "tag_repo": "alpine", "custom_env": "dockerfile=alpine.Dockerfile", "runner_image": "ubuntu-latest"},
+              {"app_branch": "dnscrypt-proxy", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-latest"},
+              {"app_branch": "sdnext", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-latest"}
             ]
           }
           JSON
@@ -76,7 +76,7 @@ jobs:
 
           known_apps=$(jq -r '.include[].app_branch' <<< "${build_targets_static}" | sort -u | jq -R -s 'split("\n") | map(select(length > 0))')
           missing_apps=$(jq -n --argjson all "${apps_json}" --argjson known "${known_apps}" '$all - $known')
-          missing_targets=$(jq -c '{include: map({app_branch: ., tag_repo: "latest", custom_env: "", runner_image: "ubuntu-24.04"})}' <<< "${missing_apps}")
+          missing_targets=$(jq -c '{include: map({app_branch: ., tag_repo: "latest", custom_env: "", runner_image: "ubuntu-latest"})}' <<< "${missing_apps}")
 
           build_targets=$(jq -c --argjson base "${build_targets_static}" --argjson extra "$(jq '.include' <<< "${missing_targets}")" '{include: ($base.include + $extra)}')
 
@@ -104,11 +104,11 @@ jobs:
       app_branch: ${{ matrix.app_branch }}
       tag_repo: ${{ matrix.tag_repo }}
       custom_env: ${{ matrix.custom_env || '' }}
-      runner_image: ${{ matrix.runner_image || 'ubuntu-24.04' }}
+      runner_image: ${{ matrix.runner_image || 'ubuntu-latest' }}
 
   compare-and-update:
     name: Compare Versions And Update README
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     needs: [prepare, fetch-versions]
     outputs:
       changed_count: ${{ steps.compare.outputs.changed_count }}
@@ -311,7 +311,7 @@ jobs:
       tag_repo: ${{ matrix.tag_repo }}
       force_push: "false"
       custom_env: ${{ matrix.custom_env || '' }}
-      runner_image: ${{ matrix.runner_image || 'ubuntu-24.04' }}
+      runner_image: ${{ matrix.runner_image || 'ubuntu-latest' }}
     secrets:
       DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
       DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
