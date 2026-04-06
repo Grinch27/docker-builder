@@ -8,7 +8,7 @@ on:
         description: "App Branch"
         type: string
         required: true
-        default: "stable-diffusion-webui-amdgpu"
+        default: "sdnext"
       tag_repo:
         description: "Tag Push to Repo"
         type: string
@@ -72,6 +72,7 @@ env:
   dir_app: "application/${{ inputs.app_branch }}"
   compress: "true"
   custom_env: ${{ inputs.custom_env || '' }}
+  path_build: "/build"
 
 jobs:
   check:
@@ -150,41 +151,61 @@ jobs:
         run: |
           echo "${{ env.custom_env }}" | tr '${{ env.flag_split }}' '\n' | tee -a $GITHUB_ENV
 
-      - name: Setup Docker
-        id: docker
-        if: ${{ 'true' == 'false' }} # disable
+      # ========== General Environment Setup: Start ==========
+      - name: (Disk) Expand workspace
+        id: disk
+        uses: Grinch27/github-actions/.github/actions/setup-disk@main
+        with:
+          path_build: ${{ env.path_build }}
+          root_num: 4
+          mnt_num: 1
+
+      - name: (Clean) Docker Images
+        id: clean-docker
+        uses: Grinch27/github-actions/.github/actions/clean-docker_image@main
+
+      - name: (Setup) Docker
+        id: setup-docker
+        # if: ${{ env.docker_install == 'true' }}
+        uses: Grinch27/github-actions/.github/actions/setup-docker@main
+
+      - name: (Setup) Docker Data Root
+        id: setup-docker-root
         env:
-          DEBIAN_FRONTEND: noninteractive
+          docker_data_root: "${{ env.path_build }}/docker-data"
         working-directory: /
         run: |
-          # https://docs.docker.com/engine/install/ubuntu/
+          echo "Current working directory: $(pwd)"
 
-          # ===== 1. Set up Docker's apt repository =====
-          # Add Docker's official GPG key:
-          # sudo apt-get update
-          # sudo apt-get install ca-certificates curl
-          sudo install -m 0755 -d /etc/apt/keyrings
-          sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-          sudo chmod a+r /etc/apt/keyrings/docker.asc
+          sudo mkdir -p "${docker_data_root}"
 
-          # Add the repository to Apt sources:
-          echo \
-            "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
-            $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
-            sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-          sudo apt-get update
+          daemon_file="/etc/docker/daemon.json"
+          temp_file=$(mktemp)
+          if sudo test -s "${daemon_file}"; then
+            sudo cat "${daemon_file}" | jq --arg root "${docker_data_root}" '. + {"data-root": $root}' > "${temp_file}"
+          else
+            jq -n --arg root "${docker_data_root}" '{"data-root": $root}' > "${temp_file}"
+          fi
+          sudo cp "${temp_file}" "${daemon_file}"
 
-          # ===== 2. Install the Docker packages =====
-          sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+          if command -v systemctl >/dev/null 2>&1; then
+            sudo systemctl daemon-reload || true
+            sudo systemctl restart docker
+          else
+            sudo service docker restart
+          fi
 
-          docker --version
+          docker info --format 'DockerRootDir={{ .DockerRootDir }}'
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
-      - name: Setup QEMU
-        id: qemu
+      - name: (Setup) QEMU
+        id: setup-qemu
+        if: ${{ env.arch_branch != 'linux/amd64' }}
+        # if: ${{ env.qemu_install == 'true' }}
         uses: docker/setup-qemu-action@master
         with:
           platforms: ${{ env.arch_branch }}
+      # ========== General Environment Setup: End ==========
 
       - name: (MetaData) from DockerHub
         id: meta-image
@@ -489,40 +510,61 @@ jobs:
         run: |
           echo "${{ env.custom_env }}" | tr '${{ env.flag_split }}' '\n' | tee -a $GITHUB_ENV
 
-      - name: Setup Docker
-        id: docker
+      # ========== General Environment Setup: Start ==========
+      - name: (Disk) Expand workspace
+        id: disk
+        uses: Grinch27/github-actions/.github/actions/setup-disk@main
+        with:
+          path_build: ${{ env.path_build }}
+          root_num: 4
+          mnt_num: 1
+
+      - name: (Clean) Docker Images
+        id: clean-docker
+        uses: Grinch27/github-actions/.github/actions/clean-docker_image@main
+
+      - name: (Setup) Docker
+        id: setup-docker
+        # if: ${{ env.docker_install == 'true' }}
+        uses: Grinch27/github-actions/.github/actions/setup-docker@main
+
+      - name: (Setup) Docker Data Root
+        id: setup-docker-root
         env:
-          DEBIAN_FRONTEND: noninteractive
+          docker_data_root: "${{ env.path_build }}/docker-data"
         working-directory: /
         run: |
-          # https://docs.docker.com/engine/install/ubuntu/
+          echo "Current working directory: $(pwd)"
 
-          # ===== 1. Set up Docker's apt repository =====
-          # Add Docker's official GPG key:
-          # sudo apt-get update
-          # sudo apt-get install ca-certificates curl
-          sudo install -m 0755 -d /etc/apt/keyrings
-          sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-          sudo chmod a+r /etc/apt/keyrings/docker.asc
+          sudo mkdir -p "${docker_data_root}"
 
-          # Add the repository to Apt sources:
-          echo \
-            "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
-            $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
-            sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-          sudo apt-get update
+          daemon_file="/etc/docker/daemon.json"
+          temp_file=$(mktemp)
+          if sudo test -s "${daemon_file}"; then
+            sudo cat "${daemon_file}" | jq --arg root "${docker_data_root}" '. + {"data-root": $root}' > "${temp_file}"
+          else
+            jq -n --arg root "${docker_data_root}" '{"data-root": $root}' > "${temp_file}"
+          fi
+          sudo cp "${temp_file}" "${daemon_file}"
 
-          # ===== 2. Install the Docker packages =====
-          sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+          if command -v systemctl >/dev/null 2>&1; then
+            sudo systemctl daemon-reload || true
+            sudo systemctl restart docker
+          else
+            sudo service docker restart
+          fi
 
-          docker --version
+          docker info --format 'DockerRootDir={{ .DockerRootDir }}'
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
-      - name: Setup QEMU
-        id: qemu
+      - name: (Setup) QEMU
+        id: setup-qemu
+        if: ${{ env.arch_branch != 'linux/amd64' }}
+        # if: ${{ env.qemu_install == 'true' }}
         uses: docker/setup-qemu-action@master
         with:
           platforms: ${{ env.arch_branch }}
+      # ========== General Environment Setup: End ==========
 
       - name: Setup Docker Buildx
         id: buildx
@@ -705,7 +747,7 @@ jobs:
         id: output
         # if: ${{ 'true' == 'false' }} # disable
         env:
-          dir_output: "${{ github.workspace }}/${{ env.dir_app }}/output"
+          dir_output: "${{ env.path_build }}/${{ env.dir_app }}/output"
           target_ext: "tar"
         working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
@@ -736,12 +778,26 @@ jobs:
           echo "target_ext=${target_ext}" | tee -a ${GITHUB_OUTPUT}
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
+      - name: (Optimize) Free Disk Before Compress
+        id: optimize-disk
+        if: ${{ steps.output.outputs.status == 'success' && (env.app_branch == 'stable-diffusion-webui-amdgpu' || env.app_branch == 'sdnext') }}
+        working-directory: /
+        run: |
+          echo "Current working directory: $(pwd)"
+          docker system df || true
+          docker image prune --all --force || true
+          docker builder prune --all --force || true
+          docker system df || true
+          df -hT
+
       - name: (Output) Compress
         id: output-compress
         if: ${{ env.compress == 'true' }}
         env:
           dir_output: ${{ env.dir_output }}
           target_ext: "${{ env.target_ext }}"
+          split_size: "1900M"
+          split_threshold: "2000000000"
         working-directory: "${{ env.dir_output }}"
         run: |
           echo -e "Current working directory: $(pwd)"
@@ -760,6 +816,9 @@ jobs:
           echo "Set memlimit: ${memlimit}"
 
           for file in ${{ env.dir_output }}/*.${{ env.target_ext }}; do
+            if [ ! -f "${file}" ]; then
+              continue
+            fi
             if [[ ! -d "${file}" ]]; then
               # For compression level -9, each thread may use approximately 67 MiB to 768 MiB or more of memory
               # check: crc32, sha256, sha512
@@ -770,8 +829,16 @@ jobs:
                 --memlimit-compress=${memlimit} \
                 --check=sha256 \
                 --verbose \
-                --keep \
                 "${file}"
+
+              compressed_file="${file}.xz"
+              compressed_size=$(du -b "${compressed_file}" | cut -f1)
+              if [ "${compressed_size}" -gt "${{ env.split_threshold }}" ]; then
+                echo "Split ${compressed_file} with chunk size ${{ env.split_size }}"
+                split -b "${{ env.split_size }}" --numeric-suffixes=1 --suffix-length=3 "${compressed_file}" "${compressed_file}.part"
+                rm -f "${compressed_file}"
+                ls -lh "${compressed_file}.part"*
+              fi
             fi
           done
 
@@ -786,14 +853,17 @@ jobs:
         env:
           metadata_sum_path: "${{ github.workspace }}/metadata_sum.json"
           category: "files"
-          target_ext: "${{ steps.output.outputs.target_ext }}"
+          target_ext: "${{ env.target_ext }}"
         working-directory: "${{ env.dir_output }}"
         run: |
           echo -e "Current working directory: $(pwd)"
           ls -lh ./
 
           metadata='{"${{ env.category }}":[]}'
-          for file in ./*.${{ env.target_ext }}; do
+          for file in ./*.${{ env.target_ext }}*; do
+            if [ ! -f "${file}" ]; then
+              continue
+            fi
             if [[ ! -d "${file}" ]]; then
               read -r checksum filename <<< "$(sha256sum "${file}")"
               filename=$(basename "${filename}")
@@ -851,6 +921,14 @@ jobs:
             echo "docker load < \*.tar" >> ${{ env.release_md }}
           done
 
+          echo -e "\n### Split Assets\n" >> ${{ env.release_md }}
+          echo "If an image archive is split into multiple parts (for GitHub asset size limits), merge it before decompressing:" >> ${{ env.release_md }}
+          echo '```bash' >> ${{ env.release_md }}
+          echo 'cat image.tar.xz.part* > image.tar.xz' >> ${{ env.release_md }}
+          echo 'xz --decompress --verbose image.tar.xz' >> ${{ env.release_md }}
+          echo 'docker load < image.tar' >> ${{ env.release_md }}
+          echo '```' >> ${{ env.release_md }}
+
           sum_json_content=$(jq '.' "${{ env.metadata_sum_path }}")
           record_to_markdown "sha256sum" "${sum_json_content}" "json"
 
@@ -871,7 +949,7 @@ jobs:
         with:
           name: "${{ env.repo_dockerhub }}"
           tag: "${{ env.app_branch }}"
-          artifacts: "${{ env.dir_output }}/*.${{ env.target_ext }}"
+          artifacts: "${{ env.dir_output }}/*.${{ env.target_ext }},${{ env.dir_output }}/*.${{ env.target_ext }}.part*"
           allowUpdates: true
           removeArtifacts: false
           replacesArtifacts: true
