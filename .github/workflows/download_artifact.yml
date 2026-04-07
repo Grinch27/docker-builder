@@ -184,19 +184,19 @@ jobs:
             "${FILE_URL}"
           ls -lh ./
 
-      - name: Compress
-        id: file-compress
+      - name: Compress Artifact
+        id: compress-artifact
         uses: Grinch27/github-actions/.github/actions/compress-xz@main
         with:
           path_target: ${{ env.PATH_output }}
           pattern_match: ".*"
-          split_size: "1999M"
-          split_threshold: "2000000000"
+          split_size: "699M"
+          split_threshold: "700000000"
           mem_hold: "2048"
           memlimit: "4GiB"
 
       - name: Upload Artifact
-        id: file-artifact
+        id: upload-artifact
         uses: actions/upload-artifact@main
         with:
           name: ${{ steps.file-info.outputs.FILE_NAME }}
