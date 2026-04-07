@@ -141,7 +141,7 @@ jobs:
           {
             echo "FILE_NAME=${FILE_NAME}"
             echo "FILE_EXT=${FILE_EXT}"
-            echo "FILE_NAME_REGEX=^${FILE_NAME_REGEX}$"
+            echo "FILE_NAME_REGEX=^\./${FILE_NAME_REGEX}$"
           } >> "${GITHUB_OUTPUT}"
 
       - name: Compress
@@ -149,7 +149,7 @@ jobs:
         uses: Grinch27/github-actions/.github/actions/compress-xz@main
         with:
           path_target: ${{ env.PATH_output }}
-          pattern_match: ${{ steps.file-download.outputs.FILE_NAME_REGEX }}
+          pattern_match: ".*"
           split_size: "1999M"
           split_threshold: "2000000000"
           mem_hold: "2048"
@@ -160,5 +160,5 @@ jobs:
         uses: actions/upload-artifact@main
         with:
           name: ${{ steps.file-download.outputs.FILE_NAME }}
-          path: "${{ env.PATH_output }}/*.xz*"
+          path: "${{ env.PATH_output }}/.*"
           retention-days: 1

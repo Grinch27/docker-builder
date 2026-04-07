@@ -806,7 +806,7 @@ jobs:
         uses: Grinch27/github-actions/.github/actions/compress-xz@main
         with:
           path_target: ${{ env.PATH_output }}
-          pattern_match: "^.*.${{ steps.output.outputs.target_ext }}$"
+          pattern_match: '^\./.*\.${{ steps.output.outputs.target_ext }}$'
           split_size: "1900M"
 
       - name: (Output) Check
