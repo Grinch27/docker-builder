@@ -806,25 +806,23 @@ jobs:
         uses: Grinch27/github-actions/.github/actions/compress-xz@main
         with:
           path_target: ${{ env.PATH_output }}
-          input_ext: ${{ steps.output.outputs.target_ext }}
+          pattern_match: "^.*.${{ steps.output.outputs.target_ext }}$"
           split_size: "1900M"
-          split_threshold: "2000000000"
-          mem_hold: "2048"
-          memlimit: "4GiB"
 
       - name: (Output) Check
         id: output-check
-        if: steps.output.outputs.status == 'success' && (steps.output-compress.outputs.status == 'success' || steps.env-validate.outputs.compress != 'true') && !cancelled()
+        if: steps.output.outputs.status == 'success' && !cancelled()
         env:
           category: "files"
-          target_ext: ${{ steps.output-compress.outputs.target_ext || steps.output.outputs.target_ext || 'tar' }}
+          match_pattern: ${{ steps.env-validate.outputs.compress == 'true' && '*.xz*' || '*.tar*' }}
         working-directory: ${{ env.PATH_output }}
         run: |
           echo -e "Current working directory: $(pwd)"
           ls -lh ./
 
           metadata='{"${{ env.category }}":[]}'
-          for file in ./*.${target_ext}*; do
+          shopt -s nullglob
+          for file in ${{ env.match_pattern }}; do
             if [[ ! -f "${file}" || -d "${file}" ]]; then
               continue
             fi
