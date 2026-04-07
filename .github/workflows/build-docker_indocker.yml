@@ -135,11 +135,11 @@ jobs:
       PATH_self: "/builder/self"
       PATH_metadata: "/builder/metadata"
       PATH_app: "/builder/self/application/${{ inputs.app_branch }}"
-      metadata_image_path: "/builder/metadata/metadata_image.json"
-      metadata_app_path: "/builder/metadata/metadata_app.json"
-      metadata_sum_path: "/builder/metadata/metadata_sum.json"
-      docker_data_root: "/builder/docker-data"
-      MD_release: "/builder/release.md"
+      PATH_metadata_image: "/builder/metadata/metadata_image.json"
+      PATH_metadata_app: "/builder/metadata/metadata_app.json"
+      PATH_metadata_sum: "/builder/metadata/metadata_sum.json"
+      PATH_docker_data: "/builder/docker-data"
+      PATH_release: "/builder/release.md"
     steps:
       # ========== Pre: Settings ==========
       - name: (Var) environment variable setup
@@ -158,11 +158,11 @@ jobs:
             "PATH_backup"
             "PATH_self"
             "PATH_metadata"
-            "metadata_image_path"
-            "metadata_app_path"
-            "metadata_sum_path"
-            "docker_data_root"
-            "MD_release"
+            "PATH_metadata_image"
+            "PATH_metadata_app"
+            "PATH_metadata_sum"
+            "PATH_docker_data"
+            "PATH_release"
           )
           for var in "${env_vars[@]}"; do
             echo "${var}=${!var}" | tee -a "$GITHUB_ENV"
@@ -184,8 +184,8 @@ jobs:
             "${PATH_output}" \
             "${PATH_backup}" \
             "${PATH_metadata}" \
-            "${docker_data_root}" \
-            "$(dirname "${MD_release}")"
+            "${PATH_docker_data}" \
+            "$(dirname "${PATH_release}")"
 
           df -hT /
 
@@ -279,19 +279,19 @@ jobs:
         run: |
           echo "Current working directory: $(pwd)"
 
-          mkdir -p "${docker_data_root}"
+          mkdir -p "${PATH_docker_data}"
 
           daemon_file="/etc/docker/daemon.json"
           temp_file=$(mktemp)
           if test -s "${daemon_file}"; then
             jq \
-              --arg root "${docker_data_root}" \
+              --arg root "${PATH_docker_data}" \
               '. + {"data-root": $root}
               | .["insecure-registries"] = (((.["insecure-registries"] // []) + ["127.0.0.1:5000", "172.17.0.1:5000"]) | unique)' \
               "${daemon_file}" > "${temp_file}"
           else
             jq -n \
-              --arg root "${docker_data_root}" \
+              --arg root "${PATH_docker_data}" \
               '{"data-root": $root, "insecure-registries": ["127.0.0.1:5000", "172.17.0.1:5000"]}' > "${temp_file}"
           fi
           cp "${temp_file}" "${daemon_file}"
@@ -379,7 +379,7 @@ jobs:
             done
           done
 
-          echo "${metadata}" | jq . > "${metadata_image_path}"
+          echo "${metadata}" | jq . > "${PATH_metadata_image}"
           echo "status=success" | tee -a "${GITHUB_OUTPUT}"
 
       - name: (Check) Layer MetaData ${{ steps.env-validate.outputs.base_image }} in ${{ steps.env-validate.outputs.repo_dockerhub }}:${{ env.tag_repo }}
@@ -390,7 +390,7 @@ jobs:
         working-directory: /
         run: |
           changed=false
-          metadata_image=$(cat "${metadata_image_path}")
+          metadata_image=$(cat "${PATH_metadata_image}")
           IFS=',' read -ra platforms <<< "${arch_branch}"
           for platform in "${platforms[@]}"; do
             base_json=$(echo "${metadata_image}" | jq --arg platform "${platform}" --arg repo "${base_image}" '
@@ -482,7 +482,7 @@ jobs:
               '.${{ env.category }} += [{platform: $platform, version: $version}]' <<< "${metadata}")
           done
 
-          echo "${metadata}" | jq . > "${metadata_app_path}"
+          echo "${metadata}" | jq . > "${PATH_metadata_app}"
           echo "status=success" | tee -a "${GITHUB_OUTPUT}"
 
       - name: (Check) Version of app
@@ -494,8 +494,8 @@ jobs:
         working-directory: /
         run: |
           changed=false
-          metadata_image=$(cat "${metadata_image_path}")
-          metadata_app=$(cat "${metadata_app_path}")
+          metadata_image=$(cat "${PATH_metadata_image}")
+          metadata_app=$(cat "${PATH_metadata_app}")
           IFS=',' read -ra platforms <<< "${arch_branch}"
           for platform in "${platforms[@]}"; do
             repo_json=$(echo "${metadata_image}" | jq --arg platform "${platform}" --arg repo "${repo_dockerhub}:${tag_repo}" '
@@ -533,7 +533,7 @@ jobs:
           platform_prefer: "amd64"
         working-directory: /
         run: |
-          metadata_app=$(cat "${metadata_app_path}" 2>/dev/null || echo '{"platforms":[]}')
+          metadata_app=$(cat "${PATH_metadata_app}" 2>/dev/null || echo '{"platforms":[]}')
           preferred_platform="linux/${platform_prefer}"
 
           if [[ "$(jq -r ".${category_app}[] | select(.version != null and .version != \"\") | .version" <<< "${metadata_app}" | sort -u | wc -l)" -ne 1 ]]; then
@@ -892,10 +892,10 @@ jobs:
               --arg checksum "${checksum}" \
               '.${{ env.category }} += [{filename: $filename, checksum: $checksum}]' <<< "${metadata}")
           done
-          echo "${metadata}" | jq . > "${metadata_sum_path}"
+          echo "${metadata}" | jq . > "${PATH_metadata_sum}"
 
           echo "timestamp=$(date +"%y%mw%V")" | tee -a "${GITHUB_OUTPUT}"
-          echo "metadata_sum_path=${metadata_sum_path}" | tee -a "${GITHUB_OUTPUT}"
+          echo "PATH_metadata_sum=${PATH_metadata_sum}" | tee -a "${GITHUB_OUTPUT}"
           echo "status=success" | tee -a "${GITHUB_OUTPUT}"
 
       - name: "[release.md] Record release.md"
@@ -905,9 +905,9 @@ jobs:
         run: |
           printf "Current working directory: %s\n" "$(pwd)"
 
-          MD_release_dir=$(dirname "${MD_release}")
-          mkdir -p "${MD_release_dir}"
-          : > "${MD_release}"
+          PATH_release_dir=$(dirname "${PATH_release}")
+          mkdir -p "${PATH_release_dir}"
+          : > "${PATH_release}"
 
           set +e
           record_to_markdown() {
@@ -918,9 +918,9 @@ jobs:
 
             if [[ -n "${code_block}" ]]; then
               format="\n### %s\n\n<details>\n<summary>%s</summary>\n\n\`\`\`%s\n%s\n\`\`\`\n\n</details>\n"
-              printf "${format}" "${title}" "${title}" "${code_block}" "${content}" | tee -a "${MD_release}"
+              printf "${format}" "${title}" "${title}" "${code_block}" "${content}" | tee -a "${PATH_release}"
             else
-              printf "${format}" "${title}" "${content}" | tee -a "${MD_release}"
+              printf "${format}" "${title}" "${content}" | tee -a "${PATH_release}"
             fi
           }
 
@@ -947,10 +947,10 @@ jobs:
             'docker load < image.tar')
           record_to_markdown "Split Assets" "${split_content}" "bash"
 
-          sum_json_content=$(jq '.' "${metadata_sum_path}")
+          sum_json_content=$(jq '.' "${PATH_metadata_sum}")
           record_to_markdown "sha256sum" "${sum_json_content}" "json"
 
-          cat "${MD_release}"
+          cat "${PATH_release}"
           set -e
 
           echo "status=success" | tee -a "${GITHUB_OUTPUT}"
@@ -967,6 +967,6 @@ jobs:
           removeArtifacts: false
           replacesArtifacts: true
           token: "${{ secrets.GITHUB_TOKEN }}"
-          bodyFile: "${{ env.MD_release }}"
+          bodyFile: "${{ env.PATH_release }}"
 
       # ========== Build / Publish: End ==========
