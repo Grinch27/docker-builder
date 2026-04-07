@@ -190,15 +190,22 @@ jobs:
         with:
           path_target: ${{ env.PATH_output }}
           pattern_match: ".*"
-          split_size: "699M"
-          split_threshold: "700000000"
           mem_hold: "2048"
           memlimit: "4GiB"
+
+      - name: Split Artifact
+        id: split-artifact
+        uses: Grinch27/github-actions/.github/actions/file-split@main
+        with:
+          path_target: ${{ env.PATH_output }}
+          pattern_match: '^\./[^/]+\.xz$'
+          split_size: "699M"
+          split_threshold: "700000000"
 
       - name: Upload Artifact
         id: upload-artifact
         uses: actions/upload-artifact@main
         with:
           name: ${{ steps.file-info.outputs.FILE_NAME }}
-          path: "${{ env.PATH_output }}/*"
+          path: "${{ env.PATH_output }}/**"
           retention-days: 1

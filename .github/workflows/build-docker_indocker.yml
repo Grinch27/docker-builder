@@ -807,6 +807,14 @@ jobs:
         with:
           path_target: ${{ env.PATH_output }}
           pattern_match: '^\./.*\.${{ steps.output.outputs.target_ext }}$'
+
+      - name: (Output) Split
+        id: output-split
+        if: steps.output.outputs.status == 'success' && steps.env-validate.outputs.compress == 'true' && !cancelled()
+        uses: Grinch27/github-actions/.github/actions/file-split@main
+        with:
+          path_target: ${{ env.PATH_output }}
+          pattern_match: '^\./.*\.${{ steps.output.outputs.target_ext }}\.xz$'
           split_size: "1900M"
 
       - name: (Output) Check
@@ -814,26 +822,28 @@ jobs:
         if: steps.output.outputs.status == 'success' && !cancelled()
         env:
           category: "files"
-          match_pattern: ${{ steps.env-validate.outputs.compress == 'true' && '*.xz*' || '*.tar*' }}
+          compress_enabled: ${{ steps.env-validate.outputs.compress }}
         working-directory: ${{ env.PATH_output }}
         run: |
           echo -e "Current working directory: $(pwd)"
           ls -lh ./
 
           metadata='{"${{ env.category }}":[]}'
-          shopt -s nullglob
-          for file in ${{ env.match_pattern }}; do
-            if [[ ! -f "${file}" || -d "${file}" ]]; then
-              continue
-            fi
-
-            read -r checksum filename <<< "$(sha256sum "${file}")"
-            filename=$(basename "${filename}")
+          while IFS= read -r -d '' file; do
+            relative_path="${file#./}"
+            checksum=$(sha256sum "${relative_path}" | awk '{print $1}')
+            filename=$(basename "${relative_path}")
             metadata=$(jq \
               --arg filename "${filename}" \
               --arg checksum "${checksum}" \
               '.${{ env.category }} += [{filename: $filename, checksum: $checksum}]' <<< "${metadata}")
-          done
+          done < <(
+            if [[ "${compress_enabled}" == 'true' ]]; then
+              find . -maxdepth 2 -type f \( -name '*.xz' -o -name '*.xz.part*' \) -print0 | sort -z
+            else
+              find . -maxdepth 1 -type f -name '*.tar*' -print0 | sort -z
+            fi
+          )
           echo "${metadata}" | jq . > "${PATH_metadata_sum}"
 
           echo "timestamp=$(date +"%y%mw%V")" | tee -a "${GITHUB_OUTPUT}"
@@ -884,7 +894,7 @@ jobs:
           done
 
           split_content=$(printf '%s\n%s\n%s\n' \
-            'cat image.tar.xz.part* > image.tar.xz' \
+            'cat file-split/image.tar.xz.part* > image.tar.xz' \
             'xz --decompress --verbose image.tar.xz' \
             'docker load < image.tar')
           record_to_markdown "Split Assets" "${split_content}" "bash"
@@ -904,7 +914,7 @@ jobs:
         with:
           name: "${{ steps.env-validate.outputs.repo_dockerhub }}"
           tag: "${{ env.app_branch }}"
-          artifacts: "${{ env.PATH_output }}/*"
+          artifacts: "${{ env.PATH_output }}/**"
           allowUpdates: true
           removeArtifacts: false
           replacesArtifacts: true
