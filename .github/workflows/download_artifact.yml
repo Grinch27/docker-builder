@@ -134,8 +134,8 @@ jobs:
             --fail-with-body \ # 失败调试信息
             --progress-bar \ # 进度条
             --create-dirs \ # 自动创建目录
-            "${FILE_URL}" \
-            -o "${FILE_NAME}"
+            -o "${FILE_NAME}" \
+            "${FILE_URL}"
 
           ls -lh ./
 
