@@ -46,6 +46,7 @@ jobs:
       PATH_output: "/output"
     steps:
       - name: Masked file URL
+        id: mask-url
         uses: actions/github-script@main
         with:
           script: |
@@ -54,12 +55,12 @@ jobs:
             core.exportVariable('FILE_URL', fileUrl)
 
       # - name: Set File URL
-      #   working-directory: /
       #   run: |
       #     echo -e "::add-mask::${{ github.event.inputs.file_url }}"
       #     echo -e "FILE_URL=${{ github.event.inputs.file_url }}" >> $GITHUB_ENV
 
-      - name: Install Download Tools
+      - name: Install Tools
+        id: apt-download
         working-directory: /
         run: |
           run_root() {
@@ -69,15 +70,13 @@ jobs:
               "$@"
             fi
           }
-
           run_root apt-get -yqq update
           run_root apt-get -yqq install ca-certificates curl xz-utils
-
           curl --version
           xz --version
 
-      - name: Download File
-        id: download-file
+      - name: Download
+        id: file-download
         working-directory: /
         run: |
           mkdir -p ${{ env.PATH_output }}
@@ -95,20 +94,21 @@ jobs:
             echo -e "FILE_EXT=${FILE_EXT}"
           } | tee -a "${GITHUB_ENV}" "${GITHUB_OUTPUT}" >/dev/null
 
-      - name: Compress File with Advanced Settings
-        id: output-compress
+      - name: Compress
+        id: file-compress
         uses: Grinch27/github-actions/.github/actions/compress-xz@main
         with:
           path_target: ${{ env.PATH_output }}
-          input_ext: ${{ steps.download-file.outputs.FILE_EXT }}
+          input_ext: ${{ steps.file-download.outputs.FILE_EXT }}
           split_size: "1999M"
           split_threshold: "2000000000"
           mem_hold: "2048"
           memlimit: "4GiB"
 
-      - name: Upload to artifacts
+      - name: Upload Artifact
+        id: file-artifact
         uses: actions/upload-artifact@main
         with:
-          name: ${{ steps.download-file.outputs.FILE_NAME }}
-          path: "${{ env.PATH_output }}/*.${{ steps.output-compress.outputs.target_ext }}*"
+          name: ${{ steps.file-download.outputs.FILE_NAME }}
+          path: "${{ env.PATH_output }}/*.${{ steps.file-compress.outputs.target_ext }}*"
           retention-days: 1
