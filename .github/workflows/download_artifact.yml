@@ -172,7 +172,7 @@ jobs:
           echo -e "========== Download File with aria2 =========="
           aria2c \
             --continue=true \
-            --max-tries=4 \
+            --max-tries=3 \
             --retry-wait=1 \
             --timeout=30 \
             --connect-timeout=15 \
