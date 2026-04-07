@@ -125,10 +125,19 @@ jobs:
 
           # ========== Download File ==========
           echo -e "Downloading file"
-          curl -fL --progress-bar "${FILE_URL}" -o "${FILE_NAME}"
-          if [[ ! -f "${FILE_NAME}" ]]; then
-            echo -e "::error::Downloaded file not found: ${FILE_NAME}"
-          fi
+          curl \
+            --retry 3 \
+            --retry-all-errors \
+            -C - \ # 断点续传
+            --http2 \
+            -L \ # 自动跟随重定向
+            --fail-with-body \ # 失败调试信息
+            --progress-bar \ # 进度条
+            --create-dirs \ # 自动创建目录
+            "${FILE_URL}" \
+            -o "${FILE_NAME}"
+
+          ls -lh ./
 
           {
             echo "FILE_NAME=${FILE_NAME}"
