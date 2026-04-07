@@ -139,7 +139,6 @@ jobs:
       metadata_app_path: "/builder/metadata/metadata_app.json"
       metadata_sum_path: "/builder/metadata/metadata_sum.json"
       docker_data_root: "/builder/docker-data"
-      registry_local: "127.0.0.1:5000"
       MD_release: "/builder/release.md"
     steps:
       # ========== Pre: Settings ==========
@@ -163,7 +162,6 @@ jobs:
             "metadata_app_path"
             "metadata_sum_path"
             "docker_data_root"
-            "registry_local"
             "MD_release"
           )
           for var in "${env_vars[@]}"; do
@@ -288,15 +286,13 @@ jobs:
           if test -s "${daemon_file}"; then
             jq \
               --arg root "${docker_data_root}" \
-              --arg registry "${registry_local}" \
               '. + {"data-root": $root}
-              | .["insecure-registries"] = (((.["insecure-registries"] // []) + [$registry]) | unique)' \
+              | .["insecure-registries"] = (((.["insecure-registries"] // []) + ["127.0.0.1:5000", "172.17.0.1:5000"]) | unique)' \
               "${daemon_file}" > "${temp_file}"
           else
             jq -n \
               --arg root "${docker_data_root}" \
-              --arg registry "${registry_local}" \
-              '{"data-root": $root, "insecure-registries": [$registry]}' > "${temp_file}"
+              '{"data-root": $root, "insecure-registries": ["127.0.0.1:5000", "172.17.0.1:5000"]}' > "${temp_file}"
           fi
           cp "${temp_file}" "${daemon_file}"
 
@@ -576,7 +572,7 @@ jobs:
 
           buildkitd_config=$(mktemp)
           cat > "${buildkitd_config}" <<EOF
-          [registry."${registry_local}"]
+          [registry."127.0.0.1:5000"]
             http = true
             insecure = true
           EOF
@@ -602,21 +598,23 @@ jobs:
           docker run \
             --name registry \
             --detach \
-            --network host \
+            -p "5000:5000" \
             registry:latest
 
+          docker port registry || true
+
           for _ in $(seq 1 30); do
-            if curl -fsS "http://${registry_local}/v2/" >/dev/null; then
+            if curl -fsS "http://172.17.0.1:5000/v2/" >/dev/null; then
               echo "status=success" | tee -a "${GITHUB_OUTPUT}"
               exit 0
             fi
 
-            echo "Waiting for local registry at http://${registry_local}/v2/"
+            echo "Waiting for local registry at http://172.17.0.1:5000/v2/"
             sleep 2
           done
 
           docker logs registry || true
-          echo "::error::Local registry is not reachable at http://${registry_local}/v2/"
+          echo "::error::Local registry is not reachable at http://172.17.0.1:5000/v2/"
           exit 1
 
       - name: Build and push to local registry
@@ -672,7 +670,7 @@ jobs:
             if [[ -n "${variant}" ]]; then
               inspect_cmd+=(--override-variant="${variant}")
             fi
-            inspect_cmd+=("docker://${registry_local}/${repo_dockerhub}:${tag_repo}")
+            inspect_cmd+=("docker://172.17.0.1:5000/${repo_dockerhub}:${tag_repo}")
 
             "${inspect_cmd[@]}"
           done
@@ -692,14 +690,14 @@ jobs:
 
           IFS=',' read -ra platforms <<< "${arch_branch}"
           for platform in "${platforms[@]}"; do
-            docker pull --platform "${platform}" "${registry_local}/${repo_dockerhub}:${tag_repo}"
+            docker pull --platform "${platform}" "127.0.0.1:5000/${repo_dockerhub}:${tag_repo}"
             docker rm -f "${container_name}" >/dev/null 2>&1 || true
             docker run \
               --name "${container_name}" \
               --rm \
               --detach \
               --platform "${platform}" \
-              "${registry_local}/${repo_dockerhub}:${tag_repo}"
+              "127.0.0.1:5000/${repo_dockerhub}:${tag_repo}"
 
             dir_step="test"
             if [[ -d "${dir_step}" ]]; then
@@ -775,7 +773,7 @@ jobs:
           IFS=',' read -ra registries <<< "${registry_push}"
           for registry_remote in "${registries[@]}"; do
             for tag_each in "${tag_array[@]}"; do
-              docker buildx imagetools create --tag "${registry_remote}/${repo_dockerhub}:${tag_each}" "${registry_local}/${repo_dockerhub}:${tag_repo}" || echo "Failed to push ${tag_each} to ${registry_remote}, but continuing..."
+              docker buildx imagetools create --tag "${registry_remote}/${repo_dockerhub}:${tag_each}" "127.0.0.1:5000/${repo_dockerhub}:${tag_repo}" || echo "Failed to push ${tag_each} to ${registry_remote}, but continuing..."
             done
           done
 
@@ -795,8 +793,8 @@ jobs:
           for platform in "${platforms[@]}"; do
             target_file="${app_branch}_${tag_repo}_${version}_$(echo "${platform}" | tr '/' '_').${target_ext}"
 
-            docker pull --platform "${platform}" "${registry_local}/${repo_dockerhub}:${tag_repo}"
-            docker tag "${registry_local}/${repo_dockerhub}:${tag_repo}" "${repo_dockerhub}:${tag_repo}"
+            docker pull --platform "${platform}" "127.0.0.1:5000/${repo_dockerhub}:${tag_repo}"
+            docker tag "127.0.0.1:5000/${repo_dockerhub}:${tag_repo}" "${repo_dockerhub}:${tag_repo}"
             docker save --output "${PATH_output}/${target_file}" "${repo_dockerhub}:${tag_repo}"
 
             echo "Exported ${platform} image to ${target_file}"
