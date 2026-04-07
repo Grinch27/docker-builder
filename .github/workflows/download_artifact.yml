@@ -46,7 +46,7 @@ jobs:
       PATH_output: "/output"
     steps:
       - name: Prepare masked file URL
-        uses: actions/github-script@v7
+        uses: actions/github-script@main
         with:
           script: |
             const fileUrl = context.payload.inputs.file_url
