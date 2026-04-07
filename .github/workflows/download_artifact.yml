@@ -1,5 +1,6 @@
 name: Download to Artifact
 # https://docs.github.com/zh/actions/reference/workflows-and-actions/workflow-syntax
+# https://docs.github.com/zh/actions/reference/workflows-and-actions/expressions
 
 on:
   workflow_dispatch:
@@ -130,7 +131,8 @@ jobs:
       - name: Download with aria2
         id: aria2-download
         if: ${{ steps.file-info.conclusion == 'success' }}
-        continue-on-error: true
+        continue-on-error: ${{ fromJSON('true') }}
+        timeout-minutes: ${{ fromJSON('180') }}
         env:
           FILE_NAME: ${{ steps.file-info.outputs.FILE_NAME }}
         working-directory: "${{ env.PATH_output }}"
@@ -158,6 +160,7 @@ jobs:
         id: curl-download
         if: ${{ failure() && steps.aria2-download.conclusion == 'failure' }}
         continue-on-error: true
+        timeout-minutes: 180
         env:
           FILE_NAME: ${{ steps.file-info.outputs.FILE_NAME }}
         working-directory: "${{ env.PATH_output }}"
