@@ -66,7 +66,7 @@ jobs:
         run: |
           echo -e "Current working directory: $(pwd)"
           ls -lh ./
-
+          echo -e "========== Checkin Container =========="
           run_root() {
             if command -v sudo >/dev/null 2>&1; then
               sudo "$@"
@@ -76,23 +76,22 @@ jobs:
           }
           run_root apt-get -yqq update
           run_root apt-get -yqq install aria2 ca-certificates curl xz-utils
-          aria2c --version | head -n 1
+          aria2c --version
           curl --version
           xz --version
 
       - name: Resolve File Name
         id: file-info
+        if: ${{ success() }}
         working-directory: /
         run: |
           mkdir -p ${{ env.PATH_output }}
           cd "${{ env.PATH_output }}"
           echo -e "Current working directory: $(pwd)"
           ls -lh ./
-
-          # ========== Mask File ==========
+          echo -e "# ========== Mask File =========="
           probe_headers="$(mktemp)"
           trap 'rm -f "${probe_headers}"' EXIT
-
           FILE_NAME=""
           probe_url="$(curl -fsSLI -D "${probe_headers}" -o /dev/null -w '%{url_effective}' "${FILE_URL}" || true)"
           content_disposition="$({ awk 'BEGIN { IGNORECASE = 1 } /^Content-Disposition:/ { sub(/\r$/, ""); print; exit }' "${probe_headers}"; } || true)"
@@ -128,8 +127,9 @@ jobs:
             echo "FILE_NAME=${FILE_NAME}"
           } | tee -a "${GITHUB_OUTPUT}"
 
-      - name: Download with curl
-        id: curl-download
+      - name: Download with aria2
+        id: aria2-download
+        if: ${{ steps.file-info.conclusion == 'success' }}
         continue-on-error: true
         env:
           FILE_NAME: ${{ steps.file-info.outputs.FILE_NAME }}
@@ -137,34 +137,6 @@ jobs:
         run: |
           echo -e "Current working directory: $(pwd)"
           ls -lh ./
-
-          echo -e "========== Download File with curl =========="
-          curl \
-            --retry 3 \
-            --retry-all-errors \
-            --retry-delay 1 \
-            --retry-max-time 30 \
-            --connect-timeout 15 \
-            -C - \
-            --http2 \
-            -L \
-            --fail-with-body \
-            --progress-bar \
-            --create-dirs \
-            -o "${FILE_NAME}" \
-            "${FILE_URL}"
-          ls -lh ./
-
-      - name: Download with aria2
-        id: aria2-download
-        # if: ${{ steps.curl-download.outcome != 'success' }}
-        env:
-          FILE_NAME: ${{ steps.file-info.outputs.FILE_NAME }}
-        working-directory: "${{ env.PATH_output }}"
-        run: |
-          echo -e "Current working directory: $(pwd)"
-          ls -lh ./
-
           echo -e "========== Download File with aria2 =========="
           aria2c \
             --continue=true \
@@ -179,6 +151,33 @@ jobs:
             --auto-file-renaming=false \
             --dir="${{ env.PATH_output }}" \
             --out="${FILE_NAME}" \
+            "${FILE_URL}"
+          ls -lh ./
+
+      - name: Download with curl
+        id: curl-download
+        if: ${{ failure() && steps.aria2-download.conclusion == 'failure' }}
+        continue-on-error: true
+        env:
+          FILE_NAME: ${{ steps.file-info.outputs.FILE_NAME }}
+        working-directory: "${{ env.PATH_output }}"
+        run: |
+          echo -e "Current working directory: $(pwd)"
+          ls -lh ./
+          echo -e "========== Download File with curl =========="
+          curl \
+            --retry 3 \
+            --retry-all-errors \
+            --retry-delay 1 \
+            --retry-max-time 30 \
+            --connect-timeout 15 \
+            -C - \
+            --http2 \
+            -L \
+            --fail-with-body \
+            --progress-bar \
+            --create-dirs \
+            -o "${FILE_NAME}" \
             "${FILE_URL}"
           ls -lh ./
 
