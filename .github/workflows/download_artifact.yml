@@ -124,7 +124,7 @@ jobs:
           echo -e "::add-mask::$FILE_NAME"
 
           # ========== Download File ==========
-          echo -e "Downloading file"
+          echo -e "========== Download File =========="
           curl \
             --retry 3 \
             --retry-all-errors \
