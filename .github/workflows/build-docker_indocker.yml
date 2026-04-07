@@ -139,7 +139,7 @@ jobs:
       metadata_app_path: "/builder/metadata/metadata_app.json"
       metadata_sum_path: "/builder/metadata/metadata_sum.json"
       docker_data_root: "/builder/docker-data"
-      registry_local: "localhost:5000"
+      registry_local: "127.0.0.1:5000"
       MD_release: "/builder/release.md"
     steps:
       # ========== Pre: Settings ==========
@@ -174,6 +174,22 @@ jobs:
       - name: Docker Workspace All in One
         id: docker-workspace
         uses: Grinch27/github-actions/.github/actions/env-indocker@main
+
+      - name: (Setup) Workspace Directories
+        id: setup-workspace
+        working-directory: /
+        run: |
+          echo -e "Current working directory: $(pwd)"
+
+          mkdir -p \
+            "${PATH_build}" \
+            "${PATH_output}" \
+            "${PATH_backup}" \
+            "${PATH_metadata}" \
+            "${docker_data_root}" \
+            "$(dirname "${MD_release}")"
+
+          df -hT /
 
       - name: Clone self
         id: clone-self
@@ -270,9 +286,17 @@ jobs:
           daemon_file="/etc/docker/daemon.json"
           temp_file=$(mktemp)
           if test -s "${daemon_file}"; then
-            jq --arg root "${docker_data_root}" '. + {"data-root": $root}' "${daemon_file}" > "${temp_file}"
+            jq \
+              --arg root "${docker_data_root}" \
+              --arg registry "${registry_local}" \
+              '. + {"data-root": $root}
+              | .["insecure-registries"] = (((.["insecure-registries"] // []) + [$registry]) | unique)' \
+              "${daemon_file}" > "${temp_file}"
           else
-            jq -n --arg root "${docker_data_root}" '{"data-root": $root}' > "${temp_file}"
+            jq -n \
+              --arg root "${docker_data_root}" \
+              --arg registry "${registry_local}" \
+              '{"data-root": $root, "insecure-registries": [$registry]}' > "${temp_file}"
           fi
           cp "${temp_file}" "${daemon_file}"
 
@@ -550,8 +574,20 @@ jobs:
         run: |
           echo "Current working directory: $(pwd)"
 
+          buildkitd_config=$(mktemp)
+          cat > "${buildkitd_config}" <<EOF
+          [registry."${registry_local}"]
+            http = true
+            insecure = true
+          EOF
+
           docker buildx rm builder >/dev/null 2>&1 || true
-          docker buildx create --name builder --driver docker-container --use
+          docker buildx create \
+            --name builder \
+            --driver docker-container \
+            --driver-opt network=host \
+            --buildkitd-config "${buildkitd_config}" \
+            --use
           docker buildx inspect --bootstrap
 
       - name: (Service) Local Registry
@@ -568,7 +604,20 @@ jobs:
             --detach \
             --network host \
             registry:latest
-          echo "status=success" | tee -a "${GITHUB_OUTPUT}"
+
+          for _ in $(seq 1 30); do
+            if curl -fsS "http://${registry_local}/v2/" >/dev/null; then
+              echo "status=success" | tee -a "${GITHUB_OUTPUT}"
+              exit 0
+            fi
+
+            echo "Waiting for local registry at http://${registry_local}/v2/"
+            sleep 2
+          done
+
+          docker logs registry || true
+          echo "::error::Local registry is not reachable at http://${registry_local}/v2/"
+          exit 1
 
       - name: Build and push to local registry
         id: build
