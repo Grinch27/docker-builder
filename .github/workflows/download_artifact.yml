@@ -135,7 +135,7 @@ jobs:
           {
             echo "FILE_NAME=${FILE_NAME}"
             echo "FILE_EXT=${FILE_EXT}"
-          } >> "${GITHUB_ENV}" "${GITHUB_OUTPUT}"
+          } >> "${GITHUB_OUTPUT}"
 
       - name: Compress
         id: file-compress
