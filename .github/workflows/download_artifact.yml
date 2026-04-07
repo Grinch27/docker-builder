@@ -43,14 +43,16 @@ jobs:
       FORCE_UNSAFE_CONFIGURE: "1"
       # ========= Workspace Environment Variables ==========
       compress: true
-      PATH_output: "${{ github.workspace }}/output"
+      PATH_output: "/output"
     steps:
       - name: Set File URL
+        working-directory: /
         run: |
           echo "::add-mask::${{ github.event.inputs.file_url }}"
           echo "FILE_URL=${{ github.event.inputs.file_url }}" >> $GITHUB_ENV
 
       - name: Install Download Tools
+        working-directory: /
         run: |
           run_root() {
             if command -v sudo >/dev/null 2>&1; then
@@ -68,6 +70,7 @@ jobs:
 
       - name: Download File
         id: download-file
+        working-directory: /
         run: |
           mkdir -p ${{ env.PATH_output }}
           FILE_NAME=$(basename $FILE_URL)
@@ -81,16 +84,14 @@ jobs:
           curl -sL $FILE_URL -o "${{ env.PATH_output }}/${FILE_NAME}"
           echo "FILE_NAME=${FILE_NAME}" >> $GITHUB_ENV
           echo "FILE_EXT=${FILE_EXT}" >> $GITHUB_ENV
-          echo "file_name=${FILE_NAME}" >> $GITHUB_OUTPUT
-          echo "file_ext=${FILE_EXT}" >> $GITHUB_OUTPUT
 
       - name: Compress File with Advanced Settings
         id: output-compress
         uses: Grinch27/github-actions/.github/actions/compress-xz@main
         with:
           path_target: ${{ env.PATH_output }}
-          input_ext: ${{ steps.download-file.outputs.file_ext }}
-          split_size: "1900M"
+          input_ext: ${{ steps.download-file.outputs.FILE_EXT }}
+          split_size: "1999M"
           split_threshold: "2000000000"
           mem_hold: "2048"
           memlimit: "4GiB"
@@ -98,6 +99,6 @@ jobs:
       - name: Upload to artifacts
         uses: actions/upload-artifact@main
         with:
-          name: compressed-file
+          name: ${{ steps.download-file.outputs.FILE_NAME }}
           path: "${{ env.PATH_output }}/*.${{ steps.output-compress.outputs.target_ext }}*"
           retention-days: 1
