@@ -50,6 +50,22 @@ jobs:
           echo "::add-mask::${{ github.event.inputs.file_url }}"
           echo "FILE_URL=${{ github.event.inputs.file_url }}" >> $GITHUB_ENV
 
+      - name: Install Download Tools
+        run: |
+          run_root() {
+            if command -v sudo >/dev/null 2>&1; then
+              sudo "$@"
+            else
+              "$@"
+            fi
+          }
+
+          run_root apt-get -yqq update
+          run_root apt-get -yqq install ca-certificates curl xz-utils
+
+          curl --version
+          xz --version
+
       - name: Download File
         id: download-file
         run: |
