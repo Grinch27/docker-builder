@@ -45,11 +45,19 @@ jobs:
       compress: true
       PATH_output: "/output"
     steps:
-      - name: Set File URL
-        working-directory: /
-        run: |
-          echo "::add-mask::${{ github.event.inputs.file_url }}"
-          echo "FILE_URL=${{ github.event.inputs.file_url }}" >> $GITHUB_ENV
+      - name: Prepare masked file URL
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fileUrl = context.payload.inputs.file_url
+            core.setSecret(fileUrl)
+            core.exportVariable('FILE_URL', fileUrl)
+
+      # - name: Set File URL
+      #   working-directory: /
+      #   run: |
+      #     echo "::add-mask::${{ github.event.inputs.file_url }}"
+      #     echo "FILE_URL=${{ github.event.inputs.file_url }}" >> $GITHUB_ENV
 
       - name: Install Download Tools
         working-directory: /
@@ -73,19 +81,19 @@ jobs:
         working-directory: /
         run: |
           mkdir -p ${{ env.PATH_output }}
-          FILE_NAME=$(basename ${FILE_URL})
+          FILE_NAME=$(basename "${FILE_URL}")
           FILE_EXT="${FILE_NAME##*.}"
           if [[ "${FILE_NAME}" == "${FILE_EXT}" ]]; then
             echo "::error::Unable to detect file extension from ${FILE_NAME}"
             exit 1
           fi
           echo "::add-mask::$FILE_NAME"
-          echo "Downloading file from ${FILE_URL}"
-          curl -sL ${FILE_URL} -o "${{ env.PATH_output }}/${FILE_NAME}"
+          echo "Downloading file"
+          curl -sL "${FILE_URL}" -o "${{ env.PATH_output }}/${FILE_NAME}"
           {
             echo "FILE_NAME=${FILE_NAME}"
             echo "FILE_EXT=${FILE_EXT}"
-          } | tee -a "${GITHUB_ENV}" "${GITHUB_OUTPUT}"
+          } | tee -a "${GITHUB_ENV}" "${GITHUB_OUTPUT}" >/dev/null
 
       - name: Compress File with Advanced Settings
         id: output-compress
