@@ -153,5 +153,5 @@ jobs:
         uses: actions/upload-artifact@main
         with:
           name: ${{ steps.file-download.outputs.FILE_NAME }}
-          path: "${{ env.PATH_output }}/.*"
+          path: "${{ env.PATH_output }}/*"
           retention-days: 1
