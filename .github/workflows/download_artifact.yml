@@ -10,6 +10,11 @@ on:
         type: string
         required: true
         default: "https://dl.google.com/chrome/install/ChromeStandaloneSetup64.exe"
+      compress_artifact:
+        description: "Whether to compress and split the downloaded artifact"
+        type: boolean
+        required: false
+        default: false
 
 run-name: Download to Artifact
 
@@ -186,6 +191,7 @@ jobs:
 
       - name: Compress Artifact
         id: compress-artifact
+        if: ${{ inputs.compress_artifact }}
         uses: Grinch27/github-actions/.github/actions/compress-xz@main
         with:
           path_target: ${{ env.PATH_output }}
