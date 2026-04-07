@@ -1,4 +1,4 @@
-name: Download File to Artifact
+name: Download to Artifact
 # https://docs.github.com/zh/actions/reference/workflows-and-actions/workflow-syntax
 
 on:
@@ -10,11 +10,11 @@ on:
         required: true
         default: "https://dl.google.com/chrome/install/ChromeStandaloneSetup64.exe"
 
-run-name: Download File to Artifact
+run-name: Download to Artifact
 
 jobs:
   download:
-    name: Download File to Artifact
+    name: Download to Artifact
     runs-on: ubuntu-latest
     permissions: write-all
     defaults:
