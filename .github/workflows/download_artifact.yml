@@ -81,7 +81,7 @@ jobs:
           xz --version
 
       - name: Resolve File Name
-        id: file-download
+        id: file-info
         working-directory: /
         run: |
           mkdir -p ${{ env.PATH_output }}
@@ -132,11 +132,9 @@ jobs:
         id: curl-download
         continue-on-error: true
         env:
-          FILE_NAME: ${{ steps.file-download.outputs.FILE_NAME }}
-        working-directory: /
+          FILE_NAME: ${{ steps.file-info.outputs.FILE_NAME }}
+        working-directory: "${{ env.PATH_output }}"
         run: |
-          mkdir -p ${{ env.PATH_output }}
-          cd "${{ env.PATH_output }}"
           echo -e "Current working directory: $(pwd)"
           ls -lh ./
 
@@ -161,11 +159,9 @@ jobs:
         id: aria2-download
         # if: ${{ steps.curl-download.outcome != 'success' }}
         env:
-          FILE_NAME: ${{ steps.file-download.outputs.FILE_NAME }}
-        working-directory: /
+          FILE_NAME: ${{ steps.file-info.outputs.FILE_NAME }}
+        working-directory: "${{ env.PATH_output }}"
         run: |
-          mkdir -p ${{ env.PATH_output }}
-          cd "${{ env.PATH_output }}"
           echo -e "Current working directory: $(pwd)"
           ls -lh ./
 
@@ -201,6 +197,6 @@ jobs:
         id: file-artifact
         uses: actions/upload-artifact@main
         with:
-          name: ${{ steps.file-download.outputs.FILE_NAME }}
+          name: ${{ steps.file-info.outputs.FILE_NAME }}
           path: "${{ env.PATH_output }}/*"
           retention-days: 1
