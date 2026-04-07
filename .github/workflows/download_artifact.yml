@@ -82,15 +82,14 @@ jobs:
 
       - name: Download
         id: file-download
-        working-directory: /
         env:
           GH_TOKEN: ${{ github.token }}
+        working-directory: /
         run: |
-          echo -e "Current working directory: $(pwd)"
-          ls -lh ./
-
           mkdir -p ${{ env.PATH_output }}
           cd "${{ env.PATH_output }}"
+          echo -e "Current working directory: $(pwd)"
+          ls -lh ./
 
           probe_headers="$(mktemp)"
           trap 'rm -f "${probe_headers}"' EXIT
