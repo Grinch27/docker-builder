@@ -807,6 +807,8 @@ jobs:
           target_ext: ${{ steps.output.outputs.target_ext }}
           split_size: "1900M"
           split_threshold: "2000000000"
+          mem_hold: 2048
+          memlimit: "4GiB"
         working-directory: ${{ env.PATH_output }}
         run: |
           echo -e "Current working directory: $(pwd)"
@@ -815,12 +817,9 @@ jobs:
           free -h
           available_mem=$(free -m | awk '/^Mem:/{print $7}')
           echo "Available memory: ${available_mem} MiB"
-          reserve_mem=2048
           if [[ "${available_mem}" -gt 6144 ]]; then
-            memlimit=$((${available_mem} - ${reserve_mem}))
+            memlimit=$((${available_mem} - ${mem_hold}))
             memlimit="${memlimit}MiB"
-          else
-            memlimit="4GiB"
           fi
           echo "Set memlimit: ${memlimit}"
 
