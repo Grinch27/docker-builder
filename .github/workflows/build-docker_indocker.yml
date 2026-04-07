@@ -816,12 +816,12 @@ jobs:
 
           free -h
           available_mem=$(free -m | awk '/^Mem:/{print $7}')
-          echo "Available memory: ${available_mem} MiB"
+          echo -e "Available memory: ${available_mem} MiB"
           if [[ "${available_mem}" -gt 6144 ]]; then
             memlimit=$((${available_mem} - ${mem_hold}))
             memlimit="${memlimit}MiB"
           fi
-          echo "Set memlimit: ${memlimit}"
+          echo -e "memlimit: ${memlimit}"
 
           for file in ./*.${target_ext}; do
             if [[ ! -f "${file}" || -d "${file}" ]]; then
@@ -840,8 +840,11 @@ jobs:
             compressed_file="${file}.xz"
             compressed_size=$(du -b "${compressed_file}" | cut -f1)
             if [[ "${compressed_size}" -gt "${split_threshold}" ]]; then
-              echo "Split ${compressed_file} with chunk size ${split_size}"
-              split -b "${split_size}" --numeric-suffixes=1 --suffix-length=3 "${compressed_file}" "${compressed_file}.part"
+              echo -e "Split ${compressed_file} with chunk size ${split_size}"
+              split -b "${split_size}" \
+                --numeric-suffixes=1 \
+                --suffix-length=3 \
+                "${compressed_file}" "${compressed_file}.part"
               rm -f "${compressed_file}"
               ls -lh "${compressed_file}.part"*
             fi
