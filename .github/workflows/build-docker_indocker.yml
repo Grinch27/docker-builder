@@ -803,56 +803,14 @@ jobs:
       - name: (Output) Compress
         id: output-compress
         if: steps.output.outputs.status == 'success' && steps.env-validate.outputs.compress == 'true' && !cancelled()
-        env:
-          target_ext: ${{ steps.output.outputs.target_ext }}
+        uses: Grinch27/github-actions/.github/actions/compress-xz@main
+        with:
+          path_target: ${{ env.PATH_output }}
+          input_ext: ${{ steps.output.outputs.target_ext }}
           split_size: "1900M"
           split_threshold: "2000000000"
-          mem_hold: 2048
+          mem_hold: "2048"
           memlimit: "4GiB"
-        working-directory: ${{ env.PATH_output }}
-        run: |
-          echo -e "Current working directory: $(pwd)"
-          ls -lh ./
-
-          free -h
-          available_mem=$(free -m | awk '/^Mem:/{print $7}')
-          echo -e "Available memory: ${available_mem} MiB"
-          if [[ "${available_mem}" -gt 6144 ]]; then
-            memlimit=$((${available_mem} - ${mem_hold}))
-            memlimit="${memlimit}MiB"
-          fi
-          echo -e "memlimit: ${memlimit}"
-
-          for file in ./*.${target_ext}; do
-            if [[ ! -f "${file}" || -d "${file}" ]]; then
-              continue
-            fi
-
-            xz --compress \
-              --threads=0 \
-              -9 \
-              --extreme \
-              --memlimit-compress="${memlimit}" \
-              --check=sha256 \
-              --verbose \
-              "${file}"
-
-            compressed_file="${file}.xz"
-            compressed_size=$(du -b "${compressed_file}" | cut -f1)
-            if [[ "${compressed_size}" -gt "${split_threshold}" ]]; then
-              echo -e "Split ${compressed_file} with chunk size ${split_size}"
-              split -b "${split_size}" \
-                --numeric-suffixes=1 \
-                --suffix-length=3 \
-                "${compressed_file}" "${compressed_file}.part"
-              rm -f "${compressed_file}"
-              ls -lh "${compressed_file}.part"*
-            fi
-          done
-
-          ls -lh ./
-          echo "target_ext=xz" | tee -a "${GITHUB_OUTPUT}"
-          echo "status=success" | tee -a "${GITHUB_OUTPUT}"
 
       - name: (Output) Check
         id: output-check
