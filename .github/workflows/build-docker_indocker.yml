@@ -173,22 +173,6 @@ jobs:
         id: docker-workspace
         uses: Grinch27/github-actions/.github/actions/env-indocker@main
 
-      - name: (Setup) Workspace Directories
-        id: setup-workspace
-        working-directory: /
-        run: |
-          echo -e "Current working directory: $(pwd)"
-
-          mkdir -p \
-            "${PATH_build}" \
-            "${PATH_output}" \
-            "${PATH_backup}" \
-            "${PATH_metadata}" \
-            "${PATH_docker_data}" \
-            "$(dirname "${PATH_release}")"
-
-          df -hT /
-
       - name: Clone self
         id: clone-self
         working-directory: /
