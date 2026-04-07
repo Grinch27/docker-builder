@@ -128,12 +128,12 @@ jobs:
           curl \
             --retry 3 \
             --retry-all-errors \
-            -C - \ # 断点续传
+            -C - \
             --http2 \
-            -L \ # 自动跟随重定向
-            --fail-with-body \ # 失败调试信息
-            --progress-bar \ # 进度条
-            --create-dirs \ # 自动创建目录
+            -L \
+            --fail-with-body \
+            --progress-bar \
+            --create-dirs \
             -o "${FILE_NAME}" \
             "${FILE_URL}"
 
