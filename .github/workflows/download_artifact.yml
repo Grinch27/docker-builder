@@ -75,11 +75,12 @@ jobs:
             fi
           }
           run_root apt-get -yqq update
-          run_root apt-get -yqq install ca-certificates curl xz-utils
+          run_root apt-get -yqq install aria2 ca-certificates curl xz-utils
+          aria2c --version | head -n 1
           curl --version
           xz --version
 
-      - name: Download
+      - name: Resolve File Name
         id: file-download
         working-directory: /
         run: |
@@ -123,11 +124,29 @@ jobs:
           fi
           echo -e "::add-mask::$FILE_NAME"
 
-          # ========== Download File ==========
-          echo -e "========== Download File =========="
+          {
+            echo "FILE_NAME=${FILE_NAME}"
+          } | tee -a "${GITHUB_OUTPUT}"
+
+      - name: Download with curl
+        id: curl-download
+        continue-on-error: true
+        env:
+          FILE_NAME: ${{ steps.file-download.outputs.FILE_NAME }}
+        working-directory: /
+        run: |
+          mkdir -p ${{ env.PATH_output }}
+          cd "${{ env.PATH_output }}"
+          echo -e "Current working directory: $(pwd)"
+          ls -lh ./
+
+          echo -e "========== Download File with curl =========="
           curl \
             --retry 3 \
             --retry-all-errors \
+            --retry-delay 1 \
+            --retry-max-time 30 \
+            --connect-timeout 15 \
             -C - \
             --http2 \
             -L \
@@ -136,12 +155,36 @@ jobs:
             --create-dirs \
             -o "${FILE_NAME}" \
             "${FILE_URL}"
-
           ls -lh ./
 
-          {
-            echo "FILE_NAME=${FILE_NAME}"
-          } | tee -a "${GITHUB_OUTPUT}"
+      - name: Download with aria2
+        id: aria2-download
+        # if: ${{ steps.curl-download.outcome != 'success' }}
+        env:
+          FILE_NAME: ${{ steps.file-download.outputs.FILE_NAME }}
+        working-directory: /
+        run: |
+          mkdir -p ${{ env.PATH_output }}
+          cd "${{ env.PATH_output }}"
+          echo -e "Current working directory: $(pwd)"
+          ls -lh ./
+
+          echo -e "========== Download File with aria2 =========="
+          aria2c \
+            --continue=true \
+            --max-tries=4 \
+            --retry-wait=1 \
+            --timeout=30 \
+            --connect-timeout=15 \
+            --file-allocation=none \
+            --summary-interval=1 \
+            --console-log-level=warn \
+            --allow-overwrite=true \
+            --auto-file-renaming=false \
+            --dir="${{ env.PATH_output }}" \
+            --out="${FILE_NAME}" \
+            "${FILE_URL}"
+          ls -lh ./
 
       - name: Compress
         id: file-compress
