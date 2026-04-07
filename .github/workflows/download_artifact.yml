@@ -1,0 +1,83 @@
+name: Download File to Artifact
+
+on:
+  workflow_dispatch:
+    inputs:
+      file_url:
+        description: "URL of the file to download"
+        type: string
+        required: true
+        default: "https://dl.google.com/chrome/install/ChromeStandaloneSetup64.exe"
+
+run-name: Download File to Artifact
+
+jobs:
+  download:
+    name: Download File to Artifact
+    runs-on: ubuntu-latest
+    env:
+      compress: true
+      PATH_output: "${{ github.workspace }}/output"
+      target_ext: "xz"
+    steps:
+      - name: Set File URL
+        run: |
+          echo "::add-mask::${{ github.event.inputs.file_url }}"
+          echo "FILE_URL=${{ github.event.inputs.file_url }}" >> $GITHUB_ENV
+
+      - name: Download File
+        run: |
+          mkdir -p ${{ env.PATH_output }}
+          FILE_NAME=$(basename $FILE_URL)
+          echo "::add-mask::$FILE_NAME"
+          echo "Downloading file from $FILE_URL"
+          curl -sL $FILE_URL -o "${{ env.PATH_output }}/${FILE_NAME}"
+          echo "FILE_NAME=${FILE_NAME}" >> $GITHUB_ENV
+
+      - name: Compress File with Advanced Settings
+        run: |
+          FILE_NAME=${{ env.FILE_NAME }}
+          COMPRESSED_FILE="${{ env.PATH_output }}/${FILE_NAME}.${{ env.target_ext }}"
+          echo "::add-mask::$COMPRESSED_FILE"
+
+          # Determine memory limit for compression based on available memory
+          available_mem=$(free -m | awk '/^Mem:/{print $7}')
+          reserve_mem=2048
+          echo "Available memory: ${available_mem} MiB"
+          if [ "${available_mem}" -gt 6144 ]; then
+            memlimit=$((${available_mem} - ${reserve_mem}))"MiB"
+          else
+            memlimit="4GiB"
+          fi
+          echo "Setting memory limit: $memlimit"
+
+          # Perform compression using xz with memory limits and maximum compression settings
+          xz --compress \
+            --threads=0 \
+            -9 \
+            --extreme \
+            --memlimit-compress=${memlimit} \
+            --check=sha256 \
+            --verbose \
+            "${{ env.PATH_output }}/${FILE_NAME}"
+
+          echo "File compressed as $COMPRESSED_FILE"
+          echo "COMPRESSED_FILE=${COMPRESSED_FILE}" >> $GITHUB_ENV
+
+      # - name: (Output) Compress
+      #   id: output-compress
+      #   uses: Grinch27/github-actions/.github/actions/compress-xz@main
+      #   with:
+      #     path_target: ${{ env.PATH_output }}
+      #     input_ext: ${{ steps.output.outputs.target_ext }}
+      #     split_size: "1900M"
+      #     split_threshold: "2000000000"
+      #     mem_hold: "2048"
+      #     memlimit: "4GiB"
+
+      - name: Upload to artifacts
+        uses: actions/upload-artifact@main
+        with:
+          name: compressed-file
+          path: "${{ env.PATH_output }}/*.${{ env.target_ext }}"
+          retention-days: ${{ env.retention_days || '1' }}
