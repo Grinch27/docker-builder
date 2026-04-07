@@ -75,15 +75,12 @@ jobs:
             fi
           }
           run_root apt-get -yqq update
-          run_root apt-get -yqq install ca-certificates curl jq xz-utils
+          run_root apt-get -yqq install ca-certificates curl xz-utils
           curl --version
-          jq --version
           xz --version
 
       - name: Download
         id: file-download
-        env:
-          GH_TOKEN: ${{ github.token }}
         working-directory: /
         run: |
           mkdir -p ${{ env.PATH_output }}
@@ -91,6 +88,7 @@ jobs:
           echo -e "Current working directory: $(pwd)"
           ls -lh ./
 
+          # ========== Mask File ==========
           probe_headers="$(mktemp)"
           trap 'rm -f "${probe_headers}"' EXIT
 
@@ -121,35 +119,20 @@ jobs:
           fi
 
           if [[ -z "${FILE_NAME}" || "${FILE_NAME}" == "/" || "${FILE_NAME}" == "." ]]; then
-            FILE_NAME="$(curl -fsSL \
-              -H "Authorization: Bearer ${GH_TOKEN}" \
-              -H "Accept: application/vnd.github+json" \
-              "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs?per_page=100" \
-              | jq -r '.jobs[0].id // empty' 2>/dev/null || true)"
+            FILE_NAME="${{ job.check_run_id }}"
           fi
-
-          if [[ -z "${FILE_NAME}" || "${FILE_NAME}" == "/" || "${FILE_NAME}" == "." ]]; then
-            FILE_NAME="${GITHUB_RUN_ID}"
-          fi
-
           echo -e "::add-mask::$FILE_NAME"
+
+          # ========== Download File ==========
           echo -e "Downloading file"
           curl -fL --progress-bar "${FILE_URL}" -o "${FILE_NAME}"
           if [[ ! -f "${FILE_NAME}" ]]; then
             echo -e "::error::Downloaded file not found: ${FILE_NAME}"
-            exit 1
-          fi
-
-          if [[ "${FILE_NAME}" == *.* ]]; then
-            FILE_EXT="${FILE_NAME##*.}"
-          else
-            FILE_EXT=""
           fi
 
           {
             echo "FILE_NAME=${FILE_NAME}"
-            echo "FILE_EXT=${FILE_EXT}"
-          } >> "${GITHUB_OUTPUT}"
+          } | tee -a "${GITHUB_OUTPUT}"
 
       - name: Compress
         id: file-compress
