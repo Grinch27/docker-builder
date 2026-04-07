@@ -80,19 +80,26 @@ jobs:
         working-directory: /
         run: |
           mkdir -p ${{ env.PATH_output }}
-          FILE_NAME=$(basename "${FILE_URL}")
+          cd "${{ env.PATH_output }}"
+
+          echo -e "Downloading file"
+          FILE_NAME="$(curl -fsSLJO -w '%{filename_effective}' "${FILE_URL}")"
+          if [[ -z "${FILE_NAME}" || ! -f "${FILE_NAME}" ]]; then
+            echo -e "::error::Unable to determine downloaded file name"
+            exit 1
+          fi
+
+          echo -e "::add-mask::$FILE_NAME"
           FILE_EXT="${FILE_NAME##*.}"
           if [[ "${FILE_NAME}" == "${FILE_EXT}" ]]; then
             echo -e "::error::Unable to detect file extension from ${FILE_NAME}"
             exit 1
           fi
-          echo -e "::add-mask::$FILE_NAME"
-          echo -e "Downloading file"
-          curl -sL "${FILE_URL}" -o "${{ env.PATH_output }}/${FILE_NAME}"
+
           {
             echo -e "FILE_NAME=${FILE_NAME}"
             echo -e "FILE_EXT=${FILE_EXT}"
-          } | tee -a "${GITHUB_ENV}" "${GITHUB_OUTPUT}"
+          } | tee -a "${GITHUB_ENV}" "${GITHUB_OUTPUT}" >/dev/null
 
       - name: Compress
         id: file-compress
