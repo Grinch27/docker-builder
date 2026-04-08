@@ -159,6 +159,7 @@ jobs:
           # https://aria2.github.io/manual/en/html/aria2c.html
           echo -e "========== Download File with aria2 =========="
           # --header="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.6980.95 Safari/537.36" \
+          # aria2c --load-cookies=cookies.txt "http://host/file.zip"
           # debug, info, notice, warn, error
           aria2c \
             --summary-interval=${INTERVAL_LOG} \
@@ -178,12 +179,13 @@ jobs:
             --auto-file-renaming=false \
             --dir="${{ env.PATH_output }}" \
             --out="${FILE_NAME}" \
+            --follow-torrent=mem \
             --bt-tracker="https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_all.txt" \
             --enable-dht \
             --enable-dht6 \
             --bt-max-peers=0 \
             --bt-require-crypto \
-            --follow-torrent=mem \
+            --follow-metalink=mem \
             "${FILE_URL}"
           ls -lh ./
 
