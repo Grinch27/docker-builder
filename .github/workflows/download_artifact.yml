@@ -23,6 +23,17 @@ on:
           - "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.6882.91 Safari/537.36"
           - "aria2/1.37.0"
         required: false
+      log-level:
+        description: "Log Level for aria2"
+        type: choice
+        options:
+          - "debug"
+          - "info"
+          - "notice"
+          - "warn"
+          - "error"
+        required: false
+        default: "notice"
       toggle_compress:
         description: "to Compress"
         type: boolean
@@ -161,6 +172,7 @@ jobs:
         env:
           FILE_NAME: ${{ steps.file-info.outputs.FILE_NAME }}
           INTERVAL_LOG: ${{ fromJSON('1') }}
+          LOG_LEVEL: ${{ inputs.log-level || 'notice' }}
         working-directory: "${{ env.PATH_output }}"
         run: |
           echo -e "Current working directory: $(pwd)"
