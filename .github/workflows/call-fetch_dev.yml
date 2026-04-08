@@ -6,6 +6,10 @@ on:
   repository_dispatch:
   workflow_dispatch:
   push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/call-fetch_dev.yml
 
 jobs:
   fetch:
