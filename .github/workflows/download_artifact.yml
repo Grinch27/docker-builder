@@ -3,18 +3,20 @@ name: Download to Artifact
 # https://docs.github.com/zh/actions/reference/workflows-and-actions/expressions
 
 on:
-  # push:
-  #   branches:
-  #     - main
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/download_artifact.yml
   workflow_dispatch:
     inputs:
       file_url:
-        description: "to Download URL"
+        description: "URL to Download"
         type: string
         required: true
         default: "https://dl.google.com/chrome/install/ChromeStandaloneSetup64.exe"
       compress_artifact:
-        description: "to Compress Artifact"
+        description: "to Compress"
         type: boolean
         required: false
         default: false
