@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       file_url:
-        description: "URL to download"
+        description: "to Download URL"
         type: string
         required: true
         default: "https://dl.google.com/chrome/install/ChromeStandaloneSetup64.exe"
@@ -166,7 +166,7 @@ jobs:
             --dir="${{ env.PATH_output }}" \
             --out="${FILE_NAME}" \
             --bt-tracker="https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_all.txt" \
-            --bt-max-peers \
+            --bt-max-peers=0 \
             --bt-require-crypto \
             --follow-torrent=mem \
             "${FILE_URL}"
