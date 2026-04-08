@@ -81,7 +81,7 @@ jobs:
       # ========= Workspace Environment Variables ==========
       compress: true
       PATH_output: "/output"
-      UA: "${{ inputs.toggle_user-agent || 'aria2/1.37.0' }}"
+      UA: "${{ inputs.user-agent || 'aria2/1.37.0' }}"
     steps:
       - name: Masked file URL
         id: mask-url
