@@ -20,6 +20,11 @@ on:
         type: boolean
         required: false
         default: false
+      interval_log:
+        description: "Interval of Log Output (seconds)"
+        type: number
+        required: false
+        default: 3
 
 run-name: Download to Artifact
 
@@ -123,7 +128,8 @@ jobs:
           fi
 
           if [[ -z "${FILE_NAME}" ]]; then
-            fallback_url="${probe_url:-${FILE_URL}}"
+            # fallback_url="${probe_url:-${FILE_URL}}"
+            fallback_url="${FILE_URL}"
             fallback_url="${fallback_url%%\?*}"
             fallback_url="${fallback_url%%\#*}"
             FILE_NAME="$(basename "${fallback_url}")"
@@ -145,6 +151,7 @@ jobs:
         timeout-minutes: ${{ fromJSON('180') }}
         env:
           FILE_NAME: ${{ steps.file-info.outputs.FILE_NAME }}
+          INTERVAL_LOG: ${{ inputs.interval_log || '3'}}
         working-directory: "${{ env.PATH_output }}"
         run: |
           echo -e "Current working directory: $(pwd)"
@@ -152,10 +159,11 @@ jobs:
           # https://aria2.github.io/manual/en/html/aria2c.html
           echo -e "========== Download File with aria2 =========="
           # --header="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.6980.95 Safari/537.36" \
+          # debug, info, notice, warn or error
           aria2c \
-            --summary-interval=1 \
-            --human-readable \
+            --summary-interval=${INTERVAL_LOG} \
             --console-log-level=info \
+            --human-readable \
             --continue=true \
             --max-tries=3 \
             --retry-wait=1 \
