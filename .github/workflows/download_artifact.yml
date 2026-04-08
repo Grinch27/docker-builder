@@ -20,11 +20,6 @@ on:
         type: boolean
         required: false
         default: false
-      interval_log:
-        description: "Interval of Log Output (seconds)"
-        type: number
-        required: false
-        default: 1
 
 run-name: Download to Artifact
 
@@ -151,7 +146,7 @@ jobs:
         timeout-minutes: ${{ fromJSON('180') }}
         env:
           FILE_NAME: ${{ steps.file-info.outputs.FILE_NAME }}
-          INTERVAL_LOG: ${{ inputs.interval_log || 1 }}
+          INTERVAL_LOG: 1
         working-directory: "${{ env.PATH_output }}"
         run: |
           echo -e "Current working directory: $(pwd)"
