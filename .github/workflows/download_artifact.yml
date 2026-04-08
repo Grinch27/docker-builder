@@ -209,6 +209,8 @@ jobs:
             --bt-require-crypto \
             --follow-metalink=mem \
             --user-agent="${UA}" \
+            --referer="${FILE_URL}" \
+            --parameterized-uri \
             "${FILE_URL}"
           ls -lh ./
 
