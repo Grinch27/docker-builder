@@ -3,11 +3,11 @@ name: Download to Artifact
 # https://docs.github.com/zh/actions/reference/workflows-and-actions/expressions
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - .github/workflows/download_artifact.yml
+  # push:
+  #   branches:
+  #     - main
+  #   paths:
+  #     - .github/workflows/download_artifact.yml
   workflow_dispatch:
     inputs:
       file_url:
