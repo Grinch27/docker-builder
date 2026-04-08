@@ -15,8 +15,13 @@ on:
         type: string
         required: true
         default: "https://dl.google.com/chrome/install/ChromeStandaloneSetup64.exe"
-      compress_artifact:
+      toggle_compress:
         description: "to Compress"
+        type: boolean
+        required: false
+        default: false
+      toggle_split:
+        description: "to Split"
         type: boolean
         required: false
         default: false
@@ -212,7 +217,7 @@ jobs:
 
       - name: Compress Artifact
         id: compress-artifact
-        if: ${{ inputs.compress_artifact }}
+        if: ${{ inputs.toggle_compress }}
         uses: Grinch27/github-actions/.github/actions/compress-xz@main
         with:
           path_target: ${{ env.PATH_output }}
@@ -222,6 +227,7 @@ jobs:
 
       - name: Split Artifact
         id: split-artifact
+        if: ${{ inputs.toggle_split }}
         uses: Grinch27/github-actions/.github/actions/file-split@main
         with:
           path_target: ${{ env.PATH_output }}
