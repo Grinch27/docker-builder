@@ -144,20 +144,31 @@ jobs:
         run: |
           echo -e "Current working directory: $(pwd)"
           ls -lh ./
+          # https://aria2.github.io/manual/en/html/aria2c.html
           echo -e "========== Download File with aria2 =========="
           aria2c \
+            --header="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.6980.95 Safari/537.36" \
+            --summary-interval=1 \
+            --human-readable \
+            --console-log-level=info \
             --continue=true \
             --max-tries=3 \
             --retry-wait=1 \
             --timeout=30 \
             --connect-timeout=15 \
-            --file-allocation=none \
-            --summary-interval=1 \
-            --console-log-level=warn \
+            --remote-time \
+            --file-allocation=falloc \
+            --stream-piece-selector=geom \
+            --enable-http-keep-alive \
+            --enable-http-pipelining \
             --allow-overwrite=true \
             --auto-file-renaming=false \
             --dir="${{ env.PATH_output }}" \
             --out="${FILE_NAME}" \
+            --bt-tracker="https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_all.txt" \
+            --bt-max-peers \
+            --bt-require-crypto \
+            --follow-torrent=mem \
             "${FILE_URL}"
           ls -lh ./
 
