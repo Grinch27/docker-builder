@@ -27,9 +27,9 @@ on:
         description: "Log Level for aria2"
         type: choice
         options:
-          - "debug"
-          - "info"
           - "notice"
+          - "info"
+          - "debug"
           - "warn"
           - "error"
         required: false
@@ -184,7 +184,7 @@ jobs:
           # debug, info, notice, warn, error
           aria2c \
             --summary-interval=${INTERVAL_LOG} \
-            --console-log-level=notice \
+            --console-log-level=${LOG_LEVEL} \
             --human-readable \
             --continue=true \
             --max-tries=3 \
