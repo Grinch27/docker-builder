@@ -3,6 +3,9 @@ name: Download to Artifact
 # https://docs.github.com/zh/actions/reference/workflows-and-actions/expressions
 
 on:
+  # push:
+  #   branches:
+  #     - main
   workflow_dispatch:
     inputs:
       file_url:
@@ -146,8 +149,8 @@ jobs:
           ls -lh ./
           # https://aria2.github.io/manual/en/html/aria2c.html
           echo -e "========== Download File with aria2 =========="
+          # --header="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.6980.95 Safari/537.36" \
           aria2c \
-            --header="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.6980.95 Safari/537.36" \
             --summary-interval=1 \
             --human-readable \
             --console-log-level=info \
