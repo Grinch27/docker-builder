@@ -209,6 +209,10 @@ jobs:
             --bt-require-crypto \
             --follow-metalink=mem \
             --user-agent="${UA}" \
+            --header="Accept: */*" \
+            --header="Accept-Encoding: identity;q=1, *;q=0" \
+            --header="Accept-Language: zh-CN,zh;q=0.9" \
+            --header="DNT: 1" \
             --referer="${FILE_URL}" \
             --parameterized-uri \
             "${FILE_URL}"
