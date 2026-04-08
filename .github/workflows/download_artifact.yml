@@ -11,7 +11,7 @@ on:
         required: true
         default: "https://dl.google.com/chrome/install/ChromeStandaloneSetup64.exe"
       compress_artifact:
-        description: "Whether to compress and split the downloaded artifact"
+        description: "to Compress Artifact"
         type: boolean
         required: false
         default: false
