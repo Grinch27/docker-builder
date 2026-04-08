@@ -25,7 +25,7 @@ on:
         required: false
         # default: "aria2/1.37.0"
       log-level:
-        description: "Log Level for aria2"
+        description: "aria2 Log-Level"
         type: choice
         options:
           - "notice"
