@@ -171,6 +171,8 @@ jobs:
             --dir="${{ env.PATH_output }}" \
             --out="${FILE_NAME}" \
             --bt-tracker="https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_all.txt" \
+            --enable-dht \
+            --enable-dht6 \
             --bt-max-peers=0 \
             --bt-require-crypto \
             --follow-torrent=mem \
