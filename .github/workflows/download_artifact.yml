@@ -213,6 +213,9 @@ jobs:
             --header="Accept-Encoding: identity;q=1, *;q=0" \
             --header="Accept-Language: zh-CN,zh;q=0.9" \
             --header="DNT: 1" \
+            --header='sec-ch-ua: "Chromium";v="146", "Not-A.Brand";v="24", "Google Chrome";v="146"' \
+            --header='sec-ch-ua-mobile: ?0' \
+            --header='sec-ch-ua-platform: "Linux"' \
             --referer="${FILE_URL}" \
             --parameterized-uri \
             "${FILE_URL}"
