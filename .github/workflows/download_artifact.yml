@@ -168,8 +168,8 @@ jobs:
       - name: Download with aria2
         id: aria2-download
         if: ${{ steps.file-info.conclusion == 'success' }}
-        continue-on-error: ${{ fromJSON('true') }}
-        timeout-minutes: ${{ fromJSON('180') }}
+        # continue-on-error: ${{ fromJSON('true') }}
+        # timeout-minutes: ${{ fromJSON('180') }}
         env:
           FILE_NAME: ${{ steps.file-info.outputs.FILE_NAME }}
           INTERVAL_LOG: ${{ fromJSON('1') }}
@@ -221,8 +221,8 @@ jobs:
       - name: Download with curl
         id: curl-download
         if: ${{ failure() && steps.aria2-download.conclusion == 'failure' }}
-        continue-on-error: true
-        timeout-minutes: 180
+        # continue-on-error: true
+        # timeout-minutes: 180
         env:
           FILE_NAME: ${{ steps.file-info.outputs.FILE_NAME }}
         working-directory: "${{ env.PATH_output }}"
