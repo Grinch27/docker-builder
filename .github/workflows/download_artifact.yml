@@ -24,7 +24,7 @@ on:
         description: "Interval of Log Output (seconds)"
         type: number
         required: false
-        default: 3
+        default: 1
 
 run-name: Download to Artifact
 
@@ -151,7 +151,7 @@ jobs:
         timeout-minutes: ${{ fromJSON('180') }}
         env:
           FILE_NAME: ${{ steps.file-info.outputs.FILE_NAME }}
-          INTERVAL_LOG: ${{ inputs.interval_log || '3'}}
+          INTERVAL_LOG: ${{ inputs.interval_log || 1 }}
         working-directory: "${{ env.PATH_output }}"
         run: |
           echo -e "Current working directory: $(pwd)"
@@ -159,10 +159,10 @@ jobs:
           # https://aria2.github.io/manual/en/html/aria2c.html
           echo -e "========== Download File with aria2 =========="
           # --header="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.6980.95 Safari/537.36" \
-          # debug, info, notice, warn or error
+          # debug, info, notice, warn, error
           aria2c \
             --summary-interval=${INTERVAL_LOG} \
-            --console-log-level=info \
+            --console-log-level=notice \
             --human-readable \
             --continue=true \
             --max-tries=3 \
