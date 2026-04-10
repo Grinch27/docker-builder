@@ -665,6 +665,7 @@ jobs:
         id: test
         if: steps.build.outputs.status == 'success' && !cancelled()
         continue-on-error: true
+        timeout-minutes: ${{ fromJSON('3') }}
         env:
           container_name: "container-test"
           dir_container: "/tmp"
