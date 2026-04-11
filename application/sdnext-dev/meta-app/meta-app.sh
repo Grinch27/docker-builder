@@ -33,7 +33,7 @@ if [ -n "${version}" ]; then
 fi
 
 if [ -z "${version}" ]; then
-  version="7.10"
+  version="7.11"
 fi
 
 echo "version=${version}"

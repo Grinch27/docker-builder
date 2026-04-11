@@ -52,6 +52,6 @@ elif [ -f /opt/rocm/.info/version ]; then
 elif [ -f /opt/rocm/.info/version-utils ]; then
   version=$(awk 'NR==1 {print $1}' /opt/rocm/.info/version-utils)
 fi
-version=$(echo "${version:-7.10}" | sed -E 's/^([0-9]+\.[0-9]+).*/\1/')
+version=$(echo "${version:-7.11}" | sed -E 's/^([0-9]+\.[0-9]+).*/\1/')
 
 echo "version=rocm${version}"

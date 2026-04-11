@@ -90,7 +90,7 @@ jobs:
             tag_repo: "latest"
           - app_branch: "sdnext-dev"
             tag_repo: "dev"
-            custom_env: "build_arg='therock_version=7.10.0,therock_release_type=stable,therock_amdgpu_family=gfx110X-all'"
+            custom_env: "build_arg='therock_version=7.11.0,therock_release_type=stable,therock_amdgpu_family=gfx110X-all'"
     with:
       runner_image: ${{ matrix.runner_image }} # || 'ubuntu-24.04'
       app_branch: ${{ matrix.workflows_inputs.app_branch }}

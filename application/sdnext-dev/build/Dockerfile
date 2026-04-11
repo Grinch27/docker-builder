@@ -6,6 +6,7 @@
 
 ARG base_image=ubuntu:24.04
 FROM ${base_image}
+ARG base_image
 
 LABEL org.opencontainers.image.vendor="SD.Next"
 LABEL org.opencontainers.image.authors="docker-builder"
@@ -23,7 +24,7 @@ ARG sdnext_repo=https://github.com/vladmandic/sdnext.git
 ARG sdnext_ref=master
 ARG app_dir=/app
 ARG venv_dir=/mnt/python/venv
-ARG therock_version=7.10.0
+ARG therock_version=7.11.0
 ARG therock_amdgpu_family=gfx110X-all
 ARG therock_release_type=stable
 ARG rocm_torch_index=https://download.pytorch.org/whl/rocm7.2

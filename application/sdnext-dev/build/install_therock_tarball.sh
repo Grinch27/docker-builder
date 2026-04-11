@@ -10,9 +10,11 @@ VERSION_ENCODED=$(printf '%s' "${VERSION}" | sed 's/+/%2B/g')
 
 case "${RELEASE_TYPE}" in
   stable)
+    INDEX_URL="https://repo.amd.com/rocm/tarball/"
     TARBALL_URL="https://repo.amd.com/rocm/tarball/therock-dist-linux-${AMDGPU_FAMILY}-${VERSION_ENCODED}.tar.gz"
     ;;
   nightlies|prereleases|devreleases)
+    INDEX_URL="https://rocm.${RELEASE_TYPE}.amd.com/tarball/"
     TARBALL_URL="https://rocm.${RELEASE_TYPE}.amd.com/tarball/therock-dist-linux-${AMDGPU_FAMILY}-${VERSION_ENCODED}.tar.gz"
     ;;
   *)
@@ -24,7 +26,12 @@ esac
 TARBALL_FILE=/tmp/therock-rocm.tar.gz
 INSTALL_DIR="/opt/rocm-${VERSION}"
 
-curl -fsSL -o "${TARBALL_FILE}" "${TARBALL_URL}"
+echo "Downloading TheRock tarball: ${TARBALL_URL}"
+if ! curl -fsSL -o "${TARBALL_FILE}" "${TARBALL_URL}"; then
+  echo "failed to download tarball: ${TARBALL_URL}" >&2
+  echo "verify that version ${VERSION} exists for ${AMDGPU_FAMILY} in ${INDEX_URL}" >&2
+  exit 1
+fi
 
 rm -rf "${INSTALL_DIR}"
 mkdir -p "${INSTALL_DIR}"
