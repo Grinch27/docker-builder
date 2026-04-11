@@ -11,12 +11,12 @@ on:
         description: "App Branch"
         type: string
         required: true
-        default: "sdnext"
+        default: "sdnext-dev"
       tag_repo:
         description: "Tag Push to Repo"
         type: string
         required: true
-        default: "latest"
+        default: "dev"
       force_push:
         description: "Force push to Docker Hub"
         type: choice
