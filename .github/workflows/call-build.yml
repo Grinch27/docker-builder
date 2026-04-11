@@ -1,4 +1,4 @@
-name: Call Build (Dev)
+name: Call Build
 
 # https://docs.github.com/zh/actions/writing-workflows/workflow-syntax-for-github-actions
 run-name: Build Matrix for Docker
