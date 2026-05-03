@@ -1,3 +1,6 @@
+# NOTE(agent): 需要你确认是否将本地 registry 地址抽成 workflow input；当前先固定为 127.0.0.1:5000，以修复容器内 build 标签缺少 registry 前缀的问题。
+# NOTE(agent): 后续研究方向，可把 build-docker.yml 与本文件重复的 metadata、buildx、local registry 逻辑提取成可复用 action，减少双份维护。
+# NOTE(agent): 可优化点，统一 local registry 的 build、probe、inspect、pull 地址来源，避免 127.0.0.1 与 172.17.0.1 混用带来的环境漂移。
 name: (Docker) Build Docker
 
 permissions:
@@ -125,6 +128,8 @@ jobs:
       tag_repo: "${{ inputs.tag_repo || 'latest' }}"
       force_push: "${{ inputs.force_push || 'false' }}"
       registry_push: "docker.io"
+      registry_local: "127.0.0.1:5000"
+      registry_local_probe: "http://127.0.0.1:5000/v2/"
       compress: "true"
       dir_app: "application/${{ inputs.app_branch }}"
       REPO_self: "https://github.com/${{ github.repository }}"
@@ -151,6 +156,8 @@ jobs:
           env_vars=(
             "app_branch"
             "tag_repo"
+            "registry_local"
+            "registry_local_probe"
             "dir_app"
             "PATH_app"
             "PATH_build"
@@ -172,6 +179,26 @@ jobs:
       - name: Docker Workspace All in One
         id: docker-workspace
         uses: Grinch27/github-actions/.github/actions/env-indocker@main
+
+      - name: (Setup) Workspace directories
+        id: setup-paths
+        working-directory: /
+        run: |
+          echo -e "Current working directory: $(pwd)"
+
+          dirs=(
+            "${PATH_build}"
+            "${PATH_output}"
+            "${PATH_backup}"
+            "${PATH_metadata}"
+            "${PATH_docker_data}"
+            "$(dirname "${PATH_release}")"
+          )
+          for dir in "${dirs[@]}"; do
+            mkdir -p "${dir}"
+          done
+
+          ls -ld "${dirs[@]}"
 
       - name: Clone self
         id: clone-self
@@ -214,6 +241,7 @@ jobs:
             "repo_dockerhub"
             "base_image"
             "arch_branch"
+            "registry_local"
           )
           for var in "${required_vars[@]}"; do
             if [[ -z "${!var:-}" ]]; then
@@ -227,9 +255,11 @@ jobs:
             compress_value="false"
           fi
           time_sleep_value="${time_sleep:-3}"
+          registry_local_probe_value="http://${registry_local}/v2/"
 
           echo "compress=${compress_value}" | tee -a "$GITHUB_ENV"
           echo "time_sleep=${time_sleep_value}" | tee -a "$GITHUB_ENV"
+          echo "registry_local_probe=${registry_local_probe_value}" | tee -a "$GITHUB_ENV"
 
           echo "arch_branch=${arch_branch}" | tee -a "$GITHUB_OUTPUT"
           echo "repo_dockerhub=${repo_dockerhub}" | tee -a "$GITHUB_OUTPUT"
@@ -556,7 +586,7 @@ jobs:
 
           buildkitd_config=$(mktemp)
           cat > "${buildkitd_config}" <<EOF
-          [registry."127.0.0.1:5000"]
+          [registry."${registry_local}"]
             http = true
             insecure = true
           EOF
@@ -588,17 +618,17 @@ jobs:
           docker port registry || true
 
           for _ in $(seq 1 30); do
-            if curl -fsS "http://172.17.0.1:5000/v2/" >/dev/null; then
+            if curl -fsS "${registry_local_probe}" >/dev/null; then
               echo "status=success" | tee -a "${GITHUB_OUTPUT}"
               exit 0
             fi
 
-            echo "Waiting for local registry at http://172.17.0.1:5000/v2/"
+            echo "Waiting for local registry at ${registry_local_probe}"
             sleep 2
           done
 
           docker logs registry || true
-          echo "::error::Local registry is not reachable at http://172.17.0.1:5000/v2/"
+          echo "::error::Local registry is not reachable at ${registry_local_probe}"
           exit 1
 
       - name: Build and push to local registry
@@ -654,7 +684,7 @@ jobs:
             if [[ -n "${variant}" ]]; then
               inspect_cmd+=(--override-variant="${variant}")
             fi
-            inspect_cmd+=("docker://172.17.0.1:5000/${repo_dockerhub}:${tag_repo}")
+            inspect_cmd+=("docker://${registry_local}/${repo_dockerhub}:${tag_repo}")
 
             "${inspect_cmd[@]}"
           done
@@ -675,14 +705,14 @@ jobs:
 
           IFS=',' read -ra platforms <<< "${arch_branch}"
           for platform in "${platforms[@]}"; do
-            docker pull --platform "${platform}" "127.0.0.1:5000/${repo_dockerhub}:${tag_repo}"
+            docker pull --platform "${platform}" "${registry_local}/${repo_dockerhub}:${tag_repo}"
             docker rm -f "${container_name}" >/dev/null 2>&1 || true
             docker run \
               --name "${container_name}" \
               --rm \
               --detach \
               --platform "${platform}" \
-              "127.0.0.1:5000/${repo_dockerhub}:${tag_repo}"
+              "${registry_local}/${repo_dockerhub}:${tag_repo}"
 
             dir_step="test"
             if [[ -d "${dir_step}" ]]; then
@@ -758,7 +788,7 @@ jobs:
           IFS=',' read -ra registries <<< "${registry_push}"
           for registry_remote in "${registries[@]}"; do
             for tag_each in "${tag_array[@]}"; do
-              docker buildx imagetools create --tag "${registry_remote}/${repo_dockerhub}:${tag_each}" "127.0.0.1:5000/${repo_dockerhub}:${tag_repo}" || echo "Failed to push ${tag_each} to ${registry_remote}, but continuing..."
+              docker buildx imagetools create --tag "${registry_remote}/${repo_dockerhub}:${tag_each}" "${registry_local}/${repo_dockerhub}:${tag_repo}" || echo "Failed to push ${tag_each} to ${registry_remote}, but continuing..."
             done
           done
 
@@ -778,8 +808,8 @@ jobs:
           for platform in "${platforms[@]}"; do
             target_file="${app_branch}_${tag_repo}_${version}_$(echo "${platform}" | tr '/' '_').${target_ext}"
 
-            docker pull --platform "${platform}" "127.0.0.1:5000/${repo_dockerhub}:${tag_repo}"
-            docker tag "127.0.0.1:5000/${repo_dockerhub}:${tag_repo}" "${repo_dockerhub}:${tag_repo}"
+            docker pull --platform "${platform}" "${registry_local}/${repo_dockerhub}:${tag_repo}"
+            docker tag "${registry_local}/${repo_dockerhub}:${tag_repo}" "${repo_dockerhub}:${tag_repo}"
             docker save --output "${PATH_output}/${target_file}" "${repo_dockerhub}:${tag_repo}"
 
             echo "Exported ${platform} image to ${target_file}"
