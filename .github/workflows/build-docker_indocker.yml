@@ -1,4 +1,4 @@
-# NOTE(agent): 需要你确认是否将本地 registry 地址抽成 workflow input；当前先固定为 127.0.0.1:5000，并强制 registry 监听 IPv4，避免 in-docker 环境里 localhost 解析或地址族差异导致探活失败。
+# NOTE(agent): 需要你确认是否将本地 registry 地址抽成 workflow input；当前优先把 registry 挂到当前 job container 同网络并使用容器别名访问，若无法识别当前网络再回退到 127.0.0.1:5000。
 # NOTE(agent): 后续研究方向，可把 build-docker.yml 与本文件重复的 metadata、buildx、local registry 启动逻辑提取成可复用 action，减少双份维护。
 # NOTE(agent): 可优化点，如果希望 custom_env 同时影响 build/test/push 步骤，需要补一个统一写入 GITHUB_ENV 的加载步骤；当前它主要用于 meta-app 容器内脚本。
 # NOTE(agent): 可优化点，建议逐步统一 application/*/build/build.sh 的默认值和变量引用风格，向 sdnext 系列脚本靠拢，减少某个应用脚本缺省变量时的脆弱性。
@@ -132,6 +132,9 @@ jobs:
       registry_push: "docker.io"
       registry_local: "127.0.0.1:5000"
       registry_local_probe: "http://127.0.0.1:5000/v2/"
+      registry_container_name: "registry-local"
+      registry_network_name: "host"
+      buildkit_network: "host"
       compress: "true"
       dir_app: "application/${{ inputs.app_branch }}"
       REPO_self: "https://github.com/${{ github.repository }}"
@@ -160,6 +163,9 @@ jobs:
             "tag_repo"
             "registry_local"
             "registry_local_probe"
+            "registry_container_name"
+            "registry_network_name"
+            "buildkit_network"
             "dir_app"
             "PATH_app"
             "PATH_build"
@@ -298,6 +304,7 @@ jobs:
           mkdir -p "${PATH_docker_data}"
           registry_loopback="127.0.0.1:5000"
           registry_alias="localhost:5000"
+          registry_container_host="${registry_container_name}:5000"
 
           daemon_file="/etc/docker/daemon.json"
           temp_file=$(mktemp)
@@ -307,8 +314,9 @@ jobs:
               --arg registry_local "${registry_local}" \
               --arg registry_loopback "${registry_loopback}" \
               --arg registry_alias "${registry_alias}" \
+              --arg registry_container_host "${registry_container_host}" \
               '. + {"data-root": $root}
-              | .["insecure-registries"] = (((.["insecure-registries"] // []) + [$registry_local, $registry_alias, $registry_loopback]) | unique)' \
+              | .["insecure-registries"] = (((.["insecure-registries"] // []) + [$registry_local, $registry_alias, $registry_loopback, $registry_container_host]) | unique)' \
               "${daemon_file}" > "${temp_file}"
           else
             jq -n \
@@ -316,7 +324,8 @@ jobs:
               --arg registry_local "${registry_local}" \
               --arg registry_loopback "${registry_loopback}" \
               --arg registry_alias "${registry_alias}" \
-              '{"data-root": $root, "insecure-registries": ([$registry_local, $registry_alias, $registry_loopback] | unique)}' > "${temp_file}"
+              --arg registry_container_host "${registry_container_host}" \
+              '{"data-root": $root, "insecure-registries": ([$registry_local, $registry_alias, $registry_loopback, $registry_container_host] | unique)}' > "${temp_file}"
           fi
           cp "${temp_file}" "${daemon_file}"
 
@@ -334,6 +343,74 @@ jobs:
           done
 
           docker info --format 'DockerRootDir={{ .DockerRootDir }}'
+
+      - name: (Setup) Local registry route
+        id: registry-route
+        working-directory: /
+        run: |
+          echo "Current working directory: $(pwd)"
+
+          registry_local_value="${registry_local}"
+          registry_local_probe_value="${registry_local_probe}"
+          registry_network_name_value="host"
+          buildkit_network_value="host"
+          registry_container_name_value="${registry_container_name}"
+
+          declare -a container_candidates=()
+          container_candidates+=("$(hostname)")
+          if [[ -f /etc/hostname ]]; then
+            container_candidates+=("$(cat /etc/hostname)")
+          fi
+          while IFS= read -r candidate; do
+            if [[ -n "${candidate}" ]]; then
+              container_candidates+=("${candidate}")
+            fi
+          done < <(
+            awk -F/ 'NF {print $NF}' /proc/self/cgroup 2>/dev/null \
+              | sed 's/\.scope$//' \
+              | grep -E '^[0-9a-f]{12,64}$' \
+              || true
+          )
+
+          current_container_id=""
+          current_network=""
+          seen_candidates=$'\n'
+          for candidate in "${container_candidates[@]}"; do
+            if [[ -z "${candidate}" ]]; then
+              continue
+            fi
+            if [[ "${seen_candidates}" == *$'\n'"${candidate}"$'\n'* ]]; then
+              continue
+            fi
+            seen_candidates+="${candidate}"$'\n'
+
+            current_network=$(docker inspect "${candidate}" --format '{{range $name, $settings := .NetworkSettings.Networks}}{{println $name}}{{end}}' 2>/dev/null | head -n 1 || true)
+            if [[ -n "${current_network}" ]]; then
+              current_container_id="${candidate}"
+              break
+            fi
+          done
+
+          if [[ -n "${current_network}" && "${current_network}" != "host" ]]; then
+            registry_local_value="${registry_container_name_value}:5000"
+            registry_local_probe_value="http://${registry_container_name_value}:5000/v2/"
+            registry_network_name_value="${current_network}"
+            buildkit_network_value="${current_network}"
+            echo "Detected job container network: ${current_network} (container: ${current_container_id})"
+          else
+            echo "Falling back to host network local registry route."
+          fi
+
+          echo "registry_local=${registry_local_value}" | tee -a "${GITHUB_ENV}"
+          echo "registry_local_probe=${registry_local_probe_value}" | tee -a "${GITHUB_ENV}"
+          echo "registry_network_name=${registry_network_name_value}" | tee -a "${GITHUB_ENV}"
+          echo "buildkit_network=${buildkit_network_value}" | tee -a "${GITHUB_ENV}"
+          echo "registry_container_name=${registry_container_name_value}" | tee -a "${GITHUB_ENV}"
+
+          echo "registry_network_name=${registry_network_name_value}" | tee -a "${GITHUB_OUTPUT}"
+          echo "buildkit_network=${buildkit_network_value}" | tee -a "${GITHUB_OUTPUT}"
+          echo "registry_local=${registry_local_value}" | tee -a "${GITHUB_OUTPUT}"
+          echo "registry_local_probe=${registry_local_probe_value}" | tee -a "${GITHUB_OUTPUT}"
 
       - name: (Setup) QEMU
         id: setup-qemu
@@ -595,21 +672,30 @@ jobs:
           echo "Current working directory: $(pwd)"
 
           buildkitd_config=$(mktemp)
-          cat > "${buildkitd_config}" <<EOF
-          [registry."127.0.0.1:5000"]
-            http = true
-            insecure = true
-
-          [registry."localhost:5000"]
-            http = true
-            insecure = true
-          EOF
+          declare -a registry_hosts=(
+            "${registry_local}"
+            "${registry_container_name}:5000"
+            "127.0.0.1:5000"
+            "localhost:5000"
+          )
+          seen_registry_hosts=$'\n'
+          : > "${buildkitd_config}"
+          for registry_host in "${registry_hosts[@]}"; do
+            if [[ -z "${registry_host}" ]]; then
+              continue
+            fi
+            if [[ "${seen_registry_hosts}" == *$'\n'"${registry_host}"$'\n'* ]]; then
+              continue
+            fi
+            seen_registry_hosts+="${registry_host}"$'\n'
+            printf '[registry."%s"]\n  http = true\n  insecure = true\n\n' "${registry_host}" >> "${buildkitd_config}"
+          done
 
           docker buildx rm builder >/dev/null 2>&1 || true
           docker buildx create \
             --name builder \
             --driver docker-container \
-            --driver-opt network=host \
+            --driver-opt "network=${buildkit_network}" \
             --buildkitd-config "${buildkitd_config}" \
             --use
           docker buildx inspect --bootstrap
@@ -621,38 +707,56 @@ jobs:
         run: |
           echo "Current working directory: $(pwd)"
 
-          docker rm -f registry >/dev/null 2>&1 || true
+          docker rm -f registry registry-local >/dev/null 2>&1 || true
           docker pull registry:latest
 
-          # 容器内 dockerd 使用 host 网络启动本地 registry，并显式监听 IPv4，避免 localhost 走到不可达的地址族。
-          docker run \
-            --name registry \
-            --detach \
-            --network host \
-            --env REGISTRY_HTTP_ADDR=0.0.0.0:5000 \
-            registry:latest
+          docker_run_args=(
+            --name "${registry_container_name}"
+            --detach
+            --env REGISTRY_HTTP_ADDR=0.0.0.0:5000
+          )
+          if [[ "${registry_network_name}" == "host" ]]; then
+            docker_run_args+=(--network host)
+          else
+            docker_run_args+=(
+              --network "${registry_network_name}"
+              --network-alias "${registry_container_name}"
+            )
+          fi
+          docker run "${docker_run_args[@]}" registry:latest
 
-          docker ps --filter "name=^/registry$" --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
+          docker ps --filter "name=^/${registry_container_name}$" --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
 
           for _ in $(seq 1 30); do
-            if curl --ipv4 -fsS "${registry_local_probe}" >/dev/null; then
-              echo "status=success" | tee -a "${GITHUB_OUTPUT}"
-              exit 0
-            fi
-
-            if curl --ipv4 -fsS "http://localhost:5000/v2/" >/dev/null; then
-              echo "registry_local=localhost:5000" | tee -a "${GITHUB_ENV}"
-              echo "registry_local_probe=http://localhost:5000/v2/" | tee -a "${GITHUB_ENV}"
-              echo "status=success" | tee -a "${GITHUB_OUTPUT}"
-              exit 0
-            fi
+            probe_candidates=(
+              "${registry_local_probe}|${registry_local}"
+              "http://${registry_container_name}:5000/v2/|${registry_container_name}:5000"
+              "http://127.0.0.1:5000/v2/|127.0.0.1:5000"
+              "http://localhost:5000/v2/|localhost:5000"
+            )
+            for probe_entry in "${probe_candidates[@]}"; do
+              probe_url="${probe_entry%%|*}"
+              probe_host="${probe_entry##*|}"
+              if curl -fsS --connect-timeout 2 "${probe_url}" >/dev/null; then
+                if [[ "${probe_host}" != "${registry_local}" ]]; then
+                  echo "registry_local=${probe_host}" | tee -a "${GITHUB_ENV}"
+                  echo "registry_local_probe=${probe_url}" | tee -a "${GITHUB_ENV}"
+                fi
+                echo "status=success" | tee -a "${GITHUB_OUTPUT}"
+                exit 0
+              fi
+            done
 
             echo "Waiting for local registry at ${registry_local_probe}"
             sleep 2
           done
 
           ss -lntp || true
-          docker logs registry || true
+          docker inspect "${registry_container_name}" || true
+          if [[ "${registry_network_name}" != "host" ]]; then
+            docker network inspect "${registry_network_name}" || true
+          fi
+          docker logs "${registry_container_name}" || true
           echo "::error::Local registry is not reachable at ${registry_local_probe}"
           exit 1
 
