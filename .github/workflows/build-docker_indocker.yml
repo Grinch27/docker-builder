@@ -1,7 +1,8 @@
-# NOTE(agent): 需要你确认是否将本地 registry 地址抽成 workflow input；当前先固定为 localhost:5000，并通过 host 网络启动 registry，避免 in-docker 端口映射探活失败。
+# NOTE(agent): 需要你确认是否将本地 registry 地址抽成 workflow input；当前先固定为 127.0.0.1:5000，并强制 registry 监听 IPv4，避免 in-docker 环境里 localhost 解析或地址族差异导致探活失败。
 # NOTE(agent): 后续研究方向，可把 build-docker.yml 与本文件重复的 metadata、buildx、local registry 启动逻辑提取成可复用 action，减少双份维护。
 # NOTE(agent): 可优化点，如果希望 custom_env 同时影响 build/test/push 步骤，需要补一个统一写入 GITHUB_ENV 的加载步骤；当前它主要用于 meta-app 容器内脚本。
 # NOTE(agent): 可优化点，建议逐步统一 application/*/build/build.sh 的默认值和变量引用风格，向 sdnext 系列脚本靠拢，减少某个应用脚本缺省变量时的脆弱性。
+# NOTE(agent): 可优化点，如果本地 registry 在 GitHub-hosted runner 上仍不稳定，可评估改为 oci/tar 输出加 docker load 的链路，减少对临时 registry 的依赖。
 name: (Docker) Build Docker
 
 permissions:
@@ -129,8 +130,8 @@ jobs:
       tag_repo: "${{ inputs.tag_repo || 'latest' }}"
       force_push: "${{ inputs.force_push || 'false' }}"
       registry_push: "docker.io"
-      registry_local: "localhost:5000"
-      registry_local_probe: "http://localhost:5000/v2/"
+      registry_local: "127.0.0.1:5000"
+      registry_local_probe: "http://127.0.0.1:5000/v2/"
       compress: "true"
       dir_app: "application/${{ inputs.app_branch }}"
       REPO_self: "https://github.com/${{ github.repository }}"
@@ -595,7 +596,11 @@ jobs:
 
           buildkitd_config=$(mktemp)
           cat > "${buildkitd_config}" <<EOF
-          [registry."${registry_local}"]
+          [registry."127.0.0.1:5000"]
+            http = true
+            insecure = true
+
+          [registry."localhost:5000"]
             http = true
             insecure = true
           EOF
@@ -619,17 +624,25 @@ jobs:
           docker rm -f registry >/dev/null 2>&1 || true
           docker pull registry:latest
 
-          # 容器内 dockerd 使用 host 网络启动本地 registry，避开 -p 端口映射在当前命名空间中不可达的问题。
+          # 容器内 dockerd 使用 host 网络启动本地 registry，并显式监听 IPv4，避免 localhost 走到不可达的地址族。
           docker run \
             --name registry \
             --detach \
             --network host \
+            --env REGISTRY_HTTP_ADDR=0.0.0.0:5000 \
             registry:latest
 
           docker ps --filter "name=^/registry$" --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
 
           for _ in $(seq 1 30); do
-            if curl -fsS "${registry_local_probe}" >/dev/null; then
+            if curl --ipv4 -fsS "${registry_local_probe}" >/dev/null; then
+              echo "status=success" | tee -a "${GITHUB_OUTPUT}"
+              exit 0
+            fi
+
+            if curl --ipv4 -fsS "http://localhost:5000/v2/" >/dev/null; then
+              echo "registry_local=localhost:5000" | tee -a "${GITHUB_ENV}"
+              echo "registry_local_probe=http://localhost:5000/v2/" | tee -a "${GITHUB_ENV}"
               echo "status=success" | tee -a "${GITHUB_OUTPUT}"
               exit 0
             fi
@@ -638,6 +651,7 @@ jobs:
             sleep 2
           done
 
+          ss -lntp || true
           docker logs registry || true
           echo "::error::Local registry is not reachable at ${registry_local_probe}"
           exit 1
