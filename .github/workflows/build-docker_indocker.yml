@@ -1,4 +1,4 @@
-# NOTE(agent): 需要你确认是否将本地 registry 地址抽成 workflow input；当前固定 registry_local 为 127.0.0.1:5000，避免把容器网络别名泄漏给 daemon/build.sh；本地探活改为通过 Docker probe 容器在 daemon 网络里完成。
+# NOTE(agent): 需要你确认是否将本地 registry 地址抽成 workflow input；当前固定 registry_local 为 127.0.0.1:5000，避免把容器网络别名泄漏给 daemon/build.sh；本地探活和本地 skopeo inspect 都改为通过 Docker helper 容器在 daemon 网络里完成。
 # NOTE(agent): 后续研究方向，可把 build-docker.yml 与本文件重复的 metadata、buildx、local registry 启动逻辑提取成可复用 action，减少双份维护。
 # NOTE(agent): 可优化点，如果希望 custom_env 同时影响 build/test/push 步骤，需要补一个统一写入 GITHUB_ENV 的加载步骤；当前它主要用于 meta-app 容器内脚本。
 # NOTE(agent): 可优化点，建议逐步统一 application/*/build/build.sh 的默认值和变量引用风格，向 sdnext 系列脚本靠拢，减少某个应用脚本缺省变量时的脆弱性。
@@ -727,6 +727,9 @@ jobs:
         run: |
           echo "Current working directory: $(pwd)"
 
+          registry_inspect_image="quay.io/skopeo/stable:latest"
+          docker pull "${registry_inspect_image}"
+
           IFS=',' read -ra platforms <<< "${arch_branch}"
           for platform in "${platforms[@]}"; do
             os=$(echo "${platform}" | cut -d'/' -f1)
@@ -738,7 +741,11 @@ jobs:
             fi
 
             inspect_cmd=(
-              skopeo inspect
+              docker run
+              --rm
+              --network host
+              "${registry_inspect_image}"
+              inspect
               --override-os="${os}"
               --override-arch="${arch}"
               --format=json
