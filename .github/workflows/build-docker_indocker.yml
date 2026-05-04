@@ -1,4 +1,4 @@
-# NOTE(agent): 需要你确认是否将本地 registry 地址抽成 workflow input；当前优先把 registry 挂到当前 job container 同网络并使用容器别名访问，若无法识别当前网络再回退到 127.0.0.1:5000。
+# NOTE(agent): 需要你确认是否将本地 registry 地址抽成 workflow input；当前固定 registry_local 为 127.0.0.1:5000，避免把容器网络别名泄漏给 daemon/build.sh；本地探活改为通过 Docker probe 容器在 daemon 网络里完成。
 # NOTE(agent): 后续研究方向，可把 build-docker.yml 与本文件重复的 metadata、buildx、local registry 启动逻辑提取成可复用 action，减少双份维护。
 # NOTE(agent): 可优化点，如果希望 custom_env 同时影响 build/test/push 步骤，需要补一个统一写入 GITHUB_ENV 的加载步骤；当前它主要用于 meta-app 容器内脚本。
 # NOTE(agent): 可优化点，建议逐步统一 application/*/build/build.sh 的默认值和变量引用风格，向 sdnext 系列脚本靠拢，减少某个应用脚本缺省变量时的脆弱性。
@@ -350,67 +350,17 @@ jobs:
         run: |
           echo "Current working directory: $(pwd)"
 
-          registry_local_value="${registry_local}"
-          registry_local_probe_value="${registry_local_probe}"
-          registry_network_name_value="host"
-          buildkit_network_value="host"
-          registry_container_name_value="${registry_container_name}"
+          echo "Use host-network route for daemon-facing local registry access."
+          echo "registry_local=${registry_local}" | tee -a "${GITHUB_ENV}"
+          echo "registry_local_probe=${registry_local_probe}" | tee -a "${GITHUB_ENV}"
+          echo "registry_network_name=host" | tee -a "${GITHUB_ENV}"
+          echo "buildkit_network=host" | tee -a "${GITHUB_ENV}"
+          echo "registry_container_name=${registry_container_name}" | tee -a "${GITHUB_ENV}"
 
-          declare -a container_candidates=()
-          container_candidates+=("$(hostname)")
-          if [[ -f /etc/hostname ]]; then
-            container_candidates+=("$(cat /etc/hostname)")
-          fi
-          while IFS= read -r candidate; do
-            if [[ -n "${candidate}" ]]; then
-              container_candidates+=("${candidate}")
-            fi
-          done < <(
-            awk -F/ 'NF {print $NF}' /proc/self/cgroup 2>/dev/null \
-              | sed 's/\.scope$//' \
-              | grep -E '^[0-9a-f]{12,64}$' \
-              || true
-          )
-
-          current_container_id=""
-          current_network=""
-          seen_candidates=$'\n'
-          for candidate in "${container_candidates[@]}"; do
-            if [[ -z "${candidate}" ]]; then
-              continue
-            fi
-            if [[ "${seen_candidates}" == *$'\n'"${candidate}"$'\n'* ]]; then
-              continue
-            fi
-            seen_candidates+="${candidate}"$'\n'
-
-            current_network=$(docker inspect "${candidate}" --format '{{range $name, $settings := .NetworkSettings.Networks}}{{println $name}}{{end}}' 2>/dev/null | head -n 1 || true)
-            if [[ -n "${current_network}" ]]; then
-              current_container_id="${candidate}"
-              break
-            fi
-          done
-
-          if [[ -n "${current_network}" && "${current_network}" != "host" ]]; then
-            registry_local_value="${registry_container_name_value}:5000"
-            registry_local_probe_value="http://${registry_container_name_value}:5000/v2/"
-            registry_network_name_value="${current_network}"
-            buildkit_network_value="${current_network}"
-            echo "Detected job container network: ${current_network} (container: ${current_container_id})"
-          else
-            echo "Falling back to host network local registry route."
-          fi
-
-          echo "registry_local=${registry_local_value}" | tee -a "${GITHUB_ENV}"
-          echo "registry_local_probe=${registry_local_probe_value}" | tee -a "${GITHUB_ENV}"
-          echo "registry_network_name=${registry_network_name_value}" | tee -a "${GITHUB_ENV}"
-          echo "buildkit_network=${buildkit_network_value}" | tee -a "${GITHUB_ENV}"
-          echo "registry_container_name=${registry_container_name_value}" | tee -a "${GITHUB_ENV}"
-
-          echo "registry_network_name=${registry_network_name_value}" | tee -a "${GITHUB_OUTPUT}"
-          echo "buildkit_network=${buildkit_network_value}" | tee -a "${GITHUB_OUTPUT}"
-          echo "registry_local=${registry_local_value}" | tee -a "${GITHUB_OUTPUT}"
-          echo "registry_local_probe=${registry_local_probe_value}" | tee -a "${GITHUB_OUTPUT}"
+          echo "registry_network_name=host" | tee -a "${GITHUB_OUTPUT}"
+          echo "buildkit_network=host" | tee -a "${GITHUB_OUTPUT}"
+          echo "registry_local=${registry_local}" | tee -a "${GITHUB_OUTPUT}"
+          echo "registry_local_probe=${registry_local_probe}" | tee -a "${GITHUB_OUTPUT}"
 
       - name: (Setup) QEMU
         id: setup-qemu
@@ -709,6 +659,7 @@ jobs:
 
           docker rm -f registry registry-local >/dev/null 2>&1 || true
           docker pull registry:latest
+          docker pull curlimages/curl:8.12.1
 
           docker_run_args=(
             --name "${registry_container_name}"
@@ -728,24 +679,10 @@ jobs:
           docker ps --filter "name=^/${registry_container_name}$" --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
 
           for _ in $(seq 1 30); do
-            probe_candidates=(
-              "${registry_local_probe}|${registry_local}"
-              "http://${registry_container_name}:5000/v2/|${registry_container_name}:5000"
-              "http://127.0.0.1:5000/v2/|127.0.0.1:5000"
-              "http://localhost:5000/v2/|localhost:5000"
-            )
-            for probe_entry in "${probe_candidates[@]}"; do
-              probe_url="${probe_entry%%|*}"
-              probe_host="${probe_entry##*|}"
-              if curl -fsS --connect-timeout 2 "${probe_url}" >/dev/null; then
-                if [[ "${probe_host}" != "${registry_local}" ]]; then
-                  echo "registry_local=${probe_host}" | tee -a "${GITHUB_ENV}"
-                  echo "registry_local_probe=${probe_url}" | tee -a "${GITHUB_ENV}"
-                fi
-                echo "status=success" | tee -a "${GITHUB_OUTPUT}"
-                exit 0
-              fi
-            done
+            if docker run --rm --network host curlimages/curl:8.12.1 -fsS --connect-timeout 2 "${registry_local_probe}" >/dev/null; then
+              echo "status=success" | tee -a "${GITHUB_OUTPUT}"
+              exit 0
+            fi
 
             echo "Waiting for local registry at ${registry_local_probe}"
             sleep 2
@@ -753,9 +690,6 @@ jobs:
 
           ss -lntp || true
           docker inspect "${registry_container_name}" || true
-          if [[ "${registry_network_name}" != "host" ]]; then
-            docker network inspect "${registry_network_name}" || true
-          fi
           docker logs "${registry_container_name}" || true
           echo "::error::Local registry is not reachable at ${registry_local_probe}"
           exit 1
