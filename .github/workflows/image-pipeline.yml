@@ -1,0 +1,139 @@
+name: Image Pipeline
+
+run-name: Image Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_matrix:
+        description: "Optional JSON matrix: {\"include\":[...]}. Leave empty to use the single-app inputs."
+        type: string
+        required: false
+        default: ""
+      app_branch:
+        description: "Single app branch when build_matrix is empty"
+        type: string
+        required: false
+        default: "aria2"
+      tag_repo:
+        description: "Single app tag when build_matrix is empty"
+        type: string
+        required: false
+        default: "latest"
+      custom_env:
+        description: "Single app custom env when build_matrix is empty"
+        type: string
+        required: false
+        default: ""
+      runner_image:
+        description: "Runner image"
+        type: string
+        required: false
+        default: "ubuntu-latest"
+      force_push:
+        description: "Force build/push checks inside build-docker"
+        type: choice
+        required: false
+        default: "false"
+        options:
+          - "true"
+          - "false"
+      publish:
+        description: "Push to Docker Hub and GitHub Release"
+        type: choice
+        required: false
+        default: "false"
+        options:
+          - "true"
+          - "false"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  prepare:
+    name: Prepare Pipeline Matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      publish: ${{ steps.matrix.outputs.publish }}
+    steps:
+      - name: Checkout ${{ github.repository }}
+        uses: actions/checkout@main
+
+      - name: Prepare matrix
+        id: matrix
+        env:
+          BUILD_MATRIX: ${{ inputs.build_matrix || '' }}
+          APP_BRANCH: ${{ inputs.app_branch || 'aria2' }}
+          TAG_REPO: ${{ inputs.tag_repo || 'latest' }}
+          CUSTOM_ENV: ${{ inputs.custom_env || '' }}
+          RUNNER_IMAGE: ${{ inputs.runner_image || 'ubuntu-latest' }}
+          FORCE_PUSH: ${{ inputs.force_push || 'false' }}
+          PUBLISH: ${{ inputs.publish || 'false' }}
+          MATRIX_PATH: /tmp/image-pipeline-matrix.json
+        run: |
+          set -e
+          python3 scripts/ci/prepare_image_pipeline.py \
+            --build-matrix "${BUILD_MATRIX}" \
+            --app-branch "${APP_BRANCH}" \
+            --tag-repo "${TAG_REPO}" \
+            --custom-env "${CUSTOM_ENV}" \
+            --runner-image "${RUNNER_IMAGE}" \
+            --force-push "${FORCE_PUSH}" \
+            --output "${MATRIX_PATH}"
+
+          matrix=$(jq -c . "${MATRIX_PATH}")
+          {
+            echo "matrix<<__JSON__"
+            echo "${matrix}"
+            echo "__JSON__"
+            echo "publish=${PUBLISH}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload prepared matrix
+        uses: actions/upload-artifact@main
+        with:
+          name: image-pipeline-matrix
+          path: /tmp/image-pipeline-matrix.json
+          retention-days: 7
+
+  build-dry-run:
+    name: Dry Run ${{ matrix.app_branch }}:${{ matrix.tag_repo }}
+    needs: prepare
+    if: ${{ needs.prepare.outputs.publish != 'true' }}
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include: ${{ fromJson(needs.prepare.outputs.matrix).include }}
+    uses: ./.github/workflows/build-docker.yml
+    with:
+      app_branch: ${{ matrix.app_branch }}
+      tag_repo: ${{ matrix.tag_repo }}
+      force_push: ${{ matrix.force_push || 'false' }}
+      publish: "false"
+      custom_env: ${{ matrix.custom_env || '' }}
+      runner_image: ${{ matrix.runner_image || 'ubuntu-latest' }}
+
+  build-publish:
+    name: Publish ${{ matrix.app_branch }}:${{ matrix.tag_repo }}
+    needs: prepare
+    if: ${{ needs.prepare.outputs.publish == 'true' }}
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include: ${{ fromJson(needs.prepare.outputs.matrix).include }}
+    uses: ./.github/workflows/build-docker.yml
+    with:
+      app_branch: ${{ matrix.app_branch }}
+      tag_repo: ${{ matrix.tag_repo }}
+      force_push: ${{ matrix.force_push || 'false' }}
+      publish: "true"
+      custom_env: ${{ matrix.custom_env || '' }}
+      runner_image: ${{ matrix.runner_image || 'ubuntu-latest' }}
+    secrets:
+      DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+      DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}

@@ -22,6 +22,14 @@ on:
         options:
           - "true"
           - "false"
+      publish:
+        description: "Push to Docker Hub and GitHub Release"
+        type: choice
+        required: false
+        default: "true"
+        options:
+          - "true"
+          - "false"
       custom_env:
         description: "Custom env: key=value;key=value"
         type: string
@@ -46,6 +54,11 @@ on:
         description: "Force push to Docker Hub"
         required: true
         type: string
+      publish:
+        description: "Push to Docker Hub and GitHub Release"
+        required: false
+        default: "true"
+        type: string
       custom_env:
         description: "Custom env: key=value;key=value"
         required: false
@@ -57,10 +70,10 @@ on:
     secrets:
       DOCKER_USERNAME:
         description: "Docker Hub Username"
-        required: true
+        required: false
       DOCKER_PASSWORD:
         description: "Docker Hub Password"
-        required: true
+        required: false
 
 run-name: Docker - ${{ inputs.app_branch }} - ${{ inputs.tag_repo }}
 
@@ -68,6 +81,7 @@ env:
   app_branch: ${{ inputs.app_branch }}
   tag_repo: ${{ inputs.tag_repo || 'latest' }}
   force_push: ${{ inputs.force_push || 'false' }}
+  publish: ${{ inputs.publish || 'true' }}
   registry_push: "docker.io"
   dir_app: "application/${{ inputs.app_branch }}"
   compress: "true"
@@ -443,13 +457,6 @@ jobs:
       - name: Checkout ${{ github.repository }}
         uses: actions/checkout@main
 
-      - name: (Log in) to Docker Hub
-        uses: docker/login-action@master
-        with:
-          registry: docker.io
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-
       - name: Initialize environment
         id: init
         env:
@@ -646,7 +653,6 @@ jobs:
 
       - name: (Test) Docker image
         id: test
-        continue-on-error: true
         timeout-minutes: ${{ fromJSON('3') }}
         env:
           container_name: container-test
@@ -654,8 +660,10 @@ jobs:
           time_sleep: ${{ env.time_sleep || '3' }}
         working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
+          set -o pipefail
           echo "Current working directory: $(pwd)"
 
+          test_failed=0
           IFS=',' read -ra platforms <<< "${{ env.arch_branch }}"
           for platform in "${platforms[@]}"; do
             docker pull --platform $platform ${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}
@@ -673,11 +681,11 @@ jobs:
               cd ./${dir_step}
               echo "Changed to directory: $(pwd)"
 
-              set +e
               log_container=$(mktemp)
               # docker exec -u root ${{ env.container_name }} mkdir -p ${{ env.dir_container }}
               
               for script_file in ./*.sh; do
+                [ -f "${script_file}" ] || continue
                 container_script="${{ env.dir_container }}/$(basename ${script_file})"
                 script_temp=$(mktemp)
                 {
@@ -688,9 +696,10 @@ jobs:
 
                 docker cp ${script_temp} ${{ env.container_name }}:${container_script}
                 docker exec -u root ${{ env.container_name }} chmod +x ${container_script}
-                docker exec -u root ${{ env.container_name }} sh -c "${container_script}" | tee -a ${log_container}
+                if ! docker exec -u root ${{ env.container_name }} sh -c "${container_script}" | tee -a ${log_container}; then
+                  test_failed=1
+                fi
               done
-              set -e
 
               cd "${dir_original}"
               echo "Changed back to original directory: $(pwd)"
@@ -699,15 +708,27 @@ jobs:
             fi
             echo "Sleep for ${{ env.time_sleep }} seconds"
             sleep "${{ env.time_sleep }}"
-            docker logs ${{ env.container_name }}
-            docker stop ${{ env.container_name }}
+            docker logs ${{ env.container_name }} || true
+            docker stop ${{ env.container_name }} || true
           done
+          if [ "${test_failed}" -ne 0 ]; then
+            echo "Image test failed"
+            exit 1
+          fi
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
+
+      - name: (Publish) Log in to Docker Hub
+        if: ${{ env.publish == 'true' }}
+        uses: docker/login-action@master
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: (Push) Image to ${{ env.registry_push }}
         id: push
         continue-on-error: true # 允许此步骤失败但继续执行后续步骤
-        # if: ${{ 'true' == 'false' }} # disable
+        if: ${{ env.publish == 'true' }}
         working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
           echo "Current working directory: $(pwd)"
@@ -940,7 +961,7 @@ jobs:
       - name: (Upload) to Release
         id: upload-release
         # 修改条件判断，不再依赖push步骤的状态，只检查output步骤的状态
-        if: steps.output.outputs.status == 'success' && !cancelled()
+        if: env.publish == 'true' && steps.output.outputs.status == 'success' && !cancelled()
         # if: ${{ 'true' == 'false' }} # disable
         uses: ncipollo/release-action@main
         env:

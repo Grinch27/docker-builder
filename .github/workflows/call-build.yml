@@ -96,6 +96,7 @@ jobs:
       app_branch: ${{ matrix.workflows_inputs.app_branch }}
       tag_repo: ${{ matrix.workflows_inputs.tag_repo }}
       force_push: ${{ matrix.workflows_inputs.force_push || 'false' }}
+      publish: "true"
       custom_env: ${{ matrix.workflows_inputs.custom_env || '' }}
     secrets:
       DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
