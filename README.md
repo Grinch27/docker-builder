@@ -16,12 +16,12 @@ Volatile run metadata is intentionally omitted; this section changes only when s
 | adguardvpn-cli | latest | grinch27/adguardvpn-cli | unknown | alpine:latest | linux/amd64,linux/arm64 | linux/amd64 | success |
 | aria2 | latest | grinch27/aria2 | 1.37.0 | alpine:latest | linux/amd64,linux/arm64 | linux/amd64 | success |
 | baidunetdisk | latest | grinch27/baidunetdisk | 4.17.7 | debian:stable-slim | linux/amd64,linux/arm64 | linux/amd64 | success |
-| cloudflare-warp | latest | grinch27/cloudflare-warp | 2026.6.822.0 | debian:stable-slim | linux/amd64,linux/arm64 | linux/amd64 | success |
+| cloudflare-warp | latest | grinch27/cloudflare-warp | 2026.6.836.0 | debian:stable-slim | linux/amd64,linux/arm64 | linux/amd64 | success |
 | dnscrypt-proxy | latest | grinch27/dnscrypt-proxy | 2.1.16 | alpine:edge | linux/amd64,linux/arm64 | linux/amd64 | success |
 | doh-nosni | latest | grinch27/doh-nosni | unknown | debian:sid-slim | linux/amd64,linux/arm64 | linux/amd64 | success |
 | expressvpn | latest | grinch27/expressvpn | unknown | debian:stable-slim | linux/amd64,linux/arm64,linux/386,linux/arm/v7 | linux/amd64 | success |
 | ffmpeg | latest | grinch27/ffmpeg | unknown | ubuntu:devel | linux/amd64 | linux/amd64 | meta_app_missing |
-| nordvpn | latest | grinch27/nordvpn | 5.1.0 | debian:stable-slim | linux/amd64,linux/arm64 | linux/amd64 | success |
+| nordvpn | latest | grinch27/nordvpn | 5.2.0 | debian:stable-slim | linux/amd64,linux/arm64 | linux/amd64 | success |
 | novnc | latest | grinch27/novnc | 1.7.0 | debian:stable-slim | linux/amd64,linux/arm64 | linux/amd64 | success |
 | novnc_alpine | latest | grinch27/novnc | unknown | alpine:latest | linux/amd64,linux/arm64 | linux/amd64 | success |
 | openwrt | latest | grinch27/openwrt | unknown | ubuntu:devel | linux/amd64 | linux/amd64 | success |
@@ -80,7 +80,7 @@ Volatile run metadata is intentionally omitted; this section changes only when s
     "repo_dockerhub": "grinch27/cloudflare-warp",
     "status": "success",
     "tag_repo": "latest",
-    "version": "2026.6.822.0"
+    "version": "2026.6.836.0"
   },
   {
     "app_branch": "dnscrypt-proxy",
@@ -130,7 +130,7 @@ Volatile run metadata is intentionally omitted; this section changes only when s
     "repo_dockerhub": "grinch27/nordvpn",
     "status": "success",
     "tag_repo": "latest",
-    "version": "5.1.0"
+    "version": "5.2.0"
   },
   {
     "app_branch": "novnc",
