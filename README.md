@@ -22,7 +22,7 @@ Volatile run metadata is intentionally omitted; this section changes only when s
 | expressvpn | latest | grinch27/expressvpn | unknown | debian:stable-slim | linux/amd64,linux/arm64,linux/386,linux/arm/v7 | linux/amd64 | success |
 | ffmpeg | latest | grinch27/ffmpeg | unknown | ubuntu:devel | linux/amd64 | linux/amd64 | meta_app_missing |
 | nordvpn | latest | grinch27/nordvpn | 5.2.0 | debian:stable-slim | linux/amd64,linux/arm64 | linux/amd64 | success |
-| novnc | latest | grinch27/novnc | 1.7.0 | debian:stable-slim | linux/amd64,linux/arm64 | linux/amd64 | success |
+| novnc | latest | grinch27/novnc | unknown | debian:stable-slim | linux/amd64,linux/arm64 | linux/amd64 | success |
 | novnc_alpine | latest | grinch27/novnc | unknown | alpine:latest | linux/amd64,linux/arm64 | linux/amd64 | success |
 | openwrt | latest | grinch27/openwrt | unknown | ubuntu:devel | linux/amd64 | linux/amd64 | success |
 | privoxy | latest | grinch27/privoxy | 4.0.0 | alpine:latest | linux/amd64,linux/arm64 | linux/amd64 | success |
@@ -140,7 +140,7 @@ Volatile run metadata is intentionally omitted; this section changes only when s
     "repo_dockerhub": "grinch27/novnc",
     "status": "success",
     "tag_repo": "latest",
-    "version": "1.7.0"
+    "version": "unknown"
   },
   {
     "app_branch": "novnc_alpine",
