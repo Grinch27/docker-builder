@@ -28,7 +28,7 @@ Volatile run metadata is intentionally omitted; this section changes only when s
 | privoxy | latest | grinch27/privoxy | 4.0.0 | alpine:latest | linux/amd64,linux/arm64 | linux/amd64 | success |
 | protonvpn | latest | grinch27/protonvpn | 1.0.8 | debian:stable-slim | linux/amd64 | linux/amd64 | success |
 | runner | latest | grinch27/runner | unknown | debian:testing-slim | linux/amd64 | linux/amd64 | success |
-| samba | latest | grinch27/samba | 4.24.3 | debian:testing-slim | linux/amd64,linux/arm64 | linux/amd64 | success |
+| samba | latest | grinch27/samba | 4.24.4 | debian:testing-slim | linux/amd64,linux/arm64 | linux/amd64 | success |
 | sdnext | latest | grinch27/sdnext | 7.2 | rocm/dev-ubuntu-24.04 | linux/amd64 | linux/amd64 | success |
 | sdnext-dev | latest | grinch27/sdnext | 7.11 | ubuntu:24.04 | linux/amd64 | linux/amd64 | success |
 | squid | latest | grinch27/squid | 7.5-VCS | alpine:latest | linux/amd64,linux/arm64 | linux/amd64 | success |
@@ -200,7 +200,7 @@ Volatile run metadata is intentionally omitted; this section changes only when s
     "repo_dockerhub": "grinch27/samba",
     "status": "success",
     "tag_repo": "latest",
-    "version": "4.24.3"
+    "version": "4.24.4"
   },
   {
     "app_branch": "sdnext",
