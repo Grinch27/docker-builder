@@ -14,7 +14,7 @@ Volatile run metadata is intentionally omitted; this section changes only when s
 | app_branch | tag_repo | repo_dockerhub | version | base_image | arch_branch | platform_used | status |
 |---|---|---|---|---|---|---|---|
 | adguardvpn-cli | latest | grinch27/adguardvpn-cli | unknown | alpine:latest | linux/amd64,linux/arm64 | linux/amd64 | success |
-| aria2 | latest | grinch27/aria2 | 1.37.0 | alpine:latest | linux/amd64,linux/arm64 | linux/amd64 | success |
+| aria2 | latest | grinch27/aria2 | unknown | alpine:latest | linux/amd64,linux/arm64 | linux/amd64 | success |
 | baidunetdisk | latest | grinch27/baidunetdisk | 4.17.7 | debian:stable-slim | linux/amd64,linux/arm64 | linux/amd64 | success |
 | cloudflare-warp | latest | grinch27/cloudflare-warp | 2026.6.836.0 | debian:stable-slim | linux/amd64,linux/arm64 | linux/amd64 | success |
 | dnscrypt-proxy | latest | grinch27/dnscrypt-proxy | 2.1.16 | alpine:edge | linux/amd64,linux/arm64 | linux/amd64 | success |
@@ -60,7 +60,7 @@ Volatile run metadata is intentionally omitted; this section changes only when s
     "repo_dockerhub": "grinch27/aria2",
     "status": "success",
     "tag_repo": "latest",
-    "version": "1.37.0"
+    "version": "unknown"
   },
   {
     "app_branch": "baidunetdisk",
