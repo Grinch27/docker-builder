@@ -16,7 +16,7 @@ Volatile run metadata is intentionally omitted; this section changes only when s
 | adguardvpn-cli | latest | grinch27/adguardvpn-cli | unknown | alpine:latest | linux/amd64,linux/arm64 | linux/amd64 | success |
 | aria2 | latest | grinch27/aria2 | 1.37.0 | alpine:latest | linux/amd64,linux/arm64 | linux/amd64 | success |
 | baidunetdisk | latest | grinch27/baidunetdisk | 4.17.7 | debian:stable-slim | linux/amd64,linux/arm64 | linux/amd64 | success |
-| cloudflare-warp | latest | grinch27/cloudflare-warp | 2026.6.836.0 | debian:stable-slim | linux/amd64,linux/arm64 | linux/amd64 | success |
+| cloudflare-warp | latest | grinch27/cloudflare-warp | 2026.6.880.0 | debian:stable-slim | linux/amd64,linux/arm64 | linux/amd64 | success |
 | dnscrypt-proxy | latest | grinch27/dnscrypt-proxy | 2.1.18 | alpine:edge | linux/amd64,linux/arm64 | linux/amd64 | success |
 | doh-nosni | latest | grinch27/doh-nosni | unknown | debian:sid-slim | linux/amd64,linux/arm64 | linux/amd64 | success |
 | expressvpn | latest | grinch27/expressvpn | unknown | debian:stable-slim | linux/amd64,linux/arm64,linux/386,linux/arm/v7 | linux/amd64 | success |
@@ -31,10 +31,10 @@ Volatile run metadata is intentionally omitted; this section changes only when s
 | samba | latest | grinch27/samba | 4.24.4 | debian:testing-slim | linux/amd64,linux/arm64 | linux/amd64 | success |
 | sdnext | latest | grinch27/sdnext | 7.2 | rocm/dev-ubuntu-24.04 | linux/amd64 | linux/amd64 | success |
 | sdnext-dev | latest | grinch27/sdnext | 7.11 | ubuntu:24.04 | linux/amd64 | linux/amd64 | success |
-| squid | latest | grinch27/squid | 7.5-VCS | alpine:latest | linux/amd64,linux/arm64 | linux/amd64 | success |
+| squid | latest | grinch27/squid | 7.6-VCS | alpine:latest | linux/amd64,linux/arm64 | linux/amd64 | success |
 | stable-diffusion-webui-amdgpu | latest | grinch27/stable-diffusion-webui-amdgpu | 7.2 | rocm/dev-ubuntu-24.04 | linux/amd64 | linux/amd64 | success |
 | steamcmd | latest | grinch27/steamcmd | unknown | debian:testing-slim | linux/amd64 | linux/amd64 | success |
-| ttrss | latest | grinch27/ttrss | 1113-5-g70e0357 | alpine:latest | linux/amd64,linux/arm64 | linux/amd64 | success |
+| ttrss | latest | grinch27/ttrss | unknown | alpine:latest | linux/amd64,linux/arm64 | linux/amd64 | pull_failed |
 | vlmcsd | latest | grinch27/vlmcsd | 1113-5-g70e0357 | alpine:latest | linux/amd64,linux/arm64,linux/386 | linux/amd64 | success |
 <!-- app-version-table:end -->
 <!-- markdownlint-enable MD060 -->
@@ -80,7 +80,7 @@ Volatile run metadata is intentionally omitted; this section changes only when s
     "repo_dockerhub": "grinch27/cloudflare-warp",
     "status": "success",
     "tag_repo": "latest",
-    "version": "2026.6.836.0"
+    "version": "2026.6.880.0"
   },
   {
     "app_branch": "dnscrypt-proxy",
@@ -230,7 +230,7 @@ Volatile run metadata is intentionally omitted; this section changes only when s
     "repo_dockerhub": "grinch27/squid",
     "status": "success",
     "tag_repo": "latest",
-    "version": "7.5-VCS"
+    "version": "7.6-VCS"
   },
   {
     "app_branch": "stable-diffusion-webui-amdgpu",
@@ -258,9 +258,9 @@ Volatile run metadata is intentionally omitted; this section changes only when s
     "base_image": "alpine:latest",
     "platform_used": "linux/amd64",
     "repo_dockerhub": "grinch27/ttrss",
-    "status": "success",
+    "status": "pull_failed",
     "tag_repo": "latest",
-    "version": "1113-5-g70e0357"
+    "version": "unknown"
   },
   {
     "app_branch": "vlmcsd",
