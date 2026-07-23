@@ -34,7 +34,7 @@ Volatile run metadata is intentionally omitted; this section changes only when s
 | squid | latest | grinch27/squid | 7.6-VCS | alpine:latest | linux/amd64,linux/arm64 | linux/amd64 | success |
 | stable-diffusion-webui-amdgpu | latest | grinch27/stable-diffusion-webui-amdgpu | 7.2 | rocm/dev-ubuntu-24.04 | linux/amd64 | linux/amd64 | success |
 | steamcmd | latest | grinch27/steamcmd | unknown | debian:testing-slim | linux/amd64 | linux/amd64 | success |
-| ttrss | latest | grinch27/ttrss | unknown | alpine:latest | linux/amd64,linux/arm64 | linux/amd64 | pull_failed |
+| ttrss | latest | grinch27/ttrss | 1113-5-g70e0357 | alpine:latest | linux/amd64,linux/arm64 | linux/amd64 | success |
 | vlmcsd | latest | grinch27/vlmcsd | 1113-5-g70e0357 | alpine:latest | linux/amd64,linux/arm64,linux/386 | linux/amd64 | success |
 <!-- app-version-table:end -->
 <!-- markdownlint-enable MD060 -->
@@ -258,9 +258,9 @@ Volatile run metadata is intentionally omitted; this section changes only when s
     "base_image": "alpine:latest",
     "platform_used": "linux/amd64",
     "repo_dockerhub": "grinch27/ttrss",
-    "status": "pull_failed",
+    "status": "success",
     "tag_repo": "latest",
-    "version": "unknown"
+    "version": "1113-5-g70e0357"
   },
   {
     "app_branch": "vlmcsd",
