@@ -21,7 +21,7 @@ Volatile run metadata is intentionally omitted; this section changes only when s
 | doh-nosni | latest | grinch27/doh-nosni | unknown | debian:sid-slim | linux/amd64,linux/arm64 | linux/amd64 | success |
 | expressvpn | latest | grinch27/expressvpn | unknown | debian:stable-slim | linux/amd64,linux/arm64,linux/386,linux/arm/v7 | linux/amd64 | success |
 | ffmpeg | latest | grinch27/ffmpeg | unknown | ubuntu:devel | linux/amd64 | linux/amd64 | meta_app_missing |
-| nordvpn | latest | grinch27/nordvpn | 5.2.0 | debian:stable-slim | linux/amd64,linux/arm64 | linux/amd64 | success |
+| nordvpn | latest | grinch27/nordvpn | 5.3.0 | debian:stable-slim | linux/amd64,linux/arm64 | linux/amd64 | success |
 | novnc | latest | grinch27/novnc | 1.7.0 | debian:stable-slim | linux/amd64,linux/arm64 | linux/amd64 | success |
 | novnc_alpine | latest | grinch27/novnc | unknown | alpine:latest | linux/amd64,linux/arm64 | linux/amd64 | success |
 | openwrt | latest | grinch27/openwrt | unknown | ubuntu:devel | linux/amd64 | linux/amd64 | success |
@@ -130,7 +130,7 @@ Volatile run metadata is intentionally omitted; this section changes only when s
     "repo_dockerhub": "grinch27/nordvpn",
     "status": "success",
     "tag_repo": "latest",
-    "version": "5.2.0"
+    "version": "5.3.0"
   },
   {
     "app_branch": "novnc",
