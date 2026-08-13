@@ -439,8 +439,8 @@ jobs:
       compress: "true"
       custom_env: ${{ matrix.custom_env || '' }}
       path_build: /build
-      metadata_image_path: ${{ github.workspace }}/${{ env.dir_app }}/metadata_image.json
-      metadata_app_path: ${{ github.workspace }}/${{ env.dir_app }}/metadata_app.json
+      metadata_image_path: ${{ github.workspace }}/application/${{ matrix.app_branch }}/metadata_image.json
+      metadata_app_path: ${{ github.workspace }}/application/${{ matrix.app_branch }}/metadata_app.json
     steps:
       - name: Checkout ${{ github.repository }}
         uses: actions/checkout@main
