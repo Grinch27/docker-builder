@@ -82,6 +82,9 @@ jobs:
           - app_branch: "samba"
             tag_repo: "alpine"
             custom_env: "dockerfile=alpine.Dockerfile"
+          # curl
+          - app_branch: "curl"
+            tag_repo: "latest"
           # dnscrypt-proxy
           - app_branch: "dnscrypt-proxy"
             tag_repo: "latest"
