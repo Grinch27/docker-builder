@@ -52,8 +52,7 @@ run-name: >-
   ${{ github.event_name }} -
   ${{ inputs.mode || github.event.client_payload.mode || 'auto' }}
 
-permissions:
-  contents: read
+permissions: write-all
 
 defaults:
   run:
@@ -85,8 +84,6 @@ jobs:
     name: ${{ needs.runner-image.outputs.RUNNER_IMAGE }} - prepare
     needs: runner-image
     runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
-    permissions:
-      contents: write
     outputs:
       mode: ${{ steps.prepare.outputs.mode }}
       target_count: ${{ steps.prepare.outputs.target_count }}
@@ -537,14 +534,76 @@ jobs:
             exit 0
           fi
 
+          generated_readme="${RUNNER_TEMP}/version-state/README.generated.md"
+          cp README.md "${generated_readme}"
+          export GENERATED_README="${generated_readme}"
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- README.md
-          if git diff --cached --quiet; then
-            exit 0
-          fi
-          git commit -m "chore: update container version matrix"
-          git push
+
+          for attempt in 1 2 3; do
+            echo "README state push attempt ${attempt}/3"
+
+            git fetch --no-tags origin main
+            git reset --hard origin/main
+
+            python3 <<'PY'
+          import os
+          from pathlib import Path
+
+          readme = Path("README.md")
+          generated = Path(os.environ["GENERATED_README"])
+          latest_text = readme.read_text(encoding="utf-8") if readme.exists() else ""
+          generated_text = generated.read_text(encoding="utf-8")
+
+          markers = [
+              ("<!-- app-version-table:start -->", "<!-- app-version-table:end -->"),
+              ("<!-- app-version-json:start -->", "<!-- app-version-json:end -->"),
+          ]
+
+          def extract_block(raw: str, start: str, end: str) -> str:
+              if start not in raw or end not in raw or raw.index(start) >= raw.index(end):
+                  raise SystemExit(f"Generated README is missing marker block: {start}")
+              return raw.split(start, 1)[1].split(end, 1)[0].strip("\n")
+
+          def replace_or_append(raw: str, start: str, end: str, content: str) -> str:
+              block = f"{start}\n{content}\n{end}"
+              if start in raw and end in raw and raw.index(start) < raw.index(end):
+                  return raw.split(start, 1)[0] + block + raw.split(end, 1)[1]
+              prefix = raw if raw.endswith("\n") else raw + "\n"
+              return prefix + "\n" + block + "\n"
+
+          rendered = latest_text
+          if "## Container Version Matrix" not in rendered:
+              rendered = rendered.rstrip() + "\n\n## Container Version Matrix\n\n"
+
+          for start, end in markers:
+              rendered = replace_or_append(
+                  rendered,
+                  start,
+                  end,
+                  extract_block(generated_text, start, end),
+              )
+
+          readme.write_text(rendered, encoding="utf-8")
+          PY
+
+            git add -- README.md
+            if git diff --cached --quiet; then
+              echo "README state already current on origin/main."
+              exit 0
+            fi
+
+            git commit -m "chore: update container version matrix"
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+
+            echo "Remote main changed during push; retrying from latest origin/main."
+          done
+
+          echo "Failed to update README state after 3 attempts." >&2
+          exit 1
 
   target:
     name: ${{ matrix.target_id }} - ${{ matrix.version }}
@@ -553,9 +612,6 @@ jobs:
       - prepare
     if: needs.prepare.outputs.target_count != '0'
     runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
-    permissions:
-      contents: write
-      packages: write
     concurrency:
       group: docker-allinone-dev-${{ matrix.app_branch }}
       cancel-in-progress: false
