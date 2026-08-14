@@ -1,0 +1,983 @@
+name: Docker All in One Dev
+
+"on":
+  schedule:
+    - cron: "0 1 * * *"
+      timezone: "Etc/UTC"
+  repository_dispatch:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Execution mode"
+        type: choice
+        required: true
+        default: auto
+        options:
+          - auto
+          - build
+          - promote-dockerhub
+          - promote-ghcr
+          - promote-all
+      target_id:
+        description: "Optional target_id for build; required for promotion-only modes"
+        type: string
+        required: false
+        default: ""
+      version:
+        description: "Required for promotion-only; optional build version assertion"
+        type: string
+        required: false
+        default: ""
+      revision:
+        description: "Required for promotion-only, e.g. r123456789-a1"
+        type: string
+        required: false
+        default: ""
+      force_build:
+        description: "In auto mode, build all/selected targets regardless of version change"
+        type: choice
+        required: false
+        default: "false"
+        options:
+          - "true"
+          - "false"
+
+run-name: >-
+  Docker All in One -
+  ${{ github.event_name }} -
+  ${{ inputs.mode || github.event.client_payload.mode || 'auto' }}
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  DEBIAN_FRONTEND: noninteractive
+  DEBCONF_NONINTERACTIVE_SEEN: "true"
+  APT_LISTCHANGES_FRONTEND: none
+  NEEDRESTART_MODE: a
+  FORCE_UNSAFE_CONFIGURE: "1"
+  TZ: Etc/UTC
+  LANG: C.UTF-8
+  LC_ALL: C.UTF-8
+  DOCKER_BUILDKIT: "1"
+
+jobs:
+  runner-image:
+    name: ubuntu-latest - runner-image
+    runs-on: ubuntu-latest
+    outputs:
+      RUNNER_IMAGE: ${{ steps.resolve-runner-image.outputs.RUNNER_IMAGE }}
+    steps:
+      - name: Resolve runner-image
+        id: resolve-runner-image
+        uses: Grinch27/github-actions/.github/actions/resolve-runner-image@main
+
+  prepare:
+    name: ${{ needs.runner-image.outputs.RUNNER_IMAGE }} - prepare
+    needs: runner-image
+    runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
+    permissions:
+      contents: write
+    outputs:
+      mode: ${{ steps.prepare.outputs.mode }}
+      target_count: ${{ steps.prepare.outputs.target_count }}
+      target_matrix: ${{ steps.prepare.outputs.target_matrix }}
+    steps:
+      - name: Checkout ${{ github.repository }}
+        uses: actions/checkout@main
+        with:
+          fetch-depth: 1
+
+      - name: Prepare targets and versions
+        id: prepare
+        env:
+          MODE_INPUT: ${{ inputs.mode || github.event.client_payload.mode || 'auto' }}
+          TARGET_INPUT: ${{ inputs.target_id || github.event.client_payload.target_id || '' }}
+          VERSION_INPUT: ${{ inputs.version || github.event.client_payload.version || '' }}
+          REVISION_INPUT: ${{ inputs.revision || github.event.client_payload.revision || '' }}
+          FORCE_INPUT: ${{ inputs.force_build || github.event.client_payload.force_build || 'false' }}
+        run: |
+          set -euo pipefail
+
+          mode="${MODE_INPUT:-auto}"
+          target_input="${TARGET_INPUT:-}"
+          version_input="${VERSION_INPUT:-}"
+          revision_input="${REVISION_INPUT:-}"
+          force_build="${FORCE_INPUT:-false}"
+
+          case "${mode}" in
+            auto|build|promote-dockerhub|promote-ghcr|promote-all) ;;
+            *)
+              printf 'Unsupported mode: %s\n' "${mode}" >&2
+              exit 2
+              ;;
+          esac
+
+          case "${force_build,,}" in
+            true|false) force_build="${force_build,,}" ;;
+            *)
+              printf 'Invalid force_build: %s\n' "${force_build}" >&2
+              exit 2
+              ;;
+          esac
+
+          static_targets=$(cat <<'JSON'
+          {
+            "include": [
+              {"app_branch":"cloudflare-warp","tag_repo":"latest","custom_env":""},
+              {"app_branch":"curl","tag_repo":"latest","custom_env":""},
+              {"app_branch":"adguardvpn-cli","tag_repo":"nightly","custom_env":"build_arg='update_channel=nightly'"},
+              {"app_branch":"adguardvpn-cli","tag_repo":"beta","custom_env":"build_arg='update_channel=beta'"},
+              {"app_branch":"adguardvpn-cli","tag_repo":"release","custom_env":"build_arg='update_channel=release'"},
+              {"app_branch":"expressvpn","tag_repo":"latest","custom_env":""},
+              {"app_branch":"nordvpn","tag_repo":"latest","custom_env":""},
+              {"app_branch":"squid","tag_repo":"latest","custom_env":""},
+              {"app_branch":"vlmcsd","tag_repo":"latest","custom_env":""},
+              {"app_branch":"novnc","tag_repo":"latest","custom_env":""},
+              {"app_branch":"baidunetdisk","tag_repo":"dev","custom_env":""},
+              {"app_branch":"steamcmd","tag_repo":"dev","custom_env":""},
+              {"app_branch":"runner","tag_repo":"dev","custom_env":""},
+              {"app_branch":"runner","tag_repo":"slim","custom_env":"dockerfile=slim.Dockerfile"},
+              {"app_branch":"runner","tag_repo":"actions","custom_env":"dockerfile=actions.Dockerfile"},
+              {"app_branch":"runner","tag_repo":"actions-slim","custom_env":"dockerfile=actions-slim.Dockerfile"},
+              {"app_branch":"openwrt","tag_repo":"main","custom_env":""},
+              {"app_branch":"privoxy","tag_repo":"latest","custom_env":""},
+              {"app_branch":"aria2","tag_repo":"latest","custom_env":""},
+              {"app_branch":"samba","tag_repo":"latest","custom_env":""},
+              {"app_branch":"samba","tag_repo":"alpine","custom_env":"dockerfile=alpine.Dockerfile"},
+              {"app_branch":"dnscrypt-proxy","tag_repo":"latest","custom_env":""},
+              {"app_branch":"sdnext","tag_repo":"latest","custom_env":""},
+              {"app_branch":"sdnext-dev","tag_repo":"dev","custom_env":"build_arg='therock_version=7.11.0,therock_release_type=stable,therock_amdgpu_family=gfx110X-all'"}
+            ]
+          }
+          JSON
+          )
+
+          apps_json=$(
+            find application -mindepth 1 -maxdepth 1 -type d -printf '%f\n' |
+              sed '/^\.example$/d' |
+              sort |
+              jq -R -s 'split("\n") | map(select(length > 0))'
+          )
+
+          known_apps=$(jq '[.include[].app_branch] | unique' <<< "${static_targets}")
+          missing_apps=$(jq -cn \
+            --argjson all "${apps_json}" \
+            --argjson known "${known_apps}" \
+            '$all - $known')
+
+          targets=$(jq -cn \
+            --argjson base "$(jq '.include' <<< "${static_targets}")" \
+            --argjson missing "${missing_apps}" '
+              def target_id:
+                . as $t |
+                ($t.tag_repo // "latest") as $tag |
+                if $tag == "latest" then $t.app_branch
+                elif ($t.app_branch | endswith("-" + $tag)) or ($t.app_branch | endswith("_" + $tag)) then $t.app_branch
+                else $t.app_branch + "-" + $tag
+                end;
+              {
+                include:
+                  (($base + ($missing | map({app_branch: ., tag_repo: "latest", custom_env: ""})))
+                   | map(.tag_repo = (.tag_repo // "latest")
+                         | .custom_env = (.custom_env // "")
+                         | .target_id = target_id))
+              }')
+
+          duplicates=$(jq -r '.include[].target_id' <<< "${targets}" | sort | uniq -d)
+          if [[ -n "${duplicates}" ]]; then
+            printf 'Duplicate target_id(s):\n%s\n' "${duplicates}" >&2
+            exit 1
+          fi
+
+          printf '%s\n' "${targets}" > "${RUNNER_TEMP}/targets.json"
+
+          if [[ "${mode}" == promote-* ]]; then
+            if [[ -z "${target_input}" || -z "${version_input}" || -z "${revision_input}" ]]; then
+              echo 'Promotion-only modes require target_id, version and revision.' >&2
+              exit 2
+            fi
+
+            selected=$(jq -c \
+              --arg target "${target_input}" \
+              --arg version "${version_input}" \
+              --arg revision "${revision_input}" '
+                [.include[] | select(.target_id == $target) | . + {version: $version, revision: $revision}]
+              ' <<< "${targets}")
+
+            if [[ "$(jq 'length' <<< "${selected}")" -ne 1 ]]; then
+              printf 'Unknown target_id: %s\n' "${target_input}" >&2
+              exit 2
+            fi
+
+            target_matrix=$(jq -cn --argjson items "${selected}" '{include: $items}')
+            {
+              echo "mode=${mode}"
+              echo "target_count=1"
+              echo "target_matrix<<__JSON__"
+              echo "${target_matrix}"
+              echo "__JSON__"
+            } >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          mkdir -p "${RUNNER_TEMP}/version-state"
+          : > "${RUNNER_TEMP}/version-state/records.jsonl"
+
+          while IFS= read -r target; do
+            app_branch=$(jq -r '.app_branch' <<< "${target}")
+            tag_repo=$(jq -r '.tag_repo' <<< "${target}")
+            custom_env=$(jq -r '.custom_env' <<< "${target}")
+            target_id=$(jq -r '.target_id' <<< "${target}")
+            dir_app="application/${app_branch}"
+
+            if [[ ! -d "${dir_app}" ]]; then
+              printf 'Missing application directory: %s\n' "${dir_app}" >&2
+              exit 1
+            fi
+
+            env_file=$(mktemp)
+            custom_file=$(mktemp)
+            keys_file=$(mktemp)
+            : > "${env_file}"
+            : > "${custom_file}"
+            : > "${keys_file}"
+            if [[ -n "${custom_env}" ]]; then
+              printf '%s\n' "${custom_env}" | tr ';' '\n' > "${custom_file}"
+            fi
+
+            shopt -s nullglob
+            env_files=("${dir_app}"/env/*.env)
+            for file in "${env_files[@]}"; do
+              awk -F= '/^[A-Za-z_][A-Za-z0-9_]*=/ {print $1}' "${file}" >> "${keys_file}"
+            done
+            if [[ -n "${custom_env}" ]]; then
+              printf '%s\n' "${custom_env}" | tr ';' '\n' |
+                sed -nE 's/^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)=.*/\1/p' >> "${keys_file}"
+            fi
+            sort -u -o "${keys_file}" "${keys_file}"
+
+            (
+              set -a
+              for file in "${env_files[@]}"; do
+                # shellcheck disable=SC1090
+                . "${file}"
+              done
+              if [[ -n "${custom_env}" ]]; then
+                eval "${custom_env}"
+              fi
+              while IFS= read -r key; do
+                [[ -n "${key}" ]] || continue
+                printf '%s=%s\n' "${key}" "${!key-}"
+              done < "${keys_file}"
+            ) > "${env_file}"
+
+            value_of() {
+              local key="$1"
+              local fallback="$2"
+              local value
+              value=$(awk -F= -v key="${key}" '$1 == key {sub(/^[^=]*=/, ""); print; exit}' "${env_file}")
+              printf '%s' "${value:-${fallback}}"
+            }
+
+            base_image=$(value_of base_image ubuntu:latest)
+            arch_branch=$(value_of arch_branch linux/amd64)
+            repo_dockerhub=$(value_of repo_dockerhub "grinch27/${app_branch}")
+            platform_used=linux/amd64
+            if ! grep -q ",linux/amd64," <<< ",${arch_branch},"; then
+              platform_used="${arch_branch%%,*}"
+            fi
+
+            version=unknown
+            status=success
+            meta_log=$(mktemp)
+            meta_files=("${dir_app}"/meta-app/*.sh)
+
+            if ((${#meta_files[@]} == 0)); then
+              status=meta_app_missing
+            elif ! docker pull --platform "${platform_used}" "${base_image}" >/dev/null; then
+              status=base_pull_failed
+            elif ! docker run --rm \
+                --platform "${platform_used}" \
+                --env-file "${env_file}" \
+                --env "app_branch=${app_branch}" \
+                --env "tag_repo=${tag_repo}" \
+                --env "custom_env=${custom_env}" \
+                --volume "${custom_file}:/tmp/build.env:ro" \
+                --volume "${GITHUB_WORKSPACE}/${dir_app}/meta-app:/meta-app:ro" \
+                --entrypoint /bin/sh \
+                "${base_image}" \
+                -c 'set -e; for f in /meta-app/*.sh; do [ -f "$f" ] && /bin/sh "$f"; done' |
+                tee "${meta_log}"; then
+              status=meta_app_failed
+            else
+              parsed_version=$(awk -F= '/^version=/{sub(/^[^=]*=/, ""); value=$0} END{print value}' "${meta_log}")
+              if [[ -n "${parsed_version}" ]]; then
+                version="${parsed_version}"
+              else
+                status=version_missing
+              fi
+            fi
+
+            jq -cn \
+              --arg target_id "${target_id}" \
+              --arg app_branch "${app_branch}" \
+              --arg tag_repo "${tag_repo}" \
+              --arg custom_env "${custom_env}" \
+              --arg repo_dockerhub "${repo_dockerhub}" \
+              --arg version "${version}" \
+              --arg base_image "${base_image}" \
+              --arg arch_branch "${arch_branch}" \
+              --arg platform_used "${platform_used}" \
+              --arg status "${status}" '
+                {
+                  target_id: $target_id,
+                  app_branch: $app_branch,
+                  tag_repo: $tag_repo,
+                  custom_env: $custom_env,
+                  repo_dockerhub: $repo_dockerhub,
+                  version: $version,
+                  base_image: $base_image,
+                  arch_branch: $arch_branch,
+                  platform_used: $platform_used,
+                  status: $status
+                }
+              ' >> "${RUNNER_TEMP}/version-state/records.jsonl"
+
+            rm -f "${env_file}" "${custom_file}" "${keys_file}" "${meta_log}"
+          done < <(jq -c '.include[]' <<< "${targets}")
+
+          jq -s 'sort_by(.target_id)' "${RUNNER_TEMP}/version-state/records.jsonl" \
+            > "${RUNNER_TEMP}/version-state/records.json"
+
+          export MODE="${mode}"
+          export TARGET_INPUT_VALUE="${target_input}"
+          export VERSION_INPUT_VALUE="${version_input}"
+          export FORCE_BUILD_VALUE="${force_build}"
+          export REVISION_VALUE="r${GITHUB_RUN_ID}-a${GITHUB_RUN_ATTEMPT}"
+          export TARGETS_FILE="${RUNNER_TEMP}/targets.json"
+          export RECORDS_FILE="${RUNNER_TEMP}/version-state/records.json"
+          export MATRIX_FILE="${RUNNER_TEMP}/version-state/target-matrix.json"
+          export README_CHANGED_FILE="${RUNNER_TEMP}/version-state/readme-changed.txt"
+
+          python3 <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          mode = os.environ["MODE"]
+          target_input = os.environ.get("TARGET_INPUT_VALUE", "")
+          version_input = os.environ.get("VERSION_INPUT_VALUE", "")
+          force_build = os.environ.get("FORCE_BUILD_VALUE", "false").lower() == "true"
+          revision = os.environ["REVISION_VALUE"]
+
+          targets = json.loads(Path(os.environ["TARGETS_FILE"]).read_text())["include"]
+          records = json.loads(Path(os.environ["RECORDS_FILE"]).read_text())
+          readme = Path("README.md")
+          text = readme.read_text(encoding="utf-8") if readme.exists() else ""
+
+          start_json = "<!-- app-version-json:start -->"
+          end_json = "<!-- app-version-json:end -->"
+          start_table = "<!-- app-version-table:start -->"
+          end_table = "<!-- app-version-table:end -->"
+
+          def derive_target_id(item):
+              app = str(item.get("app_branch", ""))
+              tag = str(item.get("tag_repo", "latest") or "latest")
+              if tag == "latest" or app.endswith("-" + tag) or app.endswith("_" + tag):
+                  return app
+              return f"{app}-{tag}"
+
+          def old_records_from_readme(raw):
+              if start_json not in raw or end_json not in raw:
+                  return []
+              segment = raw.split(start_json, 1)[1].split(end_json, 1)[0].strip()
+              if segment.startswith("```json"):
+                  segment = segment[len("```json"):].strip()
+              if segment.endswith("```"):
+                  segment = segment[:-3].strip()
+              if not segment:
+                  return []
+              try:
+                  data = json.loads(segment)
+              except Exception:
+                  return []
+              out = []
+              for item in data if isinstance(data, list) else []:
+                  if not isinstance(item, dict):
+                      continue
+                  row = dict(item)
+                  row["target_id"] = row.get("target_id") or derive_target_id(row)
+                  out.append(row)
+              return out
+
+          old_records = old_records_from_readme(text)
+          old_map = {r["target_id"]: r for r in old_records if r.get("target_id")}
+
+          for record in records:
+              if record.get("version") in ("", "unknown"):
+                  previous = old_map.get(record["target_id"], {})
+                  if previous.get("version") not in (None, "", "unknown"):
+                      record["version"] = previous["version"]
+
+          changed_ids = {
+              r["target_id"]
+              for r in records
+              if r.get("version") not in ("", "unknown")
+              and old_map.get(r["target_id"], {}).get("version") != r.get("version")
+          }
+
+          defs = {t["target_id"]: t for t in targets}
+          recs = {r["target_id"]: r for r in records}
+
+          if target_input and target_input not in defs:
+              raise SystemExit(f"Unknown target_id: {target_input}")
+
+          if mode == "build":
+              selected_ids = [target_input] if target_input else sorted(defs)
+          elif force_build:
+              selected_ids = [target_input] if target_input else sorted(defs)
+          else:
+              selected_ids = sorted(changed_ids)
+              if target_input:
+                  selected_ids = [x for x in selected_ids if x == target_input]
+
+          selected = []
+          for target_id in selected_ids:
+              record = recs.get(target_id)
+              if not record or record.get("version") in ("", "unknown"):
+                  raise SystemExit(f"No usable upstream version for target: {target_id}")
+              if version_input:
+                  if len(selected_ids) != 1:
+                      raise SystemExit("version assertion requires exactly one selected target")
+                  if record["version"].removeprefix("v") != version_input.removeprefix("v"):
+                      raise SystemExit(
+                          f"Version assertion mismatch for {target_id}: detected={record['version']} requested={version_input}"
+                      )
+              item = dict(defs[target_id])
+              item["version"] = record["version"]
+              item["revision"] = revision
+              selected.append(item)
+
+          matrix = {"include": selected}
+          Path(os.environ["MATRIX_FILE"]).write_text(
+              json.dumps(matrix, ensure_ascii=False, separators=(",", ":")),
+              encoding="utf-8",
+          )
+
+          records = sorted(records, key=lambda x: x["target_id"])
+          fields = [
+              "target_id",
+              "app_branch",
+              "tag_repo",
+              "repo_dockerhub",
+              "version",
+              "base_image",
+              "arch_branch",
+              "platform_used",
+              "status",
+          ]
+          table = [
+              "Auto-generated by `.github/workflows/docker_allinone.yml`.",
+              "",
+              "| " + " | ".join(fields) + " |",
+              "|" + "|".join(["---"] * len(fields)) + "|",
+          ]
+          for record in records:
+              values = [str(record.get(field, "")).replace("|", "\\|").replace("\n", " ") for field in fields]
+              table.append("| " + " | ".join(values) + " |")
+          table_block = "\n".join(table)
+          json_block = "```json\n" + json.dumps(records, ensure_ascii=False, indent=2) + "\n```"
+
+          def replace_or_append(raw, start, end, content):
+              block = f"{start}\n{content}\n{end}"
+              if start in raw and end in raw and raw.index(start) < raw.index(end):
+                  return raw.split(start, 1)[0] + block + raw.split(end, 1)[1]
+              prefix = raw if raw.endswith("\n") else raw + "\n"
+              return prefix + "\n" + block + "\n"
+
+          rendered = text
+          if "## Container Version Matrix" not in rendered:
+              rendered = rendered.rstrip() + "\n\n## Container Version Matrix\n\n"
+          rendered = replace_or_append(rendered, start_table, end_table, table_block)
+          rendered = replace_or_append(rendered, start_json, end_json, json_block)
+
+          changed = rendered != text
+          if changed:
+              readme.write_text(rendered, encoding="utf-8")
+          Path(os.environ["README_CHANGED_FILE"]).write_text("true" if changed else "false", encoding="utf-8")
+          PY
+
+          target_matrix=$(cat "${MATRIX_FILE}")
+          target_count=$(jq '.include | length' <<< "${target_matrix}")
+
+          {
+            echo "mode=${mode}"
+            echo "target_count=${target_count}"
+            echo "target_matrix<<__JSON__"
+            echo "${target_matrix}"
+            echo "__JSON__"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Commit semantic version state
+        if: steps.prepare.outputs.mode == 'auto' || steps.prepare.outputs.mode == 'build'
+        run: |
+          set -euo pipefail
+          if [[ ! -f "${RUNNER_TEMP}/version-state/readme-changed.txt" ]] ||
+             [[ "$(cat "${RUNNER_TEMP}/version-state/readme-changed.txt")" != true ]]; then
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- README.md
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "chore: update container version matrix"
+          git push
+
+  target:
+    name: ${{ matrix.target_id }} - ${{ matrix.version }}
+    needs:
+      - runner-image
+      - prepare
+    if: needs.prepare.outputs.target_count != '0'
+    runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
+    permissions:
+      contents: write
+      packages: write
+    concurrency:
+      group: docker-${{ matrix.target_id }}-${{ matrix.version }}
+      cancel-in-progress: false
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include: ${{ fromJSON(needs.prepare.outputs.target_matrix).include }}
+    env:
+      MODE: ${{ needs.prepare.outputs.mode }}
+      TARGET_ID: ${{ matrix.target_id }}
+      APP_BRANCH: ${{ matrix.app_branch }}
+      TAG_REPO: ${{ matrix.tag_repo }}
+      CUSTOM_ENV: ${{ matrix.custom_env }}
+      VERSION: ${{ matrix.version }}
+      REVISION: ${{ matrix.revision }}
+    steps:
+      - name: Checkout ${{ github.repository }}
+        uses: actions/checkout@main
+        with:
+          fetch-depth: 1
+
+      - name: Enable emulated platforms
+        uses: docker/setup-qemu-action@master
+
+      - name: Configure Buildx
+        uses: docker/setup-buildx-action@master
+
+      - name: Build, test and archive locally
+        id: build-release
+        if: env.MODE == 'auto' || env.MODE == 'build'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -u
+
+          dir_app="application/${APP_BRANCH}"
+          state_dir="${RUNNER_TEMP}/docker-pipeline/${TARGET_ID}"
+          tar_dir="${state_dir}/tar"
+          state_file="${state_dir}/release.tsv"
+          mkdir -p "${tar_dir}"
+          : > "${state_file}"
+
+          apply_app_env() {
+            set -a
+            shopt -s nullglob
+            local files=("${dir_app}"/env/*.env)
+            local file
+            for file in "${files[@]}"; do
+              # shellcheck disable=SC1090
+              . "${file}"
+            done
+            if [[ -n "${CUSTOM_ENV}" ]]; then
+              eval "${CUSTOM_ENV}"
+            fi
+            set +a
+          }
+
+          normalize_version() {
+            local value="${1#v}"
+            printf '%s' "${value}" | sed -E 's/[^A-Za-z0-9_.-]+/-/g; s/^-+//; s/-+$//'
+          }
+
+          platform_label() {
+            printf '%s' "$1" | sed -E 's#^linux/##; s#/#-#g'
+          }
+
+          apply_app_env
+          : "${arch_branch:=linux/amd64}"
+          : "${base_image:=ubuntu:latest}"
+          : "${repo_dockerhub:=grinch27/${APP_BRANCH}}"
+          : "${dockerfile:=Dockerfile}"
+
+          version_tag=$(normalize_version "${VERSION}")
+          if [[ -z "${version_tag}" ]]; then
+            echo 'Normalized version is empty.' >&2
+            exit 1
+          fi
+          release_tag="${TARGET_ID}-v${version_tag}"
+          local_ref="${TARGET_ID}:${version_tag}"
+
+          IFS=',' read -r -a platforms <<< "${arch_branch}"
+          shopt -s nullglob
+          test_scripts=("${dir_app}"/test/*.sh)
+
+          for platform in "${platforms[@]}"; do
+            platform="${platform//[[:space:]]/}"
+            [[ -n "${platform}" ]] || continue
+            arch_label=$(platform_label "${platform}")
+            asset_name="${TARGET_ID}-v${version_tag}-${REVISION}-linux-${arch_label}.tar"
+            asset_path="${tar_dir}/${asset_name}"
+            status=success
+            reason=ok
+            cid=""
+
+            printf '\n=== %s %s ===\n' "${TARGET_ID}" "${platform}"
+
+            resolved_dockerfile=$(find "${dir_app}/build" -maxdepth 1 -type f -iname "${dockerfile}" -print -quit)
+            if [[ -z "${resolved_dockerfile}" ]]; then
+              status=failed
+              reason=dockerfile_missing
+            fi
+
+            if [[ "${status}" == success ]]; then
+              build_args=(
+                docker buildx build
+                --platform "${platform}"
+                --file "${resolved_dockerfile}"
+                --tag "${local_ref}"
+                --build-arg "base_image=${base_image}"
+                --label "version=${VERSION}"
+                --load
+              )
+              if [[ -n "${build_arg:-}" ]]; then
+                build_args+=(--build-arg "build_arg=${build_arg}")
+              fi
+              build_args+=("${dir_app}/build")
+
+              if ! "${build_args[@]}"; then
+                status=failed
+                reason=build_failed
+              fi
+            fi
+
+            if [[ "${status}" == success && ${#test_scripts[@]} -gt 0 ]]; then
+              if ! cid=$(docker run --detach \
+                  --platform "${platform}" \
+                  --entrypoint /bin/sh \
+                  "${local_ref}" \
+                  -c 'sleep infinity'); then
+                status=failed
+                reason=test_container_failed
+              else
+                for script in "${test_scripts[@]}"; do
+                  name=$(basename "${script}")
+                  if ! docker cp "${script}" "${cid}:/tmp/${name}" >/dev/null ||
+                     ! docker exec --user 0 "${cid}" /bin/sh "/tmp/${name}"; then
+                    status=failed
+                    reason=test_failed
+                    break
+                  fi
+                done
+              fi
+            fi
+
+            if [[ -n "${cid}" ]]; then
+              docker rm --force "${cid}" >/dev/null 2>&1 || true
+            fi
+
+            if [[ "${status}" == success ]]; then
+              if ! docker save --output "${asset_path}" "${local_ref}"; then
+                status=failed
+                reason=save_failed
+              fi
+            fi
+
+            if [[ "${status}" == success ]]; then
+              if ! gh release view "${release_tag}" >/dev/null 2>&1; then
+                if ! gh release create "${release_tag}" \
+                    --title "${release_tag}" \
+                    --notes "Neutral Docker image archive for ${TARGET_ID} ${VERSION}. Build revision: ${REVISION}."; then
+                  status=failed
+                  reason=release_create_failed
+                fi
+              fi
+            fi
+
+            if [[ "${status}" == success ]]; then
+              if gh release view "${release_tag}" --json assets --jq '.assets[].name' |
+                   grep -Fxq "${asset_name}"; then
+                status=failed
+                reason=release_asset_exists
+              elif ! gh release upload "${release_tag}" "${asset_path}"; then
+                status=failed
+                reason=release_upload_failed
+              fi
+            fi
+
+            if [[ "${status}" == success ]]; then
+              printf '%s\t%s\t%s\t%s\t%s\n' \
+                "${platform}" "${arch_label}" "${asset_name}" success ok >> "${state_file}"
+            else
+              rm -f "${asset_path}"
+              printf '%s\t%s\t%s\t%s\t%s\n' \
+                "${platform}" "${arch_label}" "${asset_name}" failed "${reason}" >> "${state_file}"
+            fi
+
+            docker image rm "${local_ref}" >/dev/null 2>&1 || true
+          done
+
+          cat "${state_file}"
+
+      - name: Promote archived images
+        id: promote
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+        run: |
+          set -u
+
+          dir_app="application/${APP_BRANCH}"
+          state_dir="${RUNNER_TEMP}/docker-pipeline/${TARGET_ID}"
+          tar_dir="${state_dir}/tar"
+          state_file="${state_dir}/release.tsv"
+          promotion_file="${state_dir}/promotion.tsv"
+          mkdir -p "${tar_dir}"
+          : > "${promotion_file}"
+
+          apply_app_env() {
+            set -a
+            shopt -s nullglob
+            local files=("${dir_app}"/env/*.env)
+            local file
+            for file in "${files[@]}"; do
+              # shellcheck disable=SC1090
+              . "${file}"
+            done
+            if [[ -n "${CUSTOM_ENV}" ]]; then
+              eval "${CUSTOM_ENV}"
+            fi
+            set +a
+          }
+
+          normalize_version() {
+            local value="${1#v}"
+            printf '%s' "${value}" | sed -E 's/[^A-Za-z0-9_.-]+/-/g; s/^-+//; s/-+$//'
+          }
+
+          platform_label() {
+            printf '%s' "$1" | sed -E 's#^linux/##; s#/#-#g'
+          }
+
+          apply_app_env
+          : "${arch_branch:=linux/amd64}"
+          : "${repo_dockerhub:=grinch27/${APP_BRANCH}}"
+
+          version_tag=$(normalize_version "${VERSION}")
+          release_tag="${TARGET_ID}-v${version_tag}"
+          local_ref="${TARGET_ID}:${version_tag}"
+          repo_name="${repo_dockerhub##*/}"
+          owner_lower=$(printf '%s' "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')
+          dockerhub_repo="${repo_dockerhub}"
+          ghcr_repo="ghcr.io/${owner_lower}/${repo_name}"
+
+          want_dockerhub=false
+          want_ghcr=false
+          case "${MODE}" in
+            auto|build|promote-all)
+              want_dockerhub=true
+              want_ghcr=true
+              ;;
+            promote-dockerhub) want_dockerhub=true ;;
+            promote-ghcr) want_ghcr=true ;;
+          esac
+
+          dockerhub_login=false
+          ghcr_login=false
+          if [[ "${want_dockerhub}" == true ]]; then
+            if [[ -n "${DOCKER_USERNAME}" && -n "${DOCKER_PASSWORD}" ]] &&
+               printf '%s' "${DOCKER_PASSWORD}" |
+                 docker login --username "${DOCKER_USERNAME}" --password-stdin docker.io; then
+              dockerhub_login=true
+            else
+              echo 'Docker Hub login failed or credentials are missing.' >&2
+            fi
+          fi
+
+          if [[ "${want_ghcr}" == true ]]; then
+            if printf '%s' "${GH_TOKEN}" |
+               docker login ghcr.io --username "${GITHUB_ACTOR}" --password-stdin; then
+              ghcr_login=true
+            else
+              echo 'GHCR login failed.' >&2
+            fi
+          fi
+
+          IFS=',' read -r -a platforms <<< "${arch_branch}"
+          declared_count=0
+          dockerhub_ok=0
+          ghcr_ok=0
+          build_archive_ok=0
+          overall_fail=0
+          dockerhub_refs=()
+          ghcr_refs=()
+
+          for platform in "${platforms[@]}"; do
+            platform="${platform//[[:space:]]/}"
+            [[ -n "${platform}" ]] || continue
+            declared_count=$((declared_count + 1))
+            arch_label=$(platform_label "${platform}")
+            asset_name="${TARGET_ID}-v${version_tag}-${REVISION}-linux-${arch_label}.tar"
+            asset_path="${tar_dir}/${asset_name}"
+
+            if [[ "${MODE}" == auto || "${MODE}" == build ]]; then
+              release_status=$(awk -F '\t' -v p="${platform}" '$1 == p {print $4; exit}' "${state_file}" 2>/dev/null || true)
+              if [[ "${release_status}" != success || ! -f "${asset_path}" ]]; then
+                printf '%s\tarchive\tfailed\n' "${platform}" >> "${promotion_file}"
+                overall_fail=1
+                continue
+              fi
+            else
+              rm -f "${asset_path}"
+              if ! gh release download "${release_tag}" \
+                  --pattern "${asset_name}" \
+                  --dir "${tar_dir}"; then
+                printf '%s\tarchive\tfailed\n' "${platform}" >> "${promotion_file}"
+                overall_fail=1
+                continue
+              fi
+            fi
+
+            build_archive_ok=$((build_archive_ok + 1))
+            if ! docker load --input "${asset_path}" >/dev/null; then
+              printf '%s\tload\tfailed\n' "${platform}" >> "${promotion_file}"
+              overall_fail=1
+              continue
+            fi
+
+            if [[ "${TAG_REPO}" == latest ]]; then
+              platform_tag="${version_tag}-${arch_label}"
+              version_manifest_tag="${version_tag}"
+              channel_tag=latest
+            else
+              platform_tag="${version_tag}-${TAG_REPO}-${arch_label}"
+              version_manifest_tag="${version_tag}-${TAG_REPO}"
+              channel_tag="${TAG_REPO}"
+            fi
+
+            if [[ "${want_dockerhub}" == true ]]; then
+              remote="${dockerhub_repo}:${platform_tag}"
+              if [[ "${dockerhub_login}" == true ]] &&
+                 docker tag "${local_ref}" "${remote}" &&
+                 docker push "${remote}"; then
+                dockerhub_ok=$((dockerhub_ok + 1))
+                dockerhub_refs+=("${remote}")
+                printf '%s\tdockerhub\tsuccess\n' "${platform}" >> "${promotion_file}"
+              else
+                printf '%s\tdockerhub\tfailed\n' "${platform}" >> "${promotion_file}"
+                overall_fail=1
+              fi
+              docker image rm "${remote}" >/dev/null 2>&1 || true
+            fi
+
+            if [[ "${want_ghcr}" == true ]]; then
+              remote="${ghcr_repo}:${platform_tag}"
+              if [[ "${ghcr_login}" == true ]] &&
+                 docker tag "${local_ref}" "${remote}" &&
+                 docker push "${remote}"; then
+                ghcr_ok=$((ghcr_ok + 1))
+                ghcr_refs+=("${remote}")
+                printf '%s\tghcr\tsuccess\n' "${platform}" >> "${promotion_file}"
+              else
+                printf '%s\tghcr\tfailed\n' "${platform}" >> "${promotion_file}"
+                overall_fail=1
+              fi
+              docker image rm "${remote}" >/dev/null 2>&1 || true
+            fi
+
+            docker image rm "${local_ref}" >/dev/null 2>&1 || true
+          done
+
+          dockerhub_manifest=skipped
+          ghcr_manifest=skipped
+
+          if [[ "${want_dockerhub}" == true ]]; then
+            if [[ "${dockerhub_login}" == true && "${dockerhub_ok}" -eq "${declared_count}" ]]; then
+              if docker buildx imagetools create \
+                   --tag "${dockerhub_repo}:${version_manifest_tag}" \
+                   "${dockerhub_refs[@]}" &&
+                 docker buildx imagetools create \
+                   --tag "${dockerhub_repo}:${channel_tag}" \
+                   "${dockerhub_refs[@]}"; then
+                dockerhub_manifest=success
+              else
+                dockerhub_manifest=failed
+                overall_fail=1
+              fi
+            else
+              dockerhub_manifest=incomplete
+              overall_fail=1
+            fi
+          fi
+
+          if [[ "${want_ghcr}" == true ]]; then
+            if [[ "${ghcr_login}" == true && "${ghcr_ok}" -eq "${declared_count}" ]]; then
+              if docker buildx imagetools create \
+                   --tag "${ghcr_repo}:${version_manifest_tag}" \
+                   "${ghcr_refs[@]}" &&
+                 docker buildx imagetools create \
+                   --tag "${ghcr_repo}:${channel_tag}" \
+                   "${ghcr_refs[@]}"; then
+                ghcr_manifest=success
+              else
+                ghcr_manifest=failed
+                overall_fail=1
+              fi
+            else
+              ghcr_manifest=incomplete
+              overall_fail=1
+            fi
+          fi
+
+          {
+            echo "## ${TARGET_ID} ${VERSION}"
+            echo
+            echo "- Mode: \`${MODE}\`"
+            echo "- Revision: \`${REVISION}\`"
+            echo "- Release: \`${release_tag}\`"
+            echo "- Declared platforms: ${declared_count}"
+            echo "- Archived platforms available: ${build_archive_ok}"
+            if [[ "${want_dockerhub}" == true ]]; then
+              echo "- Docker Hub platforms: ${dockerhub_ok}/${declared_count}"
+              echo "- Docker Hub manifest: ${dockerhub_manifest}"
+            fi
+            if [[ "${want_ghcr}" == true ]]; then
+              echo "- GHCR platforms: ${ghcr_ok}/${declared_count}"
+              echo "- GHCR manifest: ${ghcr_manifest}"
+              echo "- GHCR visibility target: public (set package visibility once after first publication if the namespace default is private)."
+            fi
+            echo "- Hash calculations: NONE"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+          rm -rf "${tar_dir}"
+          docker logout docker.io >/dev/null 2>&1 || true
+          docker logout ghcr.io >/dev/null 2>&1 || true
+
+          if [[ "${overall_fail}" -ne 0 ]]; then
+            exit 1
+          fi
