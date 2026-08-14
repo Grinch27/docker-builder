@@ -80,28 +80,121 @@ jobs:
         id: resolve-runner-image
         uses: Grinch27/github-actions/.github/actions/resolve-runner-image@main
 
-  prepare:
-    name: ${{ needs.runner-image.outputs.RUNNER_IMAGE }} - prepare
+  prepare-base:
+    name: ${{ needs.runner-image.outputs.RUNNER_IMAGE }} - ${{ matrix.image }}
     needs: runner-image
+    if: ${{ !startsWith(inputs.mode || github.event.client_payload.mode || 'auto', 'promote-') }}
+    runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
+          - key: debian_testing_slim
+            image: debian:testing-slim
+          - key: ubuntu_devel
+            image: ubuntu:devel
+          - key: alpine_latest
+            image: alpine:latest
+    outputs:
+      debian_testing_slim: ${{ steps.probe.outputs.debian_testing_slim }}
+      ubuntu_devel: ${{ steps.probe.outputs.ubuntu_devel }}
+      alpine_latest: ${{ steps.probe.outputs.alpine_latest }}
+    steps:
+      - name: Probe ${{ matrix.image }}
+        id: probe
+        env:
+          BASE_KEY: ${{ matrix.key }}
+          BASE_IMAGE: ${{ matrix.image }}
+        run: |
+          set -u
+
+          status=success
+          os_id=""
+          version_id=""
+          version_codename=""
+          package_manager=""
+          info=""
+
+          if ! docker pull --platform linux/amd64 "${BASE_IMAGE}" >/dev/null; then
+            status=pull_failed
+          elif ! info=$(
+            docker run --rm \
+              --platform linux/amd64 \
+              "${BASE_IMAGE}" \
+              sh -c '
+                . /etc/os-release 2>/dev/null || true
+
+                package_manager=""
+                if command -v apt-get >/dev/null 2>&1; then
+                  package_manager=apt-get
+                elif command -v apk >/dev/null 2>&1; then
+                  package_manager=apk
+                fi
+
+                printf "%s|%s|%s|%s\n" \
+                  "${ID:-}" \
+                  "${VERSION_ID:-}" \
+                  "${VERSION_CODENAME:-}" \
+                  "${package_manager}"
+              '
+          ); then
+            status=probe_failed
+          fi
+
+          if [[ "${status}" == success ]]; then
+            IFS='|' read -r os_id version_id version_codename package_manager <<< "${info}"
+          fi
+
+          result=$(
+            jq -cn \
+              --arg image "${BASE_IMAGE}" \
+              --arg status "${status}" \
+              --arg os_id "${os_id}" \
+              --arg version_id "${version_id}" \
+              --arg version_codename "${version_codename}" \
+              --arg package_manager "${package_manager}" \
+              '{
+                image: $image,
+                status: $status,
+                os_id: $os_id,
+                version_id: $version_id,
+                version_codename: $version_codename,
+                package_manager: $package_manager
+              }'
+          )
+
+          printf '%s=%s\n' "${BASE_KEY}" "${result}" >> "${GITHUB_OUTPUT}"
+          printf '%s\n' "${result}"
+
+  prepare-app:
+    name: ${{ needs.runner-image.outputs.RUNNER_IMAGE }} - prepare-app
+    needs:
+      - runner-image
+      - prepare-base
+    if: ${{ always() && needs.runner-image.result == 'success' && (needs.prepare-base.result == 'success' || needs.prepare-base.result == 'skipped') }}
     runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
     outputs:
-      mode: ${{ steps.prepare.outputs.mode }}
-      target_count: ${{ steps.prepare.outputs.target_count }}
-      target_matrix: ${{ steps.prepare.outputs.target_matrix }}
+      mode: ${{ steps.prepare_app.outputs.mode }}
+      target_count: ${{ steps.prepare_app.outputs.target_count }}
+      target_matrix: ${{ steps.prepare_app.outputs.target_matrix }}
     steps:
       - name: Checkout ${{ github.repository }}
         uses: actions/checkout@main
         with:
           fetch-depth: 1
 
-      - name: Prepare targets and versions
-        id: prepare
+      - name: Prepare application targets and versions
+        id: prepare_app
         env:
           MODE_INPUT: ${{ inputs.mode || github.event.client_payload.mode || 'auto' }}
           TARGET_INPUT: ${{ inputs.target_id || github.event.client_payload.target_id || '' }}
           VERSION_INPUT: ${{ inputs.version || github.event.client_payload.version || '' }}
           REVISION_INPUT: ${{ inputs.revision || github.event.client_payload.revision || '' }}
           FORCE_INPUT: ${{ inputs.force_build || github.event.client_payload.force_build || 'false' }}
+          BASE_DEBIAN_INFO: ${{ needs.prepare-base.outputs.debian_testing_slim }}
+          BASE_UBUNTU_INFO: ${{ needs.prepare-base.outputs.ubuntu_devel }}
+          BASE_ALPINE_INFO: ${{ needs.prepare-base.outputs.alpine_latest }}
         run: |
           set -euo pipefail
 
@@ -230,6 +323,57 @@ jobs:
           mkdir -p "${RUNNER_TEMP}/version-state"
           : > "${RUNNER_TEMP}/version-state/records.jsonl"
 
+          base_probe_status() {
+            local image="$1"
+            local raw=""
+
+            case "${image}" in
+              debian:testing-slim) raw="${BASE_DEBIAN_INFO:-}" ;;
+              ubuntu:devel) raw="${BASE_UBUNTU_INFO:-}" ;;
+              alpine:latest) raw="${BASE_ALPINE_INFO:-}" ;;
+              *)
+                printf 'not_matrix'
+                return 0
+                ;;
+            esac
+
+            if [[ -z "${raw}" ]]; then
+              printf 'unknown'
+            else
+              jq -r '.status // "unknown"' <<< "${raw}" 2>/dev/null || printf 'unknown'
+            fi
+          }
+
+          declare -A base_pull_status=()
+          pull_base_once() {
+            local image="$1"
+            local platform="$2"
+            local key="${image}|${platform}"
+            local probe_status
+
+            if [[ -n "${base_pull_status[$key]+set}" ]]; then
+              [[ "${base_pull_status[$key]}" == success ]]
+              return
+            fi
+
+            probe_status=$(base_probe_status "${image}")
+            case "${probe_status}" in
+              success|not_matrix|unknown) ;;
+              *)
+                base_pull_status["${key}"]="base_probe_${probe_status}"
+                return 1
+                ;;
+            esac
+
+            if docker pull --platform "${platform}" "${image}" >/dev/null; then
+              base_pull_status["${key}"]=success
+              return 0
+            fi
+
+            base_pull_status["${key}"]=base_pull_failed
+            return 1
+          }
+
           while IFS= read -r target; do
             app_branch=$(jq -r '.app_branch' <<< "${target}")
             tag_repo=$(jq -r '.tag_repo' <<< "${target}")
@@ -301,8 +445,9 @@ jobs:
 
             if ((${#meta_files[@]} == 0)); then
               status=meta_app_missing
-            elif ! docker pull --platform "${platform_used}" "${base_image}" >/dev/null; then
-              status=base_pull_failed
+            elif ! pull_base_once "${base_image}" "${platform_used}"; then
+              pull_key="${base_image}|${platform_used}"
+              status="${base_pull_status[$pull_key]:-base_pull_failed}"
             elif ! docker run --rm \
                 --platform "${platform_used}" \
                 --env-file "${env_file}" \
@@ -484,7 +629,7 @@ jobs:
               "status",
           ]
           table = [
-              "Auto-generated by `.github/workflows/docker_allinone.yml`.",
+              "Auto-generated by `.github/workflows/docker_allinone_dev.yml`.",
               "",
               "| " + " | ".join(fields) + " |",
               "|" + "|".join(["---"] * len(fields)) + "|",
@@ -526,7 +671,7 @@ jobs:
           } >> "${GITHUB_OUTPUT}"
 
       - name: Commit semantic version state
-        if: steps.prepare.outputs.mode == 'auto' || steps.prepare.outputs.mode == 'build'
+        if: steps.prepare_app.outputs.mode == 'auto' || steps.prepare_app.outputs.mode == 'build'
         run: |
           set -euo pipefail
           if [[ ! -f "${RUNNER_TEMP}/version-state/readme-changed.txt" ]] ||
@@ -609,8 +754,8 @@ jobs:
     name: ${{ matrix.target_id }} - ${{ matrix.version }}
     needs:
       - runner-image
-      - prepare
-    if: needs.prepare.outputs.target_count != '0'
+      - prepare-app
+    if: needs['prepare-app'].outputs.target_count != '0'
     runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
     concurrency:
       group: docker-allinone-dev-${{ matrix.app_branch }}
@@ -620,9 +765,9 @@ jobs:
       fail-fast: false
       max-parallel: 2
       matrix:
-        include: ${{ fromJSON(needs.prepare.outputs.target_matrix).include }}
+        include: ${{ fromJSON(needs['prepare-app'].outputs.target_matrix).include }}
     env:
-      MODE: ${{ needs.prepare.outputs.mode }}
+      MODE: ${{ needs['prepare-app'].outputs.mode }}
       TARGET_ID: ${{ matrix.target_id }}
       APP_BRANCH: ${{ matrix.app_branch }}
       TAG_REPO: ${{ matrix.tag_repo }}
