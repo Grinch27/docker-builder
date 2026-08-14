@@ -1,4 +1,4 @@
-name: Docker All in One(Dev)
+name: Docker All in One Dev
 
 "on":
   schedule:
@@ -148,7 +148,7 @@ jobs:
               {"app_branch":"privoxy","tag_repo":"latest","custom_env":""},
               {"app_branch":"aria2","tag_repo":"latest","custom_env":""},
               {"app_branch":"samba","tag_repo":"latest","custom_env":""},
-              {"app_branch":"samba","tag_repo":"alpine","custom_env":"dockerfile=alpine.Dockerfile"},
+              {"app_branch":"samba","tag_repo":"alpine","custom_env":"base_image=alpine:latest;dockerfile=alpine.Dockerfile"},
               {"app_branch":"dnscrypt-proxy","tag_repo":"latest","custom_env":""},
               {"app_branch":"sdnext","tag_repo":"latest","custom_env":""},
               {"app_branch":"sdnext-dev","tag_repo":"dev","custom_env":"build_arg='therock_version=7.11.0,therock_release_type=stable,therock_amdgpu_family=gfx110X-all'"}
@@ -552,8 +552,9 @@ jobs:
       contents: write
       packages: write
     concurrency:
-      group: docker-${{ matrix.target_id }}-${{ matrix.version }}
+      group: docker-allinone-dev-${{ matrix.app_branch }}
       cancel-in-progress: false
+      queue: max
     strategy:
       fail-fast: false
       max-parallel: 2
@@ -575,6 +576,8 @@ jobs:
 
       - name: Enable emulated platforms
         uses: docker/setup-qemu-action@master
+        with:
+          cache-image: false
 
       - name: Configure Buildx
         uses: docker/setup-buildx-action@master
@@ -629,7 +632,7 @@ jobs:
             echo 'Normalized version is empty.' >&2
             exit 1
           fi
-          release_tag="${TARGET_ID}-v${version_tag}"
+          release_tag="${APP_BRANCH}"
           local_ref="${TARGET_ID}:${version_tag}"
 
           IFS=',' read -r -a platforms <<< "${arch_branch}"
@@ -710,8 +713,8 @@ jobs:
             if [[ "${status}" == success ]]; then
               if ! gh release view "${release_tag}" >/dev/null 2>&1; then
                 if ! gh release create "${release_tag}" \
-                    --title "${release_tag}" \
-                    --notes "Neutral Docker image archive for ${TARGET_ID} ${VERSION}. Build revision: ${REVISION}."; then
+                    --title "${repo_dockerhub}" \
+                    --notes "Neutral Docker image archives for ${APP_BRANCH}. Versions, channels, build revisions and platforms are encoded in asset filenames."; then
                   status=failed
                   reason=release_create_failed
                 fi
@@ -789,7 +792,7 @@ jobs:
           : "${repo_dockerhub:=grinch27/${APP_BRANCH}}"
 
           version_tag=$(normalize_version "${VERSION}")
-          release_tag="${TARGET_ID}-v${version_tag}"
+          release_tag="${APP_BRANCH}"
           local_ref="${TARGET_ID}:${version_tag}"
           repo_name="${repo_dockerhub##*/}"
           owner_lower=$(printf '%s' "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')
@@ -807,26 +810,64 @@ jobs:
             promote-ghcr) want_ghcr=true ;;
           esac
 
-          dockerhub_login=false
-          ghcr_login=false
-          if [[ "${want_dockerhub}" == true ]]; then
-            if [[ -n "${DOCKER_USERNAME}" && -n "${DOCKER_PASSWORD}" ]] &&
-               printf '%s' "${DOCKER_PASSWORD}" |
-                 docker login --username "${DOCKER_USERNAME}" --password-stdin docker.io; then
-              dockerhub_login=true
-            else
-              echo 'Docker Hub login failed or credentials are missing.' >&2
-            fi
-          fi
+          docker_config="${state_dir}/docker-config"
+          rm -rf "${docker_config}"
+          mkdir -p "${docker_config}"
+          export DOCKER_CONFIG="${docker_config}"
 
-          if [[ "${want_ghcr}" == true ]]; then
-            if printf '%s' "${GH_TOKEN}" |
-               docker login ghcr.io --username "${GITHUB_ACTOR}" --password-stdin; then
-              ghcr_login=true
-            else
-              echo 'GHCR login failed.' >&2
+          dockerhub_login=false
+          dockerhub_login_attempted=false
+          ghcr_login=false
+          ghcr_login_attempted=false
+
+          login_dockerhub() {
+            if [[ "${dockerhub_login}" == true ]]; then
+              return 0
             fi
-          fi
+            if [[ "${dockerhub_login_attempted}" == true ]]; then
+              return 1
+            fi
+            dockerhub_login_attempted=true
+
+            if [[ -z "${DOCKER_USERNAME}" || -z "${DOCKER_PASSWORD}" ]]; then
+              echo 'Docker Hub credentials are missing.' >&2
+              return 1
+            fi
+
+            local login_log="${state_dir}/dockerhub-login.log"
+            if printf '%s' "${DOCKER_PASSWORD}" |
+                 docker login --username "${DOCKER_USERNAME}" --password-stdin docker.io                    >"${login_log}" 2>&1; then
+              dockerhub_login=true
+              rm -f "${login_log}"
+              return 0
+            fi
+
+            cat "${login_log}" >&2
+            rm -f "${login_log}"
+            return 1
+          }
+
+          login_ghcr() {
+            if [[ "${ghcr_login}" == true ]]; then
+              return 0
+            fi
+            if [[ "${ghcr_login_attempted}" == true ]]; then
+              return 1
+            fi
+            ghcr_login_attempted=true
+
+            local login_log="${state_dir}/ghcr-login.log"
+            if printf '%s' "${GH_TOKEN}" |
+                 docker login ghcr.io --username "${GITHUB_ACTOR}" --password-stdin                    >"${login_log}" 2>&1; then
+              ghcr_login=true
+              rm -f "${login_log}"
+              return 0
+            fi
+
+            cat "${login_log}" >&2
+            rm -f "${login_log}"
+            return 1
+          }
 
           IFS=',' read -r -a platforms <<< "${arch_branch}"
           declared_count=0
@@ -882,7 +923,7 @@ jobs:
 
             if [[ "${want_dockerhub}" == true ]]; then
               remote="${dockerhub_repo}:${platform_tag}"
-              if [[ "${dockerhub_login}" == true ]] &&
+              if login_dockerhub &&
                  docker tag "${local_ref}" "${remote}" &&
                  docker push "${remote}"; then
                 dockerhub_ok=$((dockerhub_ok + 1))
@@ -897,7 +938,7 @@ jobs:
 
             if [[ "${want_ghcr}" == true ]]; then
               remote="${ghcr_repo}:${platform_tag}"
-              if [[ "${ghcr_login}" == true ]] &&
+              if login_ghcr &&
                  docker tag "${local_ref}" "${remote}" &&
                  docker push "${remote}"; then
                 ghcr_ok=$((ghcr_ok + 1))
@@ -974,9 +1015,7 @@ jobs:
             echo "- Hash calculations: NONE"
           } >> "${GITHUB_STEP_SUMMARY}"
 
-          rm -rf "${tar_dir}"
-          docker logout docker.io >/dev/null 2>&1 || true
-          docker logout ghcr.io >/dev/null 2>&1 || true
+          rm -rf "${tar_dir}" "${docker_config}"
 
           if [[ "${overall_fail}" -ne 0 ]]; then
             exit 1
