@@ -1,6 +1,11 @@
 name: Docker All in One Dev
 
-"on":
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/docker_allinone_dev.yml"
   schedule:
     - cron: "0 1 * * *"
       timezone: "Etc/UTC"
