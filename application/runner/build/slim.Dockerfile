@@ -26,7 +26,6 @@ RUN set -x \
         libelf-dev \
         lz4 \
         libssl-dev \
-        libxml2 \
         libxml2-utils \
         lzop \
         make \

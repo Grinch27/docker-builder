@@ -145,19 +145,14 @@ jobs:
           static_targets=$(cat <<'JSON'
           {
             "include": [
-              {"app_branch":"cloudflare-warp","tag_repo":"latest","custom_env":""},
               {"app_branch":"curl","tag_repo":"latest","custom_env":""},
               {"app_branch":"adguardvpn-cli","tag_repo":"nightly","custom_env":"build_arg='update_channel=nightly'"},
               {"app_branch":"adguardvpn-cli","tag_repo":"beta","custom_env":"build_arg='update_channel=beta'"},
               {"app_branch":"adguardvpn-cli","tag_repo":"release","custom_env":"build_arg='update_channel=release'"},
-              {"app_branch":"expressvpn","tag_repo":"latest","custom_env":""},
               {"app_branch":"nordvpn","tag_repo":"latest","custom_env":""},
               {"app_branch":"squid","tag_repo":"latest","custom_env":""},
               {"app_branch":"vlmcsd","tag_repo":"latest","custom_env":""},
-              {"app_branch":"novnc","tag_repo":"latest","custom_env":""},
               {"app_branch":"novnc_alpine","tag_repo":"alpine","custom_env":""},
-              {"app_branch":"baidunetdisk","tag_repo":"dev","custom_env":""},
-              {"app_branch":"steamcmd","tag_repo":"dev","custom_env":""},
               {"app_branch":"runner","tag_repo":"dev","custom_env":""},
               {"app_branch":"runner","tag_repo":"slim","custom_env":"dockerfile=slim.Dockerfile"},
               {"app_branch":"runner","tag_repo":"actions","custom_env":"dockerfile=actions.Dockerfile"},
@@ -175,6 +170,9 @@ jobs:
           JSON
           )
 
+          # Keep slow or explicitly abandoned applications out of auto-discovery.
+          disabled_apps='["baidunetdisk","cloudflare-warp","expressvpn","novnc","steamcmd"]'
+
           apps_json=$(
             find application -mindepth 1 -maxdepth 1 -type d -printf '%f\n' |
               sed '/^\.example$/d' |
@@ -186,7 +184,8 @@ jobs:
           missing_apps=$(jq -cn \
             --argjson all "${apps_json}" \
             --argjson known "${known_apps}" \
-            '$all - $known')
+            --argjson disabled "${disabled_apps}" \
+            '$all - $known - $disabled')
 
           targets=$(jq -cn \
             --argjson base "$(jq '.include' <<< "${static_targets}")" \

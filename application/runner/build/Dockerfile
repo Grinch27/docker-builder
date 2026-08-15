@@ -77,7 +77,6 @@ RUN set -x \
         git-lfs \
         gnupg \
         lz4 \
-        libxml2 \
         libxml2-utils \
         lzop \
         schedtool \
