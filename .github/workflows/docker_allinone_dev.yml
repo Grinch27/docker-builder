@@ -90,6 +90,7 @@ jobs:
       target_matrix: ${{ steps.inspect.outputs.target_matrix }}
       artifact_name: ${{ steps.inspect.outputs.artifact_name }}
       fatal_count: ${{ steps.inspect.outputs.fatal_count }}
+      unobservable_count: ${{ steps.inspect.outputs.unobservable_count }}
     steps:
       - name: Checkout ${{ github.repository }}
         uses: actions/checkout@main
@@ -154,6 +155,7 @@ jobs:
               {"app_branch":"squid","tag_repo":"latest","custom_env":""},
               {"app_branch":"vlmcsd","tag_repo":"latest","custom_env":""},
               {"app_branch":"novnc","tag_repo":"latest","custom_env":""},
+              {"app_branch":"novnc_alpine","tag_repo":"alpine","custom_env":""},
               {"app_branch":"baidunetdisk","tag_repo":"dev","custom_env":""},
               {"app_branch":"steamcmd","tag_repo":"dev","custom_env":""},
               {"app_branch":"runner","tag_repo":"dev","custom_env":""},
@@ -326,13 +328,14 @@ jobs:
           fi
 
           fatal_count=0
+          unobservable_count=0
 
           classify_error() {
             local log="$1"
             if grep -Eiq 'manifest unknown|name unknown|not found|does not exist' "${log}"; then
               printf 'missing'
-            elif grep -Eiq 'unauthorized|denied|forbidden|authentication required|insufficient_scope' "${log}"; then
-              printf 'unauthorized'
+            elif grep -Eiq 'unauthorized|denied|forbidden|authentication required|insufficient_scope|anonymous token.*403|403 forbidden' "${log}"; then
+              printf 'unobservable'
             else
               printf 'inspect_failed'
             fi
@@ -372,8 +375,10 @@ jobs:
             if ! docker buildx imagetools inspect "${ref}" --raw > "${raw_file}" 2> "${error_file}"; then
               status=$(classify_error "${error_file}")
               write_registry_status "${out}" "${ref}" "${status}" "${error_file}"
-              if [[ "${status}" == unauthorized || "${status}" == inspect_failed ]]; then
+              if [[ "${status}" == inspect_failed ]]; then
                 fatal_count=$((fatal_count + 1))
+              elif [[ "${status}" == unobservable ]]; then
+                unobservable_count=$((unobservable_count + 1))
               fi
               rm -rf "${dir}"
               return 0
@@ -517,6 +522,7 @@ jobs:
             echo "target_count=${target_count}"
             echo "artifact_name=${artifact_name}"
             echo "fatal_count=${fatal_count}"
+            echo "unobservable_count=${unobservable_count}"
             echo "target_matrix<<__JSON__"
             echo "${target_matrix}"
             echo "__JSON__"
@@ -528,6 +534,7 @@ jobs:
             echo "- Mode: \`${mode}\`"
             echo "- Targets: ${target_count}"
             echo "- Fatal inspect results: ${fatal_count}"
+            echo "- Unobservable registry results: ${unobservable_count}"
             echo "- Published metadata: \`imagetools inspect --raw\` + \`--format '{{json .}}'\` + declared-platform image config"
             echo "- Registry login during inspect: NONE"
             echo "- Hash calculations: NONE"
@@ -890,6 +897,7 @@ jobs:
           registries = {}
           any_changed = False
           any_unknown = False
+          has_observable_baseline = False
 
           for registry_name in ("dockerhub", "ghcr"):
               registry = baseline.get("registries", {}).get(registry_name, {})
@@ -902,6 +910,9 @@ jobs:
               if registry_status == "missing":
                   result = "MISSING"
                   promotion_required = True
+              elif registry_status == "unobservable":
+                  result = "UNOBSERVABLE"
+                  reasons.append("anonymous_inspect_not_authorized")
               elif registry_status != "present":
                   result = "UNKNOWN"
                   any_unknown = True
@@ -926,8 +937,10 @@ jobs:
                           any_unknown = True
                           reasons.append("published_actual_version_missing")
                       elif published_view == candidate_view:
+                          has_observable_baseline = True
                           result = "SAME"
                       else:
+                          has_observable_baseline = True
                           result = "CHANGED"
                           promotion_required = True
                           any_changed = True
@@ -945,6 +958,15 @@ jobs:
                   "published_view": published_view,
                   "reasons": reasons,
               }
+
+          all_missing = all(
+              registry["result"] == "MISSING" for registry in registries.values()
+          )
+          if not has_observable_baseline and not all_missing:
+              any_unknown = True
+          if any_changed:
+              for registry in registries.values():
+                  registry["promotion_required"] = True
 
           overall = "UNKNOWN" if any_unknown else ("CHANGED" if any_changed else "SAME")
           result = {
