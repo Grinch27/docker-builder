@@ -42,11 +42,13 @@ RUN set -x \
     # ===== Setup AdGuardVPNCLI =====
     && tag_target=${update_channel} \
     # https://api.github.com/repos/AdguardTeam/AdGuardVPNCLI/tags
-    && tag_download=$(curl -s "https://api.github.com/repos/AdguardTeam/AdGuardVPNCLI/tags" | \
+    && tag_download=$(curl -fsSL "https://api.github.com/repos/AdguardTeam/AdGuardVPNCLI/tags" | \
         jq -r --arg tag_target "$tag_target" '.[] | select(.name | contains($tag_target)) | .name' | head -n 1) \
-    # https://api.github.com/repos/AdguardTeam/AdGuardVPNCLI/releases/tags/v1.0.0
-    && URL_download=$(curl -s "https://api.github.com/repos/AdguardTeam/AdGuardVPNCLI/releases/tags/${tag_download}" | \
-        jq -r --arg cpu "$cpu" '.assets[] | select(.name | contains($cpu)) | .browser_download_url' | head -n 1)  \
+    && test -n "${tag_download}" \
+    # Release assets use the numeric version even for beta/nightly tags.
+    && asset_version=${tag_download#v} \
+    && asset_version=${asset_version%%-*} \
+    && URL_download="https://github.com/AdguardTeam/AdGuardVPNCLI/releases/download/${tag_download}/adguardvpn-cli-${asset_version}-linux-${cpu}.tar.gz" \
     && FILE_download="/tmp/adguardvpn-cli.tar.gz" \
     && PATH_adguardvpn_cli="/opt/adguardvpn_cli" \
     && mkdir -p ${PATH_adguardvpn_cli} \

@@ -163,7 +163,6 @@ jobs:
               {"app_branch":"samba","tag_repo":"latest","custom_env":""},
               {"app_branch":"samba","tag_repo":"alpine","custom_env":"base_image=alpine:latest;dockerfile=alpine.Dockerfile"},
               {"app_branch":"dnscrypt-proxy","tag_repo":"latest","custom_env":""},
-              {"app_branch":"sdnext","tag_repo":"latest","custom_env":""},
               {"app_branch":"sdnext-dev","tag_repo":"dev","custom_env":"build_arg='therock_version=7.11.0,therock_release_type=stable,therock_amdgpu_family=gfx110X-all'"}
             ]
           }
@@ -171,7 +170,7 @@ jobs:
           )
 
           # Keep slow or explicitly abandoned applications out of auto-discovery.
-          disabled_apps='["baidunetdisk","cloudflare-warp","expressvpn","novnc","steamcmd"]'
+          disabled_apps='["baidunetdisk","cloudflare-warp","expressvpn","novnc","sdnext","steamcmd"]'
 
           apps_json=$(
             find application -mindepth 1 -maxdepth 1 -type d -printf '%f\n' |

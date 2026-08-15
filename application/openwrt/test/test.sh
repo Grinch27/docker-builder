@@ -4,12 +4,15 @@
 dir_current=$(dirname "$(readlink -f "$0")")
 echo "dir_current=${dir_current}"
 
-# apt list --installed
-# dpkg-query -Wf '${Installed-Size}\t${Package}\n' | sort -n
+if [ ! -r /etc/openwrt_release ]; then
+    echo "Missing OpenWrt release metadata" >&2
+    exit 1
+fi
 
-# dpkg -L app
-
-# version=$(app --version)
-# remove_prefix="app "
-# version=${version##*$remove_prefix}
-# echo "version=${version}"
+# shellcheck disable=SC1091
+. /etc/openwrt_release
+if [ -z "${DISTRIB_RELEASE:-}" ] || [ -z "${DISTRIB_REVISION:-}" ]; then
+    echo "Incomplete OpenWrt release metadata" >&2
+    exit 1
+fi
+echo "version=${DISTRIB_RELEASE}-${DISTRIB_REVISION}"
