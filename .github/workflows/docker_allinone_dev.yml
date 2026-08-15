@@ -169,7 +169,7 @@ jobs:
           )
 
           # Keep slow or explicitly abandoned applications out of auto-discovery.
-          disabled_apps='["baidunetdisk","cloudflare-warp","expressvpn","novnc","sdnext","sdnext-dev","steamcmd"]'
+          disabled_apps='["baidunetdisk","cloudflare-warp","expressvpn","ffmpeg","novnc","protonvpn","sdnext","sdnext-dev","stable-diffusion-webui-amdgpu","steamcmd","ttrss"]'
 
           apps_json=$(
             find application -mindepth 1 -maxdepth 1 -type d -printf '%f\n' |
@@ -796,12 +796,12 @@ jobs:
                     }
                   }' > "${snapshot_file}"
 
-              python3 - "${baseline_file}" "${snapshot_file}" "${platform}" "${comparison_file}" <<'PY'
+              python3 - "${baseline_file}" "${snapshot_file}" "${platform}" "${MODE}" "${comparison_file}" <<'PY'
           import json
           import sys
           from pathlib import Path
 
-          baseline_path, candidate_path, platform, out_path = sys.argv[1:]
+          baseline_path, candidate_path, platform, mode, out_path = sys.argv[1:]
           baseline = json.loads(Path(baseline_path).read_text(encoding="utf-8"))
           candidate = json.loads(Path(candidate_path).read_text(encoding="utf-8"))
 
@@ -956,16 +956,30 @@ jobs:
                   "reasons": reasons,
               }
 
-          all_missing = all(
-              registry["result"] == "MISSING" for registry in registries.values()
+          all_missing = all(registry["result"] == "MISSING" for registry in registries.values())
+          explicit_missing_repair = (
+              mode == "build"
+              and any(registry["result"] == "MISSING" for registry in registries.values())
+              and all(
+                  registry["result"] in {"MISSING", "UNOBSERVABLE"}
+                  for registry in registries.values()
+              )
           )
-          if not has_observable_baseline and not all_missing:
+          if not has_observable_baseline and not all_missing and not explicit_missing_repair:
               any_unknown = True
           if any_changed:
               for registry in registries.values():
                   registry["promotion_required"] = True
 
-          overall = "UNKNOWN" if any_unknown else ("CHANGED" if any_changed else "SAME")
+          overall = (
+              "UNKNOWN"
+              if any_unknown
+              else "CHANGED"
+              if any_changed
+              else "REPAIR"
+              if explicit_missing_repair
+              else "SAME"
+          )
           result = {
               "schema_version": 1,
               "platform": platform,
@@ -1024,6 +1038,7 @@ jobs:
           dockerhub_need=false
           ghcr_need=false
           candidate_changed=false
+          comparison_result=SAME
           if jq -e -s 'any(.[]; .registries.dockerhub.promotion_required == true)' "${comparison_dir}"/*.json >/dev/null; then
             dockerhub_need=true
           fi
@@ -1032,6 +1047,11 @@ jobs:
           fi
           if jq -e -s 'any(.[]; .comparison.candidate_changed == true)' "${comparison_dir}"/*.json >/dev/null; then
             candidate_changed=true
+          fi
+          if jq -e -s 'any(.[]; .comparison.result == "CHANGED")' "${comparison_dir}"/*.json >/dev/null; then
+            comparison_result=CHANGED
+          elif jq -e -s 'any(.[]; .comparison.result == "REPAIR")' "${comparison_dir}"/*.json >/dev/null; then
+            comparison_result=REPAIR
           fi
 
           need_archive=false
@@ -1042,6 +1062,7 @@ jobs:
           {
             printf 'actual_version=%q\n' "${actual_version}"
             printf 'version_tag=%q\n' "${version_tag}"
+            printf 'comparison_result=%q\n' "${comparison_result}"
             printf 'candidate_changed=%q\n' "${candidate_changed}"
             printf 'dockerhub_need=%q\n' "${dockerhub_need}"
             printf 'ghcr_need=%q\n' "${ghcr_need}"
@@ -1100,7 +1121,7 @@ jobs:
           {
             echo "## ${TARGET_ID} ${actual_version}"
             echo
-            echo "- Comparison: \`$([[ "${candidate_changed}" == true ]] && printf CHANGED || printf SAME)\`"
+            echo "- Comparison: \`${comparison_result}\`"
             echo "- Candidate changed: ${candidate_changed}"
             echo "- Docker Hub promotion required: ${dockerhub_need}"
             echo "- GHCR promotion required: ${ghcr_need}"
