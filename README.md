@@ -17,7 +17,7 @@ Volatile run metadata is intentionally omitted; this section changes only when s
 | aria2 | latest | grinch27/aria2 | 1.37.0 | alpine:latest | linux/amd64,linux/arm64 | linux/amd64 | success |
 | baidunetdisk | latest | grinch27/baidunetdisk | 4.17.7 | debian:stable-slim | linux/amd64,linux/arm64 | linux/amd64 | success |
 | cloudflare-warp | latest | grinch27/cloudflare-warp | 2026.6.880.0 | debian:stable-slim | linux/amd64,linux/arm64 | linux/amd64 | success |
-| curl | latest | grinch27/curl | 8.21.0 | debian:testing-slim | linux/amd64,linux/arm64 | linux/amd64 | success |
+| curl | latest | grinch27/curl | unknown | alpine:edge | linux/amd64,linux/arm64 | linux/amd64 | success |
 | dnscrypt-proxy | latest | grinch27/dnscrypt-proxy | 2.1.18 | alpine:edge | linux/amd64,linux/arm64 | linux/amd64 | success |
 | doh-nosni | latest | grinch27/doh-nosni | unknown | debian:sid-slim | linux/amd64,linux/arm64 | linux/amd64 | success |
 | expressvpn | latest | grinch27/expressvpn | unknown | debian:stable-slim | linux/amd64,linux/arm64,linux/386,linux/arm/v7 | linux/amd64 | success |
@@ -86,12 +86,12 @@ Volatile run metadata is intentionally omitted; this section changes only when s
   {
     "app_branch": "curl",
     "arch_branch": "linux/amd64,linux/arm64",
-    "base_image": "debian:testing-slim",
+    "base_image": "alpine:edge",
     "platform_used": "linux/amd64",
     "repo_dockerhub": "grinch27/curl",
     "status": "success",
     "tag_repo": "latest",
-    "version": "8.21.0"
+    "version": "unknown"
   },
   {
     "app_branch": "dnscrypt-proxy",
