@@ -45,7 +45,7 @@ RUN set -eu; \
     test -s "$1"; \
     test "$(dpkg-deb -f "$1" Package)" = cloudflare-warp; \
     test "$(dpkg-deb -f "$1" Architecture)" = "$(dpkg --print-architecture)"; \
-    dpkg-deb -f "$1" Package Version Architecture; \
+    dpkg-deb -f "$1" Package Version Architecture Depends; \
     mv "$1" /out/cloudflare-warp.deb; \
     chmod 0644 /out/cloudflare-warp.deb; \
     rm -rf /var/lib/apt/lists/*
@@ -64,7 +64,7 @@ RUN --mount=type=bind,from=download,source=/out,target=/mnt/warp,readonly \
     export DEBIAN_FRONTEND=noninteractive; \
     apt-get -o APT::Update::Error-Mode=any update; \
     apt-get install -y --no-install-recommends --no-install-suggests \
-      ca-certificates curl iproute2 /tmp/cloudflare-warp.deb; \
+      /tmp/cloudflare-warp.deb; \
     test "$(dpkg-query -W -f='${Version}' cloudflare-warp)" = "$warp_version"; \
     test "$(dpkg-query -W -f='${Status}' cloudflare-warp)" = 'install ok installed'; \
     test -z "$(dpkg --audit)"; \
