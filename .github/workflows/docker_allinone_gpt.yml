@@ -1,7 +1,7 @@
 # 待确认：生产定时触发、标签迁移以及 disabled_apps 的启用范围。
 # 歧义：旧 tag_version 规则仅纳入矩阵供兼容测试，不改变 Dev 的已有标签体系。
 # 后续研究：多架构 Buildx/测试、Manifest、归档上传和失败恢复验证。
-# 风险：main 分支新文件 Inspect 烟测；Build/Promote 强制禁用，禁止镜像推送和 Release。
+# 风险：main 分支隔离的 vlmcsd Buildx 烟测；Build/Promote 仍禁用，不推送镜像或 Release。
 # 验证重点：配置矩阵等价、无应用级 env/build.sh/push 脚本引用；确保运行日志不包含敏感信息。
 # 审批边界：恢复 Build/Promote、定时执行或生产发布须另行批准。
 name: Docker All in One GPT - Phase 1 Smoke
@@ -22,6 +22,7 @@ on:
         options:
           - auto
           - build
+          - smoke-vlmcsd
           - promote-dockerhub
           - promote-ghcr
           - promote-all
@@ -85,6 +86,7 @@ jobs:
         uses: Grinch27/github-actions/.github/actions/resolve-runner-image@main
 
   inspect:
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.mode == 'smoke-vlmcsd') && !(github.event_name == 'push' && contains(github.event.head_commit.message, '[smoke-vlmcsd]')) }}
     name: ${{ needs.runner-image.outputs.RUNNER_IMAGE }} - inspect
     needs: runner-image
     runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
@@ -539,6 +541,74 @@ jobs:
         run: |
           echo "Fatal published-image inspection results: ${{ steps.inspect.outputs.fatal_count }}" >&2
           exit 1
+
+  smoke-vlmcsd:
+    name: vlmcsd smoke / linux/${{ matrix.arch }}
+    needs: runner-image
+    if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[smoke-vlmcsd]')) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.mode == 'smoke-vlmcsd') }}
+    runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
+    permissions:
+      contents: read
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        arch: [amd64, arm64, "386"]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@main
+
+      - name: Enable emulated platforms
+        uses: docker/setup-qemu-action@master
+        with:
+          cache-image: false
+
+      - name: Configure Buildx
+        uses: docker/setup-buildx-action@master
+
+      - name: Build locally and run existing test.sh (NO PUBLICATION)
+        shell: bash
+        env:
+          SMOKE_ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          build_dir="$GITHUB_WORKSPACE/application/vlmcsd/build"
+          test_script="$GITHUB_WORKSPACE/application/vlmcsd/test/test.sh"
+          platform="linux/$SMOKE_ARCH"
+          image_ref="vlmcsd-smoke:$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$SMOKE_ARCH"
+          [[ -f "$build_dir/Dockerfile" && -f "$test_script" ]] || exit 1
+          cid=""
+          cleanup() {
+            if [[ -n "$cid" ]]; then docker rm -f "$cid" >/dev/null 2>&1 || true; fi
+            docker image rm "$image_ref" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          build_args=(
+            docker buildx build
+            --platform "$platform"
+            --file "$build_dir/Dockerfile"
+            --tag "$image_ref"
+            --build-arg "base_image=alpine:latest"
+            --load
+            "$build_dir"
+          )
+          "${build_args[@]}"
+          cid=$(docker run --detach --platform "$platform" --entrypoint /bin/sh "$image_ref" -c 'sleep infinity')
+          docker cp "$test_script" "$cid:/tmp/test.sh"
+          docker exec --user 0 "$cid" /bin/sh /tmp/test.sh | tee "$RUNNER_TEMP/vlmcsd-test.log"
+          actual_version=$(awk -F= '/^version=/{sub(/^[^=]*=/, ""); v=$0} END{print v}' "$RUNNER_TEMP/vlmcsd-test.log")
+          if [[ -z "$actual_version" ]]; then
+            echo "::error::vlmcsd test.sh did not provide a version on $platform"
+            exit 1
+          fi
+          {
+            echo "## vlmcsd isolated local Buildx test"
+            echo "- Platform: $platform"
+            echo "- Version: $actual_version"
+            echo "- Docker Hub / GHCR push: NONE"
+            echo "- GitHub Release upload: NONE"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   build:
     name: ${{ matrix.target_id }}
