@@ -1003,7 +1003,8 @@ jobs:
           fi
           actual_version=$(awk -F '\t' '$5 == "success" {print $3; exit}' "${state_file}")
 
-          if [[ -n "${VERSION_ASSERTION:-}" && "${actual_version#v}" != "${VERSION_ASSERTION#v}" ]]; then            printf 'actual_version assertion mismatch: detected=%s requested=%s\n' \
+          if [[ -n "${VERSION_ASSERTION:-}" && "${actual_version#v}" != "${VERSION_ASSERTION#v}" ]]; then
+            printf 'actual_version assertion mismatch: detected=%s requested=%s\n' \
               "${actual_version}" "${VERSION_ASSERTION}" >&2
             exit 1
           fi
