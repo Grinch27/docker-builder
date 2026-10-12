@@ -5,7 +5,7 @@
 # 验证重点：配置矩阵等价、无应用级 env/build.sh/push 脚本引用；确保运行日志不包含敏感信息。
 # 审批边界：恢复 Build/Promote、定时执行或生产发布须另行批准。
 # 新增 smoke-target 模式：单目标逐平台构建、原始比较算法、TAR/XZ/SHA256/标签规则、仅 Actions Artifact。
-# 回归记录：vlmcsd(3)、dnscrypt-proxy、aria2、privoxy、squid、novnc_alpine、samba、samba-alpine(各2) PASS；curl(2) 构建通过但比较 UNKNOWN；下一目标 nordvpn。
+# 回归记录：vlmcsd(3)、dnscrypt-proxy、aria2、privoxy、squid、novnc_alpine、samba、samba-alpine、nordvpn(各2) 构建通过；curl 比较 UNKNOWN；下一目标 adguardvpn-cli-release。
 name: Docker All in One GPT - Phase 1 Smoke
 
 on:
