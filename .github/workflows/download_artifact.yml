@@ -48,18 +48,44 @@ on:
 
 run-name: Download to Artifact
 
+env:
+  DEBIAN_FRONTEND: noninteractive
+  DEBCONF_NONINTERACTIVE_SEEN: "true"
+  APT_LISTCHANGES_FRONTEND: none
+  NEEDRESTART_MODE: a
+  FORCE_UNSAFE_CONFIGURE: "1"
+  TZ: Etc/UTC
+  DISPLAY_TZ: Etc/UTC
+  LANG: C.UTF-8
+  LC_ALL: C.UTF-8
+  GIT_TERMINAL_PROMPT: "0"
+  DOCKER_BUILDKIT: "1"
+  COMPOSE_DOCKER_CLI_BUILD: "1"
+
 jobs:
+  runner-image:
+    name: ubuntu-latest - runner-image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      RUNNER_IMAGE: ${{ steps.resolve-runner-image.outputs.RUNNER_IMAGE }}
+    steps:
+      - name: Resolve runner-image
+        id: resolve-runner-image
+        uses: Grinch27/github-actions/.github/actions/resolve-runner-image@main
+
   download:
     name: Download to Artifact
-    runs-on: ubuntu-latest
+    needs: runner-image
+    runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
     permissions: write-all
     defaults:
       run:
         shell: bash
     container:
-      image: ubuntu:devel
-      # 按官方文档允许的字段，尽量给满 GHA 可传递的容器运行权限
-      options: >-
+      image: &container_image ubuntu:devel
+      options: &container_options >-
         --privileged
         --user=0:0
         --pid=host
@@ -73,7 +99,7 @@ jobs:
         --pids-limit=-1
         --shm-size=12g
         --ulimit nofile=1048576:1048576
-      volumes:
+      volumes: &container_volumes
         - /dev:/dev
         - /sys:/sys:rw
         - /sys/fs/cgroup:/sys/fs/cgroup:rw
