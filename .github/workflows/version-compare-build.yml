@@ -15,16 +15,12 @@ on:
           - "true"
           - "false"
 
-permissions:
-  contents: write
-  pull-requests: write
+permissions: write-all
 
 jobs:
   runner-image:
     name: ubuntu-latest - runner-image
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     outputs:
       RUNNER_IMAGE: ${{ steps.resolve-runner-image.outputs.RUNNER_IMAGE }}
     steps:
@@ -198,9 +194,6 @@ jobs:
     name: Build ${{ matrix.app_branch }}:${{ matrix.tag_repo }}
     needs: [runner-image, compare-and-update]
     if: ${{ needs.compare-and-update.outputs.changed_count != '0' }}
-    permissions:
-      contents: write
-      pull-requests: write
     strategy:
       fail-fast: false
       max-parallel: 3
