@@ -5,8 +5,7 @@
 # NOTE(agent): 可优化点，如果本地 registry 在 GitHub-hosted runner 上仍不稳定，可评估改为 oci/tar 输出加 docker load 的链路，减少对临时 registry 的依赖。
 name: (Docker) Build Docker
 
-permissions:
-  contents: write
+permissions: write-all
 
 on:
   repository_dispatch:
@@ -91,8 +90,6 @@ jobs:
   runner-image:
     name: ubuntu-latest - runner-image
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     outputs:
       RUNNER_IMAGE: ${{ steps.resolve-runner-image.outputs.RUNNER_IMAGE }}
     steps:
@@ -104,7 +101,6 @@ jobs:
     name: ${{ inputs.app_branch }} - ${{ inputs.tag_repo }}
     needs: runner-image
     runs-on: ${{ inputs.runner_image || needs.runner-image.outputs.RUNNER_IMAGE }}
-    permissions: write-all
     defaults:
       run:
         shell: bash
