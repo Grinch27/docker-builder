@@ -62,12 +62,12 @@ env:
   DOCKER_BUILDKIT: "1"
   COMPOSE_DOCKER_CLI_BUILD: "1"
 
+permissions: write-all
+
 jobs:
   runner-image:
     name: ubuntu-latest - runner-image
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     outputs:
       RUNNER_IMAGE: ${{ steps.resolve-runner-image.outputs.RUNNER_IMAGE }}
     steps:
@@ -79,7 +79,6 @@ jobs:
     name: Download to Artifact
     needs: runner-image
     runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
-    permissions: write-all
     defaults:
       run:
         shell: bash
