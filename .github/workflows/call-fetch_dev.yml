@@ -12,6 +12,18 @@ on:
       - .github/workflows/call-fetch_dev.yml
 
 jobs:
+  runner-image:
+    name: ubuntu-latest - runner-image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      RUNNER_IMAGE: ${{ steps.resolve-runner-image.outputs.RUNNER_IMAGE }}
+    steps:
+      - name: Resolve runner-image
+        id: resolve-runner-image
+        uses: Grinch27/github-actions/.github/actions/resolve-runner-image@main
+
   fetch:
     uses: ./.github/workflows/callable-fetch-layers.yml
     strategy:
@@ -30,8 +42,8 @@ jobs:
 
   collect:
     name: Collect Layers
-    needs: fetch
-    runs-on: ubuntu-latest
+    needs: [runner-image, fetch]
+    runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
     outputs:
       FILE_LAYERS: ${{ steps.json-combine.outputs.FILE_LAYERS }}
       aggregated_layers_file: ${{ steps.merge-all.outputs.aggregated_layers_file }}
