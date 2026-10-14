@@ -23,12 +23,12 @@ on:
         default: ""
         type: string
 
+permissions: write-all
+
 jobs:
   runner-image:
     name: ubuntu-latest - runner-image
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     outputs:
       RUNNER_IMAGE: ${{ steps.resolve-runner-image.outputs.RUNNER_IMAGE }}
     steps:
@@ -40,8 +40,6 @@ jobs:
     name: ${{ inputs.app_branch }}
     needs: runner-image
     runs-on: ${{ inputs.runner_image || needs.runner-image.outputs.RUNNER_IMAGE }}
-    permissions:
-      contents: read
     env:
       app_branch: ${{ inputs.app_branch }}
       tag_repo: ${{ inputs.tag_repo || 'latest' }}
