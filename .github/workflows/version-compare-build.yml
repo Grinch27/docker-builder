@@ -20,9 +20,22 @@ permissions:
   pull-requests: write
 
 jobs:
+  runner-image:
+    name: ubuntu-latest - runner-image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      RUNNER_IMAGE: ${{ steps.resolve-runner-image.outputs.RUNNER_IMAGE }}
+    steps:
+      - name: Resolve runner-image
+        id: resolve-runner-image
+        uses: Grinch27/github-actions/.github/actions/resolve-runner-image@main
+
   prepare:
     name: Prepare Matrices
-    runs-on: ubuntu-latest
+    needs: runner-image
+    runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
     outputs:
       version_matrix: ${{ steps.prepare.outputs.version_matrix }}
       build_targets: ${{ steps.prepare.outputs.build_targets }}
@@ -95,7 +108,7 @@ jobs:
 
   fetch-versions:
     name: Fetch ${{ matrix.app_branch }}
-    needs: prepare
+    needs: [runner-image, prepare]
     strategy:
       fail-fast: false
       matrix:
@@ -105,12 +118,12 @@ jobs:
       app_branch: ${{ matrix.app_branch }}
       tag_repo: ${{ matrix.tag_repo }}
       custom_env: ${{ matrix.custom_env || '' }}
-      runner_image: ${{ matrix.runner_image || 'ubuntu-latest' }}
+      runner_image: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
 
   compare-and-update:
     name: Compare Versions And Update README
-    runs-on: ubuntu-latest
-    needs: [prepare, fetch-versions]
+    runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
+    needs: [runner-image, prepare, fetch-versions]
     outputs:
       changed_count: ${{ steps.compare.outputs.changed_count }}
       changed_apps: ${{ steps.compare.outputs.changed_apps }}
@@ -183,7 +196,7 @@ jobs:
 
   build-needed:
     name: Build ${{ matrix.app_branch }}:${{ matrix.tag_repo }}
-    needs: compare-and-update
+    needs: [runner-image, compare-and-update]
     if: ${{ needs.compare-and-update.outputs.changed_count != '0' }}
     permissions:
       contents: write
@@ -200,7 +213,7 @@ jobs:
       force_push: "false"
       publish: "true"
       custom_env: ${{ matrix.custom_env || '' }}
-      runner_image: ${{ matrix.runner_image || 'ubuntu-latest' }}
+      runner_image: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
     secrets:
       DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
       DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
