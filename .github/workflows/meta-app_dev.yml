@@ -26,12 +26,12 @@ env:
   custom_env: ${{ inputs.custom_env || '' }}
   dir_app: "application/${{ inputs.app_branch }}"
 
+permissions: write-all
+
 jobs:
   runner-image:
     name: ubuntu-latest - runner-image
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     outputs:
       RUNNER_IMAGE: ${{ steps.resolve-runner-image.outputs.RUNNER_IMAGE }}
     steps:
@@ -43,9 +43,6 @@ jobs:
     name: Test meta-app
     needs: runner-image
     runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
-    permissions:
-      contents: read
-      pull-requests: read
     steps:
       - name: Checkout ${{ github.repository }}
         uses: actions/checkout@main
