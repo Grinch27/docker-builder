@@ -12,10 +12,22 @@ on:
         default: false
 
 jobs:
-  # 第一阶段：获取基础镜像层信息
+  runner-image:
+    name: ubuntu-latest - runner-image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      RUNNER_IMAGE: ${{ steps.resolve-runner-image.outputs.RUNNER_IMAGE }}
+    steps:
+      - name: Resolve runner-image
+        id: resolve-runner-image
+        uses: Grinch27/github-actions/.github/actions/resolve-runner-image@main
+
   fetch-base-layers:
     name: Fetch ${{ matrix.image_name }} - ${{ matrix.arch }}
-    runs-on: ubuntu-latest
+    needs: runner-image
+    runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
     strategy:
       fail-fast: false
       matrix:
@@ -91,8 +103,8 @@ jobs:
   # 第二阶段：聚合所有层信息
   aggregate-layers:
     name: Aggregate Layer Information
-    needs: fetch-base-layers
-    runs-on: ubuntu-latest
+    needs: [runner-image, fetch-base-layers]
+    runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
     outputs:
       base_layers: ${{ steps.combine-layers.outputs.base_layers }}
     steps:
@@ -135,8 +147,8 @@ jobs:
   # 第三阶段：准备Docker构建矩阵并检查是否需要构建
   prepare-build-matrix:
     name: Prepare Build Matrix
-    runs-on: ubuntu-latest
-    needs: aggregate-layers
+    runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
+    needs: [runner-image, aggregate-layers]
     outputs:
       build_matrix: ${{ steps.create-matrix.outputs.build_matrix }}
     steps:
@@ -193,8 +205,8 @@ jobs:
   # 第四阶段：构建需要更新的Docker镜像
   build-docker:
     name: Build ${{ matrix.app_branch }}:${{ matrix.tag_repo }}
-    runs-on: ubuntu-latest
-    needs: prepare-build-matrix
+    runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
+    needs: [runner-image, prepare-build-matrix]
     if: ${{ inputs.force_build == true || needs.prepare-build-matrix.outputs.build_matrix != '[]' }}
     strategy:
       fail-fast: false
