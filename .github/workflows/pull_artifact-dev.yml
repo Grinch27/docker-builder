@@ -44,12 +44,12 @@ env:
   arch_branch: ${{ inputs.arch_branch || 'linux/amd64' }}
   registry_pull: "docker.io"
 
+permissions: write-all
+
 jobs:
   runner-image:
     name: ubuntu-latest - runner-image
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     outputs:
       RUNNER_IMAGE: ${{ steps.resolve-runner-image.outputs.RUNNER_IMAGE }}
     steps:
@@ -61,8 +61,6 @@ jobs:
     name: Pull Docker Image
     needs: runner-image
     runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
-    permissions:
-      contents: write
     steps:
       - name: Setup Docker
         id: docker
