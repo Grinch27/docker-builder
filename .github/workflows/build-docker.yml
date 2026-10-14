@@ -39,7 +39,7 @@ on:
         description: "Runner Image"
         type: string
         required: false
-        default: "ubuntu-latest"
+        default: ""
   workflow_call:
     inputs:
       app_branch:
@@ -89,9 +89,22 @@ env:
   path_build: "/build"
 
 jobs:
+  runner-image:
+    name: ubuntu-latest - runner-image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      RUNNER_IMAGE: ${{ steps.resolve-runner-image.outputs.RUNNER_IMAGE }}
+    steps:
+      - name: Resolve runner-image
+        id: resolve-runner-image
+        uses: Grinch27/github-actions/.github/actions/resolve-runner-image@main
+
   check:
     name: Check Version
-    runs-on: ${{ inputs.runner_image || 'ubuntu-latest' }}
+    needs: runner-image
+    runs-on: ${{ inputs.runner_image || needs.runner-image.outputs.RUNNER_IMAGE }}
     permissions:
       contents: read
       pull-requests: read
@@ -443,8 +456,8 @@ jobs:
 
   build:
     name: Build Docker Image
-    runs-on: ${{ inputs.runner_image || 'ubuntu-latest' }}
-    needs: check
+    needs: [runner-image, check]
+    runs-on: ${{ inputs.runner_image || needs.runner-image.outputs.RUNNER_IMAGE }}
     if: needs.check.outputs.changed == 'true' && !cancelled()
     permissions:
       contents: write
