@@ -167,8 +167,6 @@ jobs:
     name: Fetch ${{ matrix.app_branch }}
     needs: prepare
     runs-on: ${{ matrix.runner_image }}
-    permissions:
-      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -333,8 +331,6 @@ jobs:
       - prepare
       - fetch-versions
     runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
-    permissions:
-      contents: write
     outputs:
       changed_count: ${{ steps.monitor.outputs.changed_count }}
       changed_apps: ${{ steps.monitor.outputs.changed_apps }}
@@ -421,9 +417,6 @@ jobs:
       - monitor
     if: ${{ needs.monitor.outputs.changed_count != '0' }}
     runs-on: ${{ matrix.runner_image }}
-    permissions:
-      contents: read
-      pull-requests: read
     strategy:
       fail-fast: false
       max-parallel: 3
@@ -839,9 +832,6 @@ jobs:
       - check
     if: ${{ always() && needs.monitor.outputs.changed_count != '0' }}
     runs-on: ${{ matrix.runner_image }}
-    permissions:
-      contents: write
-      pull-requests: write
     strategy:
       fail-fast: false
       max-parallel: 3
