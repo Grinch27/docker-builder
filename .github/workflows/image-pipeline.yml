@@ -29,7 +29,7 @@ on:
         description: "Runner image"
         type: string
         required: false
-        default: "ubuntu-latest"
+        default: ""
       force_push:
         description: "Force build/push checks inside build-docker"
         type: choice
@@ -52,9 +52,22 @@ permissions:
   pull-requests: write
 
 jobs:
+  runner-image:
+    name: ubuntu-latest - runner-image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      RUNNER_IMAGE: ${{ steps.resolve-runner-image.outputs.RUNNER_IMAGE }}
+    steps:
+      - name: Resolve runner-image
+        id: resolve-runner-image
+        uses: Grinch27/github-actions/.github/actions/resolve-runner-image@main
+
   prepare:
     name: Prepare Pipeline Matrix
-    runs-on: ubuntu-latest
+    needs: runner-image
+    runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
       publish: ${{ steps.matrix.outputs.publish }}
@@ -69,7 +82,7 @@ jobs:
           APP_BRANCH: ${{ inputs.app_branch || 'aria2' }}
           TAG_REPO: ${{ inputs.tag_repo || 'latest' }}
           CUSTOM_ENV: ${{ inputs.custom_env || '' }}
-          RUNNER_IMAGE: ${{ inputs.runner_image || 'ubuntu-latest' }}
+          RUNNER_IMAGE: ${{ inputs.runner_image || needs.runner-image.outputs.RUNNER_IMAGE }}
           FORCE_PUSH: ${{ inputs.force_push || 'false' }}
           PUBLISH: ${{ inputs.publish || 'false' }}
           MATRIX_PATH: /tmp/image-pipeline-matrix.json
@@ -101,7 +114,7 @@ jobs:
 
   build-dry-run:
     name: Dry Run ${{ matrix.app_branch }}:${{ matrix.tag_repo }}
-    needs: prepare
+    needs: [runner-image, prepare]
     if: ${{ needs.prepare.outputs.publish != 'true' }}
     strategy:
       fail-fast: false
@@ -115,11 +128,11 @@ jobs:
       force_push: ${{ matrix.force_push || 'false' }}
       publish: "false"
       custom_env: ${{ matrix.custom_env || '' }}
-      runner_image: ${{ matrix.runner_image || 'ubuntu-latest' }}
+      runner_image: ${{ matrix.runner_image || needs.runner-image.outputs.RUNNER_IMAGE }}
 
   build-publish:
     name: Publish ${{ matrix.app_branch }}:${{ matrix.tag_repo }}
-    needs: prepare
+    needs: [runner-image, prepare]
     if: ${{ needs.prepare.outputs.publish == 'true' }}
     strategy:
       fail-fast: false
@@ -133,7 +146,7 @@ jobs:
       force_push: ${{ matrix.force_push || 'false' }}
       publish: "true"
       custom_env: ${{ matrix.custom_env || '' }}
-      runner_image: ${{ matrix.runner_image || 'ubuntu-latest' }}
+      runner_image: ${{ matrix.runner_image || needs.runner-image.outputs.RUNNER_IMAGE }}
     secrets:
       DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
       DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
