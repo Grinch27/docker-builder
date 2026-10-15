@@ -72,6 +72,7 @@ on:
 run-name: ${{ inputs.app_branch }} - ${{ inputs.tag_repo }}
 
 env:
+  CONTAINER_IMAGE: &container_image ubuntu:devel
   DEBIAN_FRONTEND: noninteractive
   DEBCONF_NONINTERACTIVE_SEEN: "true"
   APT_LISTCHANGES_FRONTEND: none
@@ -92,6 +93,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       RUNNER_IMAGE: ${{ steps.resolve-runner-image.outputs.RUNNER_IMAGE }}
+      CONTAINER_IMAGE: ${{ env.CONTAINER_IMAGE }}
     steps:
       - name: Resolve runner-image
         id: resolve-runner-image
@@ -105,7 +107,7 @@ jobs:
       run:
         shell: bash
     container:
-      image: &container_image ubuntu:devel
+      image: *container_image
       options: &container_options >-
         --privileged
         --user=0:0
