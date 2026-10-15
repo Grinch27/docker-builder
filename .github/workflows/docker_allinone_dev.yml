@@ -1,14 +1,7 @@
 name: Docker All in One Dev
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/docker_allinone_dev.yml"
-  schedule:
-    - cron: "0 1 * * *"
-      timezone: "Etc/UTC"
+  # Transitional build/promotion reference: on-demand/external only, no duplicate daily runs.
   repository_dispatch:
   workflow_dispatch:
     inputs:

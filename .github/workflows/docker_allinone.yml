@@ -1,5 +1,5 @@
 # NOTE(agent): 需确认是否长期以 monitor_state.py 的版本变化结果作为默认构建门槛；手动 force_build=true 会同时传给内部 force_push，确保所有目标实际执行构建。
-# NOTE(agent): 当前严格沿用 call-build.yml 指向的 build-docker.yml 主机 Runner 构建路径；没有切换到 build-docker_indocker.yml。
+# NOTE(agent): 保持宿主 Runner / Buildx 构建路径；未切换到 build-docker_indocker.yml 的容器内 Docker 方案。
 # NOTE(agent): 为保留原 check → build 隔离语义，矩阵检查结果通过短期 artifact 按 app_branch + tag_repo 一一传递，避免矩阵 Job 输出相互覆盖。
 # NOTE(agent): 风险与验证重点：首次上线应验证 Docker Hub secrets、README 推送权限、同一 app 多 tag 的并行 Release 更新，以及任一 check 失败时其他矩阵项仍可继续。
 name: Docker (All in One)

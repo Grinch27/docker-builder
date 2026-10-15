@@ -1,4 +1,6 @@
-# CI Pipeline Phase 1
+# CI Pipeline Phase 1 (Historical)
+
+> Historical design note. Starting 2026-10-15, `version-compare-build.yml` was removed during workflow consolidation. The details below describe the former layout, not necessarily current workflow availability. See [Workflow Consolidation](workflow-consolidation.md) for current decisions.
 
 This note documents the phase 1 split of monitor/build/publish responsibilities.
 

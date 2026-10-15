@@ -4,8 +4,7 @@ name: Call Build (Dev)
 run-name: Build Matrix for Docker
 
 on:
-  schedule:
-    - cron: "0 0 * * *"
+  # Legacy compatibility entry point: no scheduled builds during consolidation.
   repository_dispatch:
   workflow_dispatch:
 
