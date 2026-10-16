@@ -676,7 +676,7 @@ python3 -m unittest discover -s scripts/ci -p 'test_materialize_test_hooks.py' -
 ## Applications / 应用清单
 
 <!-- app-summary:start -->
-**24 applications / 30 build targets** (generated from configuration below).
+**24 applications / 30 build targets** (generated from configuration above).
 
 | Application | Registry repository | Tags | Platforms | Base image | Dockerfiles | Detected version | Probe status | Build | Meta-app | Test |
 |---|---|---|---|---|---|---|---|---|---|---|
