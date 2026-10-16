@@ -36,6 +36,11 @@ def validate(c, root):
     apps = c.get('apps')
     if not isinstance(apps, dict) or not apps:
         raise ValueError('Empty or invalid apps object')
+    existing = {path.name for path in (root / "application").iterdir()
+                if path.is_dir() and not path.name.startswith(".")}
+    missing_from_catalog = sorted(existing - set(apps))
+    if missing_from_catalog:
+        raise ValueError("Unregistered application directories: " + ", ".join(missing_from_catalog))
     refs, seen = {}, set()
     for name, app in apps.items():
         if not NAME.fullmatch(name) or not (root/'application'/name).is_dir():

@@ -16,6 +16,7 @@ on:
       - ".github/workflows/docker_allinone_gpt.yml"
       - "README.md"
       - "scripts/ci/catalog.py"
+      - "scripts/ci/test_catalog.py"
       - "scripts/ci/build-image.sh"
       - ".github/workflows/docker_allinone.yml"
       - ".github/workflows/monitor-images.yml"
@@ -1903,6 +1904,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/ci/catalog.py validate
+          python3 -m unittest discover -s scripts/ci -p 'test_catalog.py' -v
           python3 scripts/ci/catalog.py matrix --kind version > /tmp/version-matrix.json
           python3 scripts/ci/catalog.py matrix --kind build > /tmp/build-matrix.json
           test "$(jq '.include | length' /tmp/version-matrix.json)" -eq 24
