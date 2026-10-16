@@ -42,6 +42,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       images: ${{ steps.select.outputs.images }}
+      platforms: ${{ steps.select.outputs.platforms }}
     steps:
       - name: Select images
         id: select
@@ -62,6 +63,13 @@ jobs:
           fi
           jq -e 'type == "array" and length > 0 and all(.[]; type == "string" and length > 0)' <<< "${images}" >/dev/null
           echo "images=${images}" >> "${GITHUB_OUTPUT}"
+          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            platforms='[{"image_name":"alpine:latest","arch":"amd64"}]'
+          else
+            platforms=$(jq -cn --argjson images "${images}"
+              '[$images[] as $image | ["amd64","arm64"][] as $arch | {image_name:$image,arch:$arch}]')
+          fi
+          echo "platforms=${platforms}" >> "${GITHUB_OUTPUT}"
 
   version:
     name: App version via canonical probe
@@ -84,9 +92,51 @@ jobs:
     with:
       image_name: ${{ matrix.image_name }}
 
+  platform-details:
+    name: Detailed OCI inspect ${{ matrix.image_name }} / ${{ matrix.arch }}
+    needs: prepare
+    if: ${{ github.event_name == 'push' || inputs.mode == 'layers' || inputs.mode == 'both' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include: ${{ fromJson(needs.prepare.outputs.platforms) }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@main
+      - name: Install Skopeo
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get -qq update
+          sudo apt-get -qq install -y skopeo jq
+      - name: Inspect immutable platform selector
+        id: inspect
+        env:
+          IMAGE_NAME: ${{ matrix.image_name }}
+          ARCH: ${{ matrix.arch }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/ci/inspect-image-platform.sh "${IMAGE_NAME}" "${ARCH}"
+      - name: Upload original stable layer list artifact
+        uses: actions/upload-artifact@main
+        with:
+          name: layers-${{ steps.inspect.outputs.stable_name }}-${{ matrix.arch }}
+          path: ${{ runner.temp }}/diagnostics/layers.json
+          if-no-files-found: error
+          retention-days: 1
+      - name: Upload original baseimage raw-data artifact
+        uses: actions/upload-artifact@main
+        with:
+          name: layer-info-${{ steps.inspect.outputs.base_name }}-${{ matrix.arch }}
+          path: ${{ runner.temp }}/diagnostics/image_*.json
+          if-no-files-found: error
+          retention-days: 1
   validate:
     name: Validate non-publishing diagnostics artifacts
-    needs: [version, layers]
+    needs: [version, layers, platform-details]
     runs-on: ubuntu-latest
     if: ${{ always() && github.event_name == 'push' }}
     steps:
@@ -103,4 +153,8 @@ jobs:
           test "$(find "${RUNNER_TEMP}/diagnostics" -name "layer-*.json" | wc -l)" -ge 1
           jq -e '.app_branch=="vlmcsd" and .status != null and .version != null' "${RUNNER_TEMP}/diagnostics/app-version-vlmcsd/version-vlmcsd.json"
           while IFS= read -r f; do jq -e '.image_name=="alpine:latest" and (.Layers|type=="array" and length>0)' "$f"; done < <(find "${RUNNER_TEMP}/diagnostics" -name "layer-*.json")
+          test -f "${RUNNER_TEMP}/diagnostics/layers-alpine_latest-amd64/layers.json"
+          jq -e 'type=="array" and length>0' "${RUNNER_TEMP}/diagnostics/layers-alpine_latest-amd64/layers.json"
+          test -f "${RUNNER_TEMP}/diagnostics/layer-info-alpine-latest-amd64/image_alpine-latest_amd64.json"
+          jq -e '.image=="alpine:latest" and .architecture=="amd64" and (.raw_data.Layers|type=="array" and length>0)' "${RUNNER_TEMP}/diagnostics/layer-info-alpine-latest-amd64/image_alpine-latest_amd64.json"
           echo "Diagnostic version + layer Artifact contract: PASS"
