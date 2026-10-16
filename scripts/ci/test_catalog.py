@@ -267,8 +267,8 @@ class CatalogTests(unittest.TestCase):
         old=catalog.replace_catalog_document(source,self.config)
         records=catalog.snapshot_from_readme(source)
         fence=chr(96)*3
-        legacy=old+'\n<!-- app-version-json:start -->\n'+fence+'json\n'+
-            json.dumps(records,indent=2)+'\n'+fence+'\n<!-- app-version-json:end -->\n'
+        legacy=(old+'\n<!-- app-version-json:start -->\n'+fence+'json\n'+
+                json.dumps(records,indent=2)+'\n'+fence+'\n<!-- app-version-json:end -->\n')
         self.assertEqual(catalog.catalog_data_from_text(legacy),self.config)
         self.assertEqual(len(monitor_state.parse_readme_versions(legacy)),24)
     def test_monitor_round_trip_keeps_config_and_summary(self):
