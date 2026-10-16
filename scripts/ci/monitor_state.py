@@ -74,24 +74,13 @@ def load_version_artifacts(artifact_root: Path) -> list[dict[str, str]]:
 
 
 def parse_readme_versions(text: str) -> list[dict[str, str]]:
-    if START_JSON not in text or END_JSON not in text:
-        return []
-    if text.index(START_JSON) >= text.index(END_JSON):
-        return []
-
-    segment = text.split(START_JSON, 1)[1].split(END_JSON, 1)[0].strip()
-    if segment.startswith("```json"):
-        segment = segment[len("```json") :].strip()
-    if segment.endswith("```"):
-        segment = segment[:-3].strip()
-    if not segment:
-        return []
-
-    data = json.loads(segment)
-    if not isinstance(data, list):
-        return []
-    return sorted((normalize_record(item) for item in data if isinstance(item, dict)), key=record_sort_key)
-
+    # The combined v2 document is authoritative for the previous observation.
+    document=catalog.validate_document(catalog.catalog_document_from_text(text))
+    if document.get('schema_version')==2:
+        records=document['monitor']['records']
+    else:
+        records=catalog.snapshot_from_readme(text)
+    return sorted((normalize_record(r) for r in records),key=record_sort_key)
 
 def replace_or_append(text: str, start: str, end: str, content: str) -> str:
     block = f"{start}\n{content}\n{end}"
@@ -111,7 +100,12 @@ def markdown_cell(value: str) -> str:
 def render_readme(text: str, records: list[dict[str, str]], workflow_name: str) -> str:
     # Build one merged readable table from canonical config and latest probes.
     json_block = chr(96)*3 + 'json\n' + dump_json(records).rstrip('\n') + '\n' + chr(96)*3
-    content = replace_or_append(text, START_JSON, END_JSON, json_block)
+    document=catalog.validate_document(catalog.catalog_document_from_text(text))
+    if document.get('schema_version')==2:
+        document['monitor']['records']=records
+        content=catalog.replace_catalog_document(text,document)
+    else:
+        content=replace_or_append(text, START_JSON, END_JSON, json_block)
     return catalog.updated_summary(content, catalog.catalog_data_from_text(content))
 
 def semantic_changed_apps(old_records: list[dict[str, str]], new_records: list[dict[str, str]]) -> list[str]:

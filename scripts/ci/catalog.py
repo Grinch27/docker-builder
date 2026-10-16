@@ -23,7 +23,7 @@ POLICIES = {'none', 'keep', 'strip_channel', 'strip_channel_and_spaces'}
 APP_KEYS = {'repository', 'base_image', 'platforms', 'tag_policy', 'targets'}
 TARGET_KEYS = {'tag', 'dockerfile', 'build_arg', 'base_image', 'tag_policy'}
 
-def catalog_data_from_text(text):
+def catalog_document_from_text(text):
     if text.count(START)!=1 or text.count(END)!=1:
         raise ValueError('Expected exactly one app-config marker pair')
     raw=text.split(START,1)[1].split(END,1)[0].strip()
@@ -31,6 +31,41 @@ def catalog_data_from_text(text):
         raise ValueError('app-config must be a single fenced JSON block')
     return json.loads(raw[len(FENCE)+5:-len(FENCE)-1])
 
+def validate_document(document):
+    if not isinstance(document,dict): raise ValueError('Catalog JSON must be an object')
+    if document.get('schema_version')!=2: return document
+    if set(document)!={'schema_version','config','monitor'}:
+        raise ValueError('Combined document must have config and monitor sections')
+    monitor=document['monitor']
+    if not isinstance(monitor,dict) or set(monitor)!={'records'}:
+        raise ValueError('Invalid monitor section')
+    records=monitor['records']
+    if not isinstance(records,list): raise ValueError('Monitor records must be an array')
+    fields={'app_branch','tag_repo','repo_dockerhub','version','base_image',
+            'arch_branch','platform_used','status'}
+    keys=set()
+    for record in records:
+        if not isinstance(record,dict) or set(record)!=fields:
+            raise ValueError('Incomplete monitor record')
+        if any(not isinstance(v,str) for v in record.values()):
+            raise ValueError('Monitor record fields must be strings')
+        key=tuple(record[k] for k in ('app_branch','tag_repo','repo_dockerhub'))
+        if key in keys: raise ValueError('Duplicate monitor record')
+        keys.add(key)
+    return document
+
+def catalog_data_from_text(text):
+    document=validate_document(catalog_document_from_text(text))
+    return document['config'] if document.get('schema_version')==2 else document
+
+def replace_catalog_document(text,document):
+    if text.count(START)!=1 or text.count(END)!=1:
+        raise ValueError('Expected exactly one app-config marker pair')
+    before,rest=text.split(START,1)
+    middle,after=rest.split(END,1)
+    if END in middle: raise ValueError('Invalid app-config marker order')
+    content=json.dumps(document,indent=2,ensure_ascii=False)
+    return before+START+'\n'+FENCE+'json\n'+content+'\n'+FENCE+'\n'+END+after
 def catalog_from_readme(path):
     catalog=catalog_data_from_text(path.read_text(encoding='utf-8'))
     validate(catalog, path.parent)
@@ -132,6 +167,8 @@ def tags(item,version,consistent):
     return result
 
 def snapshot_from_readme(text):
+    document=validate_document(catalog_document_from_text(text))
+    if document.get('schema_version')==2: return document['monitor']['records']
     start, end = '<!-- app-version-json:start -->', '<!-- app-version-json:end -->'
     if text.count(start) != 1 or text.count(end) != 1: return []
     raw=text.split(start,1)[1].split(end,1)[0].strip()
@@ -216,11 +253,12 @@ def update(readme, c, app, field, value, *, scope='app', tag='latest'):
     dest[field] = value
     validate(c, readme.parent)
     current = readme.read_text(encoding='utf-8')
-    before, remaining = current.split(START, 1)
-    _, after = remaining.split(END, 1)
-    payload = (before + START + '\n' + FENCE + 'json\n' +
-               json.dumps(c, indent=2, ensure_ascii=False) +
-               '\n' + FENCE + '\n' + END + after)
+    document=validate_document(catalog_document_from_text(current))
+    if document.get('schema_version')==2:
+        document['config']=c
+    else:
+        document=c
+    payload=replace_catalog_document(current,document)
     payload=updated_summary(payload,c)
     return atomic_write(readme,current,payload)
 
