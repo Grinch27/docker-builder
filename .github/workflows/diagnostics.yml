@@ -1,0 +1,107 @@
+name: Diagnostics (Version + Image Layers)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/diagnostics.yml"
+      - ".github/workflows/callable-fetch-app-version.yml"
+      - ".github/workflows/callable-fetch-layers.yml"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Version probe, layers, or both"
+        type: choice
+        required: true
+        default: both
+        options: [version, layers, both]
+      app_branch:
+        description: "Application for version probe"
+        type: string
+        default: vlmcsd
+      tag_repo:
+        description: "Version probe tag label"
+        type: string
+        default: latest
+      layer_profile:
+        description: "Default images for layer inspection"
+        type: choice
+        default: stable
+        options: [stable, base]
+      image_name:
+        description: "Single image override for layer inspection"
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  prepare:
+    name: Select diagnostic targets
+    runs-on: ubuntu-latest
+    outputs:
+      images: ${{ steps.select.outputs.images }}
+    steps:
+      - name: Select images
+        id: select
+        env:
+          IMAGE_OVERRIDE: ${{ inputs.image_name || '' }}
+          LAYER_PROFILE: ${{ inputs.layer_profile || 'stable' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            images='["alpine:latest"]'
+          elif [[ -n "${IMAGE_OVERRIDE}" ]]; then
+            images=$(jq -cn --arg name "${IMAGE_OVERRIDE}" '[$name]')
+          elif [[ "${LAYER_PROFILE}" == "base" ]]; then
+            images='["ubuntu:latest","debian:latest","alpine:latest"]'
+          else
+            images='["debian:latest","ubuntu:latest","alpine:latest","debian:sid","ubuntu:devel"]'
+          fi
+          jq -e 'type == "array" and length > 0 and all(.[]; type == "string" and length > 0)' <<< "${images}" >/dev/null
+          echo "images=${images}" >> "${GITHUB_OUTPUT}"
+
+  version:
+    name: App version via canonical probe
+    if: ${{ github.event_name == 'push' || inputs.mode == 'version' || inputs.mode == 'both' }}
+    uses: ./.github/workflows/callable-fetch-app-version.yml
+    with:
+      app_branch: ${{ inputs.app_branch || 'vlmcsd' }}
+      tag_repo: ${{ inputs.tag_repo || 'latest' }}
+
+  layers:
+    name: OCI layers ${{ matrix.image_name }}
+    needs: prepare
+    if: ${{ github.event_name == 'push' || inputs.mode == 'layers' || inputs.mode == 'both' }}
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        image_name: ${{ fromJson(needs.prepare.outputs.images) }}
+    uses: ./.github/workflows/callable-fetch-layers.yml
+    with:
+      image_name: ${{ matrix.image_name }}
+
+  validate:
+    name: Validate non-publishing diagnostics artifacts
+    needs: [version, layers]
+    runs-on: ubuntu-latest
+    if: ${{ always() && github.event_name == 'push' }}
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@main
+        with:
+          path: ${{ runner.temp }}/diagnostics
+      - name: Validate version and layer outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f "${RUNNER_TEMP}/diagnostics/app-version-vlmcsd/version-vlmcsd.json"
+          find "${RUNNER_TEMP}/diagnostics" -name "layer-*.json" -print
+          test "$(find "${RUNNER_TEMP}/diagnostics" -name "layer-*.json" | wc -l)" -ge 1
+          jq -e '.app_branch=="vlmcsd" and .status != null and .version != null' "${RUNNER_TEMP}/diagnostics/app-version-vlmcsd/version-vlmcsd.json"
+          while IFS= read -r f; do jq -e '.image_name=="alpine:latest" and (.Layers|type=="array" and length>0)' "$f"; done < <(find "${RUNNER_TEMP}/diagnostics" -name "layer-*.json")
+          echo "Diagnostic version + layer Artifact contract: PASS"
