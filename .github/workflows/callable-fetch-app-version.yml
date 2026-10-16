@@ -60,19 +60,9 @@ jobs:
 
       - name: Load app env files
         id: env-app
-        working-directory: ${{ github.workspace }}/${{ env.dir_app }}
         run: |
-          set -e
-          echo "Current working directory: $(pwd)"
-
-          dir_step="env"
-          if [ -d "${dir_step}" ]; then
-            for env_file in "${dir_step}"/*.env; do
-              [ -f "${env_file}" ] || continue
-              echo "Loading env file: ${env_file}"
-              awk -F= '/^[a-zA-Z_][a-zA-Z0-9_]*=/ {printf "%s=%s\n", $1, $2}' "${env_file}" >> "$GITHUB_ENV"
-            done
-          fi
+          set -euo pipefail
+          python3 scripts/ci/catalog.py env --app "${app_branch}" --tag "${tag_repo}" --app-only --output "${GITHUB_ENV}"
 
       - name: Load custom env inputs
         if: ${{ env.custom_env != '' }}

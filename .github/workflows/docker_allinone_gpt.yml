@@ -17,6 +17,9 @@ on:
       - "README.md"
       - "scripts/ci/catalog.py"
       - "scripts/ci/build-image.sh"
+      - ".github/workflows/docker_allinone.yml"
+      - ".github/workflows/monitor-images.yml"
+      - ".github/workflows/callable-fetch-app-version.yml"
   workflow_dispatch:
     inputs:
       mode:

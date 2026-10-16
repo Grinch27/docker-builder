@@ -46,50 +46,10 @@ jobs:
         run: |
           set -e
 
-          apps_json=$(find application -mindepth 1 -maxdepth 1 -type d -printf '%f\n' \
-            | grep -v '^\.example$' \
-            | sort \
-            | jq -R -s 'split("\n") | map(select(length > 0))')
+          RUNNER_IMAGE="ubuntu-latest"
+          version_matrix=$(python3 scripts/ci/catalog.py matrix --kind version --runner "${RUNNER_IMAGE}")
+          build_targets=$(python3 scripts/ci/catalog.py matrix --kind build --runner "${RUNNER_IMAGE}")
 
-          version_matrix=$(jq -c '{include: map({app_branch: ., tag_repo: "latest", custom_env: "", runner_image: "ubuntu-latest"})}' <<< "${apps_json}")
-
-          build_targets_static=$(cat <<'JSON'
-          {
-            "include": [
-              {"app_branch": "cloudflare-warp", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-latest"},
-              {"app_branch": "adguardvpn-cli", "tag_repo": "nightly", "custom_env": "build_arg='update_channel=nightly'", "runner_image": "ubuntu-latest"},
-              {"app_branch": "adguardvpn-cli", "tag_repo": "beta", "custom_env": "build_arg='update_channel=beta'", "runner_image": "ubuntu-latest"},
-              {"app_branch": "adguardvpn-cli", "tag_repo": "release", "custom_env": "build_arg='update_channel=release'", "runner_image": "ubuntu-latest"},
-              {"app_branch": "expressvpn", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-latest"},
-              {"app_branch": "nordvpn", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-latest"},
-              {"app_branch": "squid", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-latest"},
-              {"app_branch": "vlmcsd", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-latest"},
-              {"app_branch": "novnc", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-latest"},
-              {"app_branch": "baidunetdisk", "tag_repo": "dev", "custom_env": "", "runner_image": "ubuntu-latest"},
-              {"app_branch": "steamcmd", "tag_repo": "dev", "custom_env": "", "runner_image": "ubuntu-latest"},
-              {"app_branch": "runner", "tag_repo": "dev", "custom_env": "", "runner_image": "ubuntu-latest"},
-              {"app_branch": "runner", "tag_repo": "slim", "custom_env": "dockerfile=slim.Dockerfile", "runner_image": "ubuntu-latest"},
-              {"app_branch": "runner", "tag_repo": "actions", "custom_env": "dockerfile=actions.Dockerfile", "runner_image": "ubuntu-latest"},
-              {"app_branch": "runner", "tag_repo": "actions-slim", "custom_env": "dockerfile=actions-slim.Dockerfile", "runner_image": "ubuntu-latest"},
-              {"app_branch": "openwrt", "tag_repo": "main", "custom_env": "", "runner_image": "ubuntu-latest"},
-              {"app_branch": "privoxy", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-latest"},
-              {"app_branch": "aria2", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-latest"},
-              {"app_branch": "samba", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-latest"},
-              {"app_branch": "samba", "tag_repo": "alpine", "custom_env": "dockerfile=alpine.Dockerfile", "runner_image": "ubuntu-latest"},
-              {"app_branch": "curl", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-latest"},
-              {"app_branch": "dnscrypt-proxy", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-latest"},
-              {"app_branch": "sdnext", "tag_repo": "latest", "custom_env": "", "runner_image": "ubuntu-latest"},
-              {"app_branch": "sdnext-dev", "tag_repo": "dev", "custom_env": "build_arg='therock_version=7.11.0,therock_release_type=stable,therock_amdgpu_family=gfx110X-all'", "runner_image": "ubuntu-latest"}
-            ]
-          }
-          JSON
-          )
-
-          known_apps=$(jq -r '.include[].app_branch' <<< "${build_targets_static}" | sort -u | jq -R -s 'split("\n") | map(select(length > 0))')
-          missing_apps=$(jq -n --argjson all "${apps_json}" --argjson known "${known_apps}" '$all - $known')
-          missing_targets=$(jq -c '{include: map({app_branch: ., tag_repo: "latest", custom_env: "", runner_image: "ubuntu-latest"})}' <<< "${missing_apps}")
-
-          build_targets=$(jq -c --argjson base "${build_targets_static}" --argjson extra "$(jq '.include' <<< "${missing_targets}")" '{include: ($base.include + $extra)}')
           force_build="${{ inputs.force_build || 'false' }}"
 
           {

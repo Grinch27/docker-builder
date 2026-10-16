@@ -84,65 +84,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          apps_json=$(
-            find application -mindepth 1 -maxdepth 1 -type d -printf '%f\n' |
-              sed '/^\.example$/d' |
-              sort |
-              jq -R -s 'split("\n") | map(select(length > 0))'
-          )
-
-          version_matrix=$(jq -cn \
-            --argjson apps "${apps_json}" \
-            --arg runner "${RUNNER_IMAGE}" \
-            '{include: ($apps | map({app_branch: ., tag_repo: "latest", custom_env: "", runner_image: $runner}))}')
-
-          build_targets_static=$(cat <<'JSON'
-          {
-            "include": [
-              {"app_branch": "cloudflare-warp", "tag_repo": "latest", "custom_env": ""},
-              {"app_branch": "adguardvpn-cli", "tag_repo": "nightly", "custom_env": "build_arg='update_channel=nightly'"},
-              {"app_branch": "adguardvpn-cli", "tag_repo": "beta", "custom_env": "build_arg='update_channel=beta'"},
-              {"app_branch": "adguardvpn-cli", "tag_repo": "release", "custom_env": "build_arg='update_channel=release'"},
-              {"app_branch": "expressvpn", "tag_repo": "latest", "custom_env": ""},
-              {"app_branch": "nordvpn", "tag_repo": "latest", "custom_env": ""},
-              {"app_branch": "squid", "tag_repo": "latest", "custom_env": ""},
-              {"app_branch": "vlmcsd", "tag_repo": "latest", "custom_env": ""},
-              {"app_branch": "novnc", "tag_repo": "latest", "custom_env": ""},
-              {"app_branch": "baidunetdisk", "tag_repo": "dev", "custom_env": ""},
-              {"app_branch": "steamcmd", "tag_repo": "dev", "custom_env": ""},
-              {"app_branch": "runner", "tag_repo": "dev", "custom_env": ""},
-              {"app_branch": "runner", "tag_repo": "slim", "custom_env": "dockerfile=slim.Dockerfile"},
-              {"app_branch": "runner", "tag_repo": "actions", "custom_env": "dockerfile=actions.Dockerfile"},
-              {"app_branch": "runner", "tag_repo": "actions-slim", "custom_env": "dockerfile=actions-slim.Dockerfile"},
-              {"app_branch": "openwrt", "tag_repo": "main", "custom_env": ""},
-              {"app_branch": "privoxy", "tag_repo": "latest", "custom_env": ""},
-              {"app_branch": "aria2", "tag_repo": "latest", "custom_env": ""},
-              {"app_branch": "samba", "tag_repo": "latest", "custom_env": ""},
-              {"app_branch": "samba", "tag_repo": "alpine", "custom_env": "dockerfile=alpine.Dockerfile"},
-              {"app_branch": "dnscrypt-proxy", "tag_repo": "latest", "custom_env": ""},
-              {"app_branch": "sdnext", "tag_repo": "latest", "custom_env": ""},
-              {"app_branch": "sdnext-dev", "tag_repo": "dev", "custom_env": "build_arg='therock_version=7.11.0,therock_release_type=stable,therock_amdgpu_family=gfx110X-all'"}
-            ]
-          }
-          JSON
-          )
-
-          known_apps=$(jq -r '.include[].app_branch' <<< "${build_targets_static}" |
-            sort -u |
-            jq -R -s 'split("\n") | map(select(length > 0))')
-          missing_apps=$(jq -n \
-            --argjson all "${apps_json}" \
-            --argjson known "${known_apps}" \
-            '$all - $known')
-          missing_targets=$(jq -cn \
-            --argjson apps "${missing_apps}" \
-            '{include: ($apps | map({app_branch: ., tag_repo: "latest", custom_env: ""}))}')
-
-          build_targets=$(jq -cn \
-            --argjson base "${build_targets_static}" \
-            --argjson extra "$(jq '.include' <<< "${missing_targets}")" \
-            --arg runner "${RUNNER_IMAGE}" \
-            '{include: (($base.include + $extra) | map(. + {runner_image: $runner}))}')
+          version_matrix=$(python3 scripts/ci/catalog.py matrix --kind version --runner "${RUNNER_IMAGE}")
+          build_targets=$(python3 scripts/ci/catalog.py matrix --kind build --runner "${RUNNER_IMAGE}")
 
           force_build="${FORCE_BUILD_INPUT,,}"
           case "${force_build}" in
@@ -184,17 +127,9 @@ jobs:
 
       - name: Load app env files
         id: env-app
-        working-directory: ${{ github.workspace }}/${{ env.dir_app }}
         run: |
           set -euo pipefail
-          printf 'Current working directory: %s\n' "$(pwd)"
-
-          shopt -s nullglob
-          for env_file in ./env/*.env; do
-            printf 'Loading env file: %s\n' "${env_file}"
-            awk -F= '/^[a-zA-Z_][a-zA-Z0-9_]*=/ {printf "%s=%s\n", $1, $2}' \
-              "${env_file}" >> "${GITHUB_ENV}"
-          done
+          python3 scripts/ci/catalog.py env --app "${app_branch}" --tag "${tag_repo}" --app-only --output "${GITHUB_ENV}"
 
       - name: Load custom env inputs
         if: ${{ env.custom_env != '' }}
@@ -463,30 +398,9 @@ jobs:
 
       - name: (Env) Load .env files
         id: env-app
-        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
-          echo "Current working directory: $(pwd)"
-
-          dir_step="env"
-          dir_original=$(pwd)
-          if [ -d "${dir_step}" ]; then
-            cd ./${dir_step}
-            echo "Changed to directory: $(pwd)"
-
-            for env_file in ./*.env; do
-              if [ -f "${env_file}" ]; then
-                echo "Loading env file: ${env_file}"
-                cat "${env_file}" | awk -F= '/^[a-zA-Z_][a-zA-Z0-9_]*=/ {printf "%s=%s\n", $1, $2}' | tee -a $GITHUB_ENV
-              fi
-            done
-
-            cd "${dir_original}"
-            echo "Changed back to original directory: $(pwd)"
-          else
-            echo "No directory found"
-          fi
-
-          echo "status=success" | tee -a ${GITHUB_OUTPUT}
+          set -euo pipefail
+          python3 scripts/ci/catalog.py env --app "${app_branch}" --tag "${tag_repo}"  --output "${GITHUB_ENV}"
 
       - name: (Env) Load Custom inputs
         id: env-custom
@@ -1022,32 +936,11 @@ jobs:
 
       - name: Build and push to local registry
         id: build
-        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
+        working-directory: "${{ github.workspace }}/${{ env.dir_app }}/build"
         run: |
-          echo "Current working directory: $(pwd)"
-
-          dir_step="build"
-          build_script="build.sh"
-          dir_original=$(pwd)
-          if [ -d "${dir_step}" ]; then
-            cd ./${dir_step}
-            echo "Changed to directory: $(pwd)"
-
-            if [ ! -f "${build_script}" ]; then
-              echo "Missing build script: ${build_script}"
-              exit 1
-            fi
-
-            chmod +x "./${build_script}"
-            sh "./${build_script}"
-
-            cd "${dir_original}"
-            echo "Changed back to original directory: $(pwd)"
-          else
-            echo "No directory found"
-          fi
-
-          echo "status=success" | tee -a ${GITHUB_OUTPUT}
+          set -euo pipefail
+          bash "${GITHUB_WORKSPACE}/scripts/ci/build-image.sh"
+          echo "status=success" >> "${GITHUB_OUTPUT}"
 
       - name: (Inspect) Layers with skopeo
         id:
@@ -1159,29 +1052,12 @@ jobs:
         working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
           echo "Current working directory: $(pwd)"
-          declare -a tag_array=("${{ env.tag_repo }}")
-          tag_version="${{ env.tag_repo }}-${version}"
-
-          dir_step="push"
-          dir_original=$(pwd)
-          if [ -d "${dir_step}" ]; then
-            cd ./${dir_step}
-            echo "Changed to directory: $(pwd)"
-
-            for script_file in ./*.sh; do
-              chmod +x "${script_file}"
-              source "${script_file}"
-            done
-
-            cd "${dir_original}"
-            echo "Changed back to original directory: $(pwd)"
-          else
-            echo "No directory found"
-          fi
-
-          if [ "${consistent}" == "true" ] && [ -n "${tag_version}" ]; then
-            tag_array+=("${tag_version}")
-          fi
+          set -euo pipefail
+          mapfile -t tag_array < <(
+            python3 "${GITHUB_WORKSPACE}/scripts/ci/catalog.py" tags \
+              --app "${app_branch}" --tag "${tag_repo}" --version "${version}" \
+              --consistent "${consistent}" | jq -r '.[]'
+          )
 
           IFS=',' read -ra registries <<< "${{ env.registry_push }}"
           for registry_remote in "${registries[@]}"; do
