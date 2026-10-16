@@ -62,7 +62,7 @@ flowchart LR
     S --> V[README version snapshot]
 ```
 
-`docker_allinone.yml` is the intended authoritative production workflow. Legacy entry points remain for compatibility, and their publishing permissions require separate review.
+[Production workflow](.github/workflows/docker_allinone.yml) is the intended authoritative publishing entry point. [Read-only monitor](.github/workflows/monitor-images.yml) and [GPT non-publishing smoke](.github/workflows/docker_allinone_gpt.yml) are separate. Legacy entry points remain for compatibility, and their publishing permissions require separate review.
 
 ## Maintenance / 配置维护
 
@@ -77,11 +77,14 @@ Common commands:
 
 ```bash
 python3 scripts/ci/catalog.py validate
+python3 scripts/ci/catalog.py summary --check
 python3 -m unittest discover -s scripts/ci -p 'test_catalog.py' -v
 python3 scripts/ci/catalog.py matrix --kind build
 python3 scripts/ci/catalog.py get --app samba --tag alpine
 python3 scripts/ci/catalog.py set --scope target --app samba --tag alpine --field base_image --value alpine:latest
 ```
+
+If you edit the canonical JSON manually, run `python3 scripts/ci/catalog.py summary --write` to refresh the visible table, then run `summary --check` and the unit tests. `catalog.py set` updates both JSON and the application table atomically. / 手动修改 JSON 后先同步应用表，再进行完整检查。
 
 Documentation: [application layout](application/route.md), [workflow consolidation](docs/workflow-consolidation.md).
 
