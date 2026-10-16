@@ -1929,7 +1929,7 @@ jobs:
           cmp README.catalog-test.md README.catalog-test.first.md
           python3 - <<'PY'
           from pathlib import Path
-          marker = "<!-- app-version-json:start -->"
+          marker = "<!-- app-config:end -->"
           a = Path("README.md").read_text(encoding="utf-8")
           b = Path("README.catalog-test.md").read_text(encoding="utf-8")
           assert a.split(marker, 1)[1] == b.split(marker, 1)[1], "dynamic README state mutated"

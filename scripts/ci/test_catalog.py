@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import json
+import json
 import shutil
 import sys
 import tempfile
@@ -99,7 +100,7 @@ class CatalogTests(unittest.TestCase):
             path = directory / "README.md"
             shutil.copyfile(ROOT / "README.md", path)
             old = path.read_text(encoding="utf-8")
-            marker = "<!-- app-version-json:start -->"
+            marker = "<!-- app-config:end -->"
             self.assertIn(marker, old)
             self.assertEqual(catalog.update(path, copy.deepcopy(self.config),
                                             "runner", "base_image", "debian:stable-slim"),
@@ -217,7 +218,7 @@ class CatalogTests(unittest.TestCase):
     def test_collapsible_markers_are_unchanged_for_actions(self):
         readme=(ROOT/'README.md').read_text(encoding='utf-8')
         for marker in [catalog.START,catalog.END,catalog.SUMMARY_START,catalog.SUMMARY_END,
-                       '<!-- app-version-json:start -->','<!-- app-version-json:end -->']:
+]:
             self.assertEqual(readme.count(marker),1,marker)
         self.assertEqual(catalog.catalog_from_readme(ROOT/'README.md'),self.config)
     def test_single_visible_table_contains_app_and_probe_data(self):
@@ -227,6 +228,49 @@ class CatalogTests(unittest.TestCase):
         self.assertIn('Detected version',text)
         self.assertEqual(text.split(catalog.SUMMARY_START,1)[1].split(catalog.SUMMARY_END,1)[0].count('](application/'),24)
 
+    def test_v2_combines_config_and_historical_monitor_records(self):
+        source=(ROOT/'README.md').read_text(encoding='utf-8')
+        document=catalog.catalog_document_from_text(source)
+        self.assertEqual(document['schema_version'],2)
+        self.assertEqual(set(document),{'schema_version','config','monitor'})
+        self.assertEqual(document['config'],self.config)
+        self.assertEqual(len(document['monitor']['records']),24)
+        self.assertNotIn('<!-- app-version-json:start -->',source)
+
+    def test_v2_monitor_only_update_preserves_config_and_is_idempotent(self):
+        import monitor_state
+        source=(ROOT/'README.md').read_text(encoding='utf-8')
+        versions=monitor_state.parse_readme_versions(source)
+        updated=[dict(x) for x in versions]
+        updated[0]['version']='new-version-test'
+        rendered=monitor_state.render_readme(source,updated,'.github/workflows/docker_allinone.yml')
+        self.assertEqual(catalog.catalog_data_from_text(rendered),self.config)
+        self.assertEqual(monitor_state.parse_readme_versions(rendered),updated)
+        self.assertEqual(monitor_state.render_readme(rendered,updated,
+            '.github/workflows/docker_allinone.yml'),rendered)
+
+    def test_v2_invalid_monitor_is_rejected(self):
+        source=(ROOT/'README.md').read_text(encoding='utf-8')
+        doc=catalog.catalog_document_from_text(source)
+        bad=copy.deepcopy(doc)
+        bad['monitor']['records'].append(dict(bad['monitor']['records'][0]))
+        with self.assertRaisesRegex(ValueError,'Duplicate monitor record'):
+            catalog.validate_document(bad)
+        bad=copy.deepcopy(doc)
+        bad['monitor']['records'][0].pop('version')
+        with self.assertRaisesRegex(ValueError,'Incomplete monitor record'):
+            catalog.validate_document(bad)
+
+    def test_v1_compatibility_reader(self):
+        import monitor_state
+        source=(ROOT/'README.md').read_text(encoding='utf-8')
+        old=catalog.replace_catalog_document(source,self.config)
+        records=catalog.snapshot_from_readme(source)
+        fence=chr(96)*3
+        legacy=old+'\n<!-- app-version-json:start -->\n'+fence+'json\n'+
+            json.dumps(records,indent=2)+'\n'+fence+'\n<!-- app-version-json:end -->\n'
+        self.assertEqual(catalog.catalog_data_from_text(legacy),self.config)
+        self.assertEqual(len(monitor_state.parse_readme_versions(legacy)),24)
     def test_monitor_round_trip_keeps_config_and_summary(self):
         import monitor_state
         original=(ROOT/'README.md').read_text(encoding='utf-8')
@@ -247,8 +291,10 @@ class CatalogTests(unittest.TestCase):
         changed[0]['version']='test-version-value'
         updated=monitor_state.render_readme(original,changed,
             '.github/workflows/docker_allinone.yml')
-        self.assertEqual(original.split(catalog.START,1)[1].split(catalog.END,1)[0],
-                         updated.split(catalog.START,1)[1].split(catalog.END,1)[0])
+        self.assertEqual(catalog.catalog_data_from_text(original),
+                         catalog.catalog_data_from_text(updated))
+        self.assertNotEqual(catalog.snapshot_from_readme(original),
+                            catalog.snapshot_from_readme(updated))
         self.assertNotEqual(original.split(catalog.SUMMARY_START,1)[1].split(catalog.SUMMARY_END,1)[0],
                             updated.split(catalog.SUMMARY_START,1)[1].split(catalog.SUMMARY_END,1)[0])
         self.assertEqual(len(monitor_state.parse_readme_versions(updated)),24)
