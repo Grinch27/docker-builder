@@ -10,3 +10,4 @@ PROJECT_REPORT_FOR_GPT.md
 /application/privoxy/test/test.sh
 /application/squid/test/test.sh
 /application/dnscrypt-proxy/test/test.sh
+/application/doh-nosni/test/test.sh

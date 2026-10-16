@@ -244,7 +244,16 @@ Documentation: [application layout](application/route.md), [workflow consolidati
             "tag": "latest",
             "dockerfile": "Dockerfile"
           }
-        ]
+        ],
+        "image_probe": {
+          "argv": [
+            "dnscrypt-proxy",
+            "-version"
+          ],
+          "extract": {
+            "kind": "first_line"
+          }
+        }
       },
       "expressvpn": {
         "repository": "grinch27/expressvpn",

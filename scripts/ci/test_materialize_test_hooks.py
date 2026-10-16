@@ -21,11 +21,11 @@ class MaterializeTests(unittest.TestCase):
 
     def test_declared_profiles_are_config_only(self):
         configured=hooks.profiles(ROOT)
-        self.assertEqual(set(configured), {'aria2','curl','privoxy','squid','dnscrypt-proxy'})
+        self.assertEqual(set(configured), {'aria2','curl','privoxy','squid','dnscrypt-proxy','doh-nosni'})
         for app, profile in configured.items():
             self.assertTrue(catalog.validate_image_probe(app,profile))
 
-    def test_generate_all_five_idempotently(self):
+    def test_generate_all_six_idempotently(self):
         with tempfile.TemporaryDirectory() as d:
             root=self.newroot(d)
             for app in hooks.profiles(root):

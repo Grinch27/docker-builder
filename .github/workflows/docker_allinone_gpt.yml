@@ -108,7 +108,7 @@ jobs:
       fail-fast: false
       max-parallel: 3
       matrix:
-        app: [aria2, curl, privoxy, squid, dnscrypt-proxy]
+        app: [aria2, curl, privoxy, squid, dnscrypt-proxy, doh-nosni]
         arch: [amd64, arm64]
     steps:
       - name: Checkout repository
@@ -139,7 +139,9 @@ jobs:
           python3 scripts/ci/materialize_test_hooks.py --app "$app"
           docker cp scripts/ci/probe-image.sh "$cid:/tmp/probe-image.sh"
           docker cp "application/$app/test/test.sh" "$cid:/tmp/legacy-test.sh"
-          docker exec --user 0 "$cid" /bin/sh /tmp/probe-image.sh "$app" > "$RUNNER_TEMP/shared-version.log"
+          reference_app="$app"
+          if [[ "$app" == "doh-nosni" ]]; then reference_app="dnscrypt-proxy"; fi
+          docker exec --user 0 "$cid" /bin/sh /tmp/probe-image.sh "$reference_app" > "$RUNNER_TEMP/shared-version.log"
           docker exec --user 0 "$cid" /bin/sh /tmp/legacy-test.sh > "$RUNNER_TEMP/legacy-version.log"
           v_new=$(awk -F= '/^version=/{sub(/^[^=]*=/,""); v=$0} END{print v}' "$RUNNER_TEMP/shared-version.log")
           v_old=$(awk -F= '/^version=/{sub(/^[^=]*=/,""); v=$0} END{print v}' "$RUNNER_TEMP/legacy-version.log")

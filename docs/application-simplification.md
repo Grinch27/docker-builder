@@ -25,3 +25,5 @@ The shared probe output contract remains `version=<actual-installed-version>`; t
 4. Check FFmpeg's extra Dockerfile variants and SD.Next startup files for build-context dependencies before touching them.
 
 Release/build parity is **not** proven by five isolated image-version checks. Production check → build → test → publish has not been executed by this migration.
+
+Phase 2: README `config.apps.<app>.image_probe` became the canonical command and extractor for the original five; commit `9c0234f` passed 5×2 real architecture smoke and read-only unit tests. `doh-nosni` is a sixth declarative profile using `dnscrypt-proxy -version` with first-line extraction. Its previously tracked `test.sh` is removed in the next incremental commit, with a separate multi-stage Dockerfile smoke requirement. Other non-declarative applications retain their scripts.

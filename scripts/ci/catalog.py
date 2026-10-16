@@ -136,6 +136,8 @@ def validate(c, root):
             raise ValueError(name+': invalid base')
         if 'image_probe' in app:
             validate_image_probe(name, app['image_probe'])
+        if 'image_probe' not in app and not (root/'application'/name/'test'/'test.sh').is_file():
+            raise ValueError(name + ': missing test.sh or image_probe declaration')
         if app.get('tag_policy','keep') not in POLICIES:
             raise ValueError(name+': invalid policy')
         ts=app.get('targets')
