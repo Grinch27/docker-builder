@@ -21,6 +21,8 @@ on:
       - "scripts/ci/test_table_catalog_lab.py"
       - "scripts/ci/aggregate-layer-artifacts.py"
       - "scripts/ci/test_aggregate_layers.py"
+      - "scripts/ci/probe-image.sh"
+      - "scripts/ci/test_probe_image.py"
       - "scripts/ci/test_catalog.py"
       - "scripts/ci/build-image.sh"
       - ".github/workflows/docker_allinone.yml"
@@ -96,6 +98,47 @@ env:
   DOCKER_BUILDKIT: "1"
 
 jobs:
+  shared-image-probe-smoke:
+    name: Shared actual-version parity / ${{ matrix.app }}
+    if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[probe-smoke]') }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        app: [aria2, curl, privoxy, squid, dnscrypt-proxy]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@main
+      - name: Prepare Buildx
+        uses: docker/setup-buildx-action@master
+      - name: Build actual application image (local only)
+        env:
+          APP: ${{ matrix.app }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="$APP"
+          info=$(python3 scripts/ci/catalog.py get --app "$app" --tag latest)
+          base=$(jq -r .base_image <<<"$info")
+          dockerfile=$(jq -r .dockerfile <<<"$info")
+          image="probe-smoke-$app:$GITHUB_RUN_ID"
+          docker buildx build --platform linux/amd64 \
+            --file "application/$app/build/$dockerfile" \
+            --build-arg "base_image=$base" \
+            --tag "$image" --load "application/$app/build"
+          cid=$(docker run --detach --entrypoint /bin/sh "$image" -c 'sleep 600')
+          cleanup() { docker rm -f "$cid" >/dev/null 2>&1 || true; docker image rm "$image" >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          docker cp scripts/ci/probe-image.sh "$cid:/tmp/probe-image.sh"
+          docker cp "application/$app/test/test.sh" "$cid:/tmp/legacy-test.sh"
+          docker exec --user 0 "$cid" /bin/sh /tmp/probe-image.sh "$app" > "$RUNNER_TEMP/shared-version.log"
+          docker exec --user 0 "$cid" /bin/sh /tmp/legacy-test.sh > "$RUNNER_TEMP/legacy-version.log"
+          v_new=$(awk -F= '/^version=/{sub(/^[^=]*=/,""); v=$0} END{print v}' "$RUNNER_TEMP/shared-version.log")
+          v_old=$(awk -F= '/^version=/{sub(/^[^=]*=/,""); v=$0} END{print v}' "$RUNNER_TEMP/legacy-version.log")
+          test -n "$v_new" && test "$v_new" = "$v_old"
+          printf 'Shared probe parity PASS app=%s actual_version=%s; no push or release\n' "$app" "$v_new"
+
   unified-dev-route-smoke:
     name: Production entry -> Dev preflight (no publish)
     if: ${{ github.event_name == 'push' }}
@@ -1925,6 +1968,7 @@ jobs:
           python3 -m unittest discover -s scripts/ci -p 'test_catalog.py' -v
           python3 -m unittest discover -s scripts/ci -p 'test_table_catalog_lab.py' -v
           python3 -m unittest discover -s scripts/ci -p 'test_aggregate_layers.py' -v
+          python3 -m unittest discover -s scripts/ci -p 'test_probe_image.py' -v
           python3 scripts/ci/test-workflow-graph.py
           python3 scripts/ci/catalog.py matrix --kind version > /tmp/version-matrix.json
           python3 scripts/ci/catalog.py matrix --kind build > /tmp/build-matrix.json

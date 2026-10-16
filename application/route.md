@@ -55,3 +55,5 @@ Application platform update:
 README's human-readable `app-summary` is derived from the canonical `app-config` JSON. The `catalog.py set` operation updates both atomically; after manually editing the JSON run `python3 scripts/ci/catalog.py summary --write` followed by `summary --check`. Collapsible JSON containers are presentation only and do not affect Actions.
 
 Unified README data schema v2: a single `app-config` fenced JSON document contains `config` (reviewed static settings) and `monitor.records` (Actions-owned historical observations). The visible table combines both. The legacy separate version JSON is removed; the parser retains read-only compatibility for historical v1 documents. Do not edit `monitor.records` manually unless restoring an audited snapshot.
+
+Shared actual-image probe migration: `scripts/ci/probe-image.sh` supports `aria2`, `curl`, `privoxy`, `squid`, and `dnscrypt-proxy` via `sh probe-image.sh APP` executed inside the built image. Do not remove application test scripts until the non-publishing `[probe-smoke]` parity matrix and every caller migration pass. Expected upstream version and actual installed version remain separate.
