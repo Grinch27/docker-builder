@@ -145,8 +145,8 @@ RUN \
     zlib1g-dev && \
   mkdir -p /tmp/rust && \
   RUST_VERSION=$(curl -fsX GET https://api.github.com/repos/rust-lang/rust/releases/latest | jq -r '.tag_name') && \
-  curl -fo /tmp/rust.tar.gz -L "https://static.rust-lang.org/dist/rust-${RUST_VERSION}-x86_64-unknown-linux-gnu.tar.gz" && \
-  tar xf /tmp/rust.tar.gz -C /tmp/rust --strip-components=1 && \
+  curl -fo /tmp/rust.tar.xz -L "https://static.rust-lang.org/dist/rust-${RUST_VERSION}-x86_64-unknown-linux-gnu.tar.xz" && \
+  tar xf /tmp/rust.tar.xz -C /tmp/rust --strip-components=1 && \
   cd /tmp/rust && \
   ./install.sh && \
   cargo install cargo-c cbindgen && \
