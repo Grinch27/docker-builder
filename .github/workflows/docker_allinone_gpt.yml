@@ -1950,10 +1950,21 @@ jobs:
           PY
           echo "Catalog and target environment: PASS"
 
-  catalog-build-smoke:
-    name: Buildx README catalog smoke (local registry only)
+catalog-build-smoke:
+    name: "Buildx ${{ matrix.app }}:${{ matrix.tag }} (local registry only)"
     if: "${{ github.event_name == 'push' && startsWith(github.event.head_commit.message, 'ci: smoke catalog build') }}"
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - app: vlmcsd
+            tag: latest
+          - app: aria2
+            tag: latest
+          - app: samba
+            tag: alpine
     steps:
       - name: Checkout repository
         uses: actions/checkout@main
@@ -1961,7 +1972,10 @@ jobs:
         uses: docker/setup-buildx-action@master
         with:
           driver-opts: network=host
-      - name: Build and test vlmcsd locally, never publish
+      - name: Build and test target without public registry access
+        env:
+          APP: ${{ matrix.app }}
+          TAG: ${{ matrix.tag }}
         shell: bash
         run: |
           set -euo pipefail
@@ -1971,16 +1985,24 @@ jobs:
             sleep 1
           done
           curl -fsS http://127.0.0.1:5000/v2/ >/dev/null
-          cd "${GITHUB_WORKSPACE}"
-          set -a
-          . <(python3 scripts/ci/catalog.py env --app vlmcsd --tag latest)
-          set +a
-          export tag_repo=latest registry_local=localhost:5000 version=catalog-smoke
-          cd application/vlmcsd/build
+          target=$(python3 scripts/ci/catalog.py get --app "${APP}" --tag "${TAG}")
+          base_image=$(jq -r '.base_image' <<< "${target}")
+          dockerfile=$(jq -r '.dockerfile' <<< "${target}")
+          repo_dockerhub=$(jq -r '.repo_dockerhub' <<< "${target}")
+          build_arg=$(jq -r '.build_arg' <<< "${target}")
+          if [[ "${APP}" == "samba" ]]; then
+            [[ "${base_image}" == "alpine:latest" ]]
+            [[ "${dockerfile}" == "alpine.Dockerfile" ]]
+          fi
+          export base_image dockerfile repo_dockerhub build_arg
+          export arch_branch=linux/amd64 tag_repo="${TAG}"
+          export registry_local=localhost:5000 version=catalog-smoke
+          cd "application/${APP}/build"
           bash "${GITHUB_WORKSPACE}/scripts/ci/build-image.sh"
-          docker pull --platform linux/amd64 localhost:5000/grinch27/vlmcsd:latest
-          cid=$(docker run --detach --entrypoint /bin/sh localhost:5000/grinch27/vlmcsd:latest -c "sleep 120")
+          image_ref="localhost:5000/${repo_dockerhub}:${tag_repo}"
+          docker pull --platform linux/amd64 "${image_ref}"
+          cid=$(docker run --detach --entrypoint /bin/sh "${image_ref}" -c 'sleep 120')
           trap 'docker rm -f "${cid}" >/dev/null 2>&1 || true' EXIT
           docker cp ../test/test.sh "${cid}:/tmp/test.sh"
           docker exec "${cid}" /bin/sh /tmp/test.sh
-          echo "Local-registry Buildx and application test: PASS"
+          echo "Local-registry Buildx and application test: PASS (${APP}:${TAG}, amd64)"
