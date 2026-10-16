@@ -217,10 +217,16 @@ class CatalogTests(unittest.TestCase):
     def test_collapsible_markers_are_unchanged_for_actions(self):
         readme=(ROOT/'README.md').read_text(encoding='utf-8')
         for marker in [catalog.START,catalog.END,catalog.SUMMARY_START,catalog.SUMMARY_END,
-                       '<!-- app-version-table:start -->','<!-- app-version-table:end -->',
                        '<!-- app-version-json:start -->','<!-- app-version-json:end -->']:
             self.assertEqual(readme.count(marker),1,marker)
         self.assertEqual(catalog.catalog_from_readme(ROOT/'README.md'),self.config)
+    def test_single_visible_table_contains_app_and_probe_data(self):
+        text=(ROOT/'README.md').read_text(encoding='utf-8')
+        self.assertEqual(text.count('| Application |'),1)
+        self.assertNotIn('<!-- app-version-table:start -->',text)
+        self.assertIn('Detected version',text)
+        self.assertEqual(text.split(catalog.SUMMARY_START,1)[1].split(catalog.SUMMARY_END,1)[0].count('](application/'),24)
+
     def test_monitor_round_trip_keeps_config_and_summary(self):
         import monitor_state
         original=(ROOT/'README.md').read_text(encoding='utf-8')
@@ -243,8 +249,8 @@ class CatalogTests(unittest.TestCase):
             '.github/workflows/docker_allinone.yml')
         self.assertEqual(original.split(catalog.START,1)[1].split(catalog.END,1)[0],
                          updated.split(catalog.START,1)[1].split(catalog.END,1)[0])
-        self.assertEqual(original.split(catalog.SUMMARY_START,1)[1].split(catalog.SUMMARY_END,1)[0],
-                         updated.split(catalog.SUMMARY_START,1)[1].split(catalog.SUMMARY_END,1)[0])
+        self.assertNotEqual(original.split(catalog.SUMMARY_START,1)[1].split(catalog.SUMMARY_END,1)[0],
+                            updated.split(catalog.SUMMARY_START,1)[1].split(catalog.SUMMARY_END,1)[0])
         self.assertEqual(len(monitor_state.parse_readme_versions(updated)),24)
 
 

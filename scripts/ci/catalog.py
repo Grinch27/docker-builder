@@ -23,14 +23,16 @@ POLICIES = {'none', 'keep', 'strip_channel', 'strip_channel_and_spaces'}
 APP_KEYS = {'repository', 'base_image', 'platforms', 'tag_policy', 'targets'}
 TARGET_KEYS = {'tag', 'dockerfile', 'build_arg', 'base_image', 'tag_policy'}
 
-def catalog_from_readme(path):
-    data = path.read_text(encoding='utf-8')
-    if data.count(START) != 1 or data.count(END) != 1:
+def catalog_data_from_text(text):
+    if text.count(START)!=1 or text.count(END)!=1:
         raise ValueError('Expected exactly one app-config marker pair')
-    raw = data.split(START, 1)[1].split(END, 1)[0].strip()
+    raw=text.split(START,1)[1].split(END,1)[0].strip()
     if not raw.startswith(FENCE+'json\n') or not raw.endswith('\n'+FENCE):
         raise ValueError('app-config must be a single fenced JSON block')
-    catalog = json.loads(raw[len(FENCE)+5:-len(FENCE)-1])
+    return json.loads(raw[len(FENCE)+5:-len(FENCE)-1])
+
+def catalog_from_readme(path):
+    catalog=catalog_data_from_text(path.read_text(encoding='utf-8'))
     validate(catalog, path.parent)
     return catalog
 
@@ -129,21 +131,38 @@ def tags(item,version,consistent):
             result.append(value)
     return result
 
-def render_summary(c):
+def snapshot_from_readme(text):
+    start, end = '<!-- app-version-json:start -->', '<!-- app-version-json:end -->'
+    if text.count(start) != 1 or text.count(end) != 1: return []
+    raw=text.split(start,1)[1].split(end,1)[0].strip()
+    if not raw.startswith(FENCE+'json\n') or not raw.endswith('\n'+FENCE):
+        raise ValueError('Malformed version JSON snapshot')
+    records=json.loads(raw[len(FENCE)+5:-len(FENCE)-1])
+    if not isinstance(records,list): raise ValueError('Snapshot must be a list')
+    return records
+
+def render_summary(c, records=None):
+    observed={r['app_branch']:r for r in (records or [])}
     n=sum(len(a['targets']) for a in c['apps'].values())
     rows=[f'**{len(c["apps"])} applications / {n} build targets** (generated from configuration below).',
-          '', '| Application | Registry repository | Tags | Platforms | Base image | Dockerfiles |',
-          '|---|---|---|---|---|---|']
+          '', '| Application | Registry repository | Tags | Platforms | Base image | Dockerfiles | Detected version | Probe status |',
+          '|---|---|---|---|---|---|---|---|']
+    bt=chr(96)
     for name,a in sorted(c['apps'].items()):
-        tags=', '.join('`'+t['tag']+'`' for t in a['targets'])
-        platforms=', '.join('`'+p.replace('linux/','',1)+'`' for p in a['platforms'])
-        o=['`'+t['tag']+': '+t['base_image']+'`' for t in a['targets']
-           if t.get('base_image') and t['base_image']!=a['base_image']]
-        base='`'+a['base_image']+'`'+(' + '+', '.join(o) if o else '')
-        files=', '.join('`'+f+'`' for f in dict.fromkeys(
+        tags=', '.join(bt+t['tag']+bt for t in a['targets'])
+        platforms=', '.join(bt+p.replace('linux/','',1)+bt for p in a['platforms'])
+        overrides=[bt+t['tag']+': '+t['base_image']+bt for t in a['targets']
+                   if t.get('base_image') and t['base_image']!=a['base_image']]
+        base=bt+a['base_image']+bt+(' + '+', '.join(overrides) if overrides else '')
+        files=', '.join(bt+f+bt for f in dict.fromkeys(
             t.get('dockerfile','Dockerfile') for t in a['targets']))
-        rows.append('| ['+name+'](application/'+name+'/) | `'+a['repository']+'` | '+
-                    tags+' | '+platforms+' | '+base+' | '+files+' |')
+        record=observed.get(name)
+        version=(bt+str(record.get('version') or 'unknown').replace('|','\\|').replace('\n',' ')+bt
+                 if record else '—')
+        status=(bt+str(record.get('status') or 'unknown').replace('|','\\|')+bt
+                if record else '—')
+        rows.append('| ['+name+'](application/'+name+'/) | '+bt+a['repository']+bt+' | '+
+                    tags+' | '+platforms+' | '+base+' | '+files+' | '+version+' | '+status+' |')
     return '\n'.join(rows)
 
 def updated_summary(text,c):
@@ -152,7 +171,7 @@ def updated_summary(text,c):
     left,rest=text.split(SUMMARY_START,1)
     middle,right=rest.split(SUMMARY_END,1)
     if SUMMARY_END in middle: raise ValueError('Out-of-order summary markers')
-    return left+SUMMARY_START+'\n'+render_summary(c)+'\n'+SUMMARY_END+right
+    return left+SUMMARY_START+'\n'+render_summary(c,snapshot_from_readme(text))+'\n'+SUMMARY_END+right
 
 def atomic_write(path,old,new):
     if new==old: return 'unchanged'

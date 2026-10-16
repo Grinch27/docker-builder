@@ -10,39 +10,39 @@ Github Actions for Docker Image Building. / 使用 GitHub Actions 构建、检�
 - [Workflow / 工作流](#workflow--工作流)
 - [Maintenance / 配置维护](#maintenance--配置维护)
 - [Machine-readable configuration / Actions 配置](#machine-readable-configuration--actions-配置)
-- [Container Version Matrix / 版本探测结果](#container-version-matrix)
+- [Version snapshot / 监控数据快照](#version-snapshot--监控数据快照)
 
 ## Applications / 应用清单
 
 <!-- app-summary:start -->
 **24 applications / 30 build targets** (generated from configuration below).
 
-| Application | Registry repository | Tags | Platforms | Base image | Dockerfiles |
-|---|---|---|---|---|---|
-| [adguardvpn-cli](application/adguardvpn-cli/) | `grinch27/adguardvpn-cli` | `nightly`, `beta`, `release` | `amd64`, `arm64` | `alpine:latest` | `Dockerfile` |
-| [aria2](application/aria2/) | `grinch27/aria2` | `latest` | `amd64`, `arm64` | `alpine:latest` | `Dockerfile` |
-| [baidunetdisk](application/baidunetdisk/) | `grinch27/baidunetdisk` | `dev` | `amd64`, `arm64` | `debian:stable-slim` | `Dockerfile` |
-| [cloudflare-warp](application/cloudflare-warp/) | `grinch27/cloudflare-warp` | `latest` | `amd64`, `arm64` | `ubuntu:devel` | `Dockerfile` |
-| [curl](application/curl/) | `grinch27/curl` | `latest` | `amd64`, `arm64` | `alpine:edge` | `Dockerfile` |
-| [dnscrypt-proxy](application/dnscrypt-proxy/) | `grinch27/dnscrypt-proxy` | `latest` | `amd64`, `arm64` | `alpine:edge` | `Dockerfile` |
-| [doh-nosni](application/doh-nosni/) | `grinch27/doh-nosni` | `latest` | `amd64`, `arm64` | `debian:sid-slim` | `Dockerfile` |
-| [expressvpn](application/expressvpn/) | `grinch27/expressvpn` | `latest` | `amd64`, `arm64`, `386`, `arm/v7` | `debian:stable-slim` | `Dockerfile` |
-| [ffmpeg](application/ffmpeg/) | `grinch27/ffmpeg` | `latest` | `amd64` | `ubuntu:devel` | `Dockerfile` |
-| [nordvpn](application/nordvpn/) | `grinch27/nordvpn` | `latest` | `amd64`, `arm64` | `debian:stable-slim` | `Dockerfile` |
-| [novnc](application/novnc/) | `grinch27/novnc` | `latest` | `amd64`, `arm64` | `debian:stable-slim` | `Dockerfile` |
-| [novnc_alpine](application/novnc_alpine/) | `grinch27/novnc` | `latest` | `amd64`, `arm64` | `alpine:latest` | `Dockerfile` |
-| [openwrt](application/openwrt/) | `grinch27/openwrt` | `main` | `amd64` | `ubuntu:devel` | `Dockerfile` |
-| [privoxy](application/privoxy/) | `grinch27/privoxy` | `latest` | `amd64`, `arm64` | `alpine:latest` | `Dockerfile` |
-| [protonvpn](application/protonvpn/) | `grinch27/protonvpn` | `latest` | `amd64` | `debian:stable-slim` | `Dockerfile` |
-| [runner](application/runner/) | `grinch27/runner` | `dev`, `slim`, `actions`, `actions-slim` | `amd64` | `debian:testing-slim` | `Dockerfile`, `slim.Dockerfile`, `actions.Dockerfile`, `actions-slim.Dockerfile` |
-| [samba](application/samba/) | `grinch27/samba` | `latest`, `alpine` | `amd64`, `arm64` | `debian:testing-slim` + `alpine: alpine:latest` | `Dockerfile`, `alpine.Dockerfile` |
-| [sdnext](application/sdnext/) | `grinch27/sdnext` | `latest` | `amd64` | `rocm/dev-ubuntu-24.04` | `Dockerfile` |
-| [sdnext-dev](application/sdnext-dev/) | `grinch27/sdnext` | `dev` | `amd64` | `ubuntu:24.04` | `Dockerfile` |
-| [squid](application/squid/) | `grinch27/squid` | `latest` | `amd64`, `arm64` | `alpine:latest` | `Dockerfile` |
-| [stable-diffusion-webui-amdgpu](application/stable-diffusion-webui-amdgpu/) | `grinch27/stable-diffusion-webui-amdgpu` | `latest` | `amd64` | `rocm/dev-ubuntu-24.04` | `Dockerfile` |
-| [steamcmd](application/steamcmd/) | `grinch27/steamcmd` | `dev` | `amd64` | `debian:testing-slim` | `Dockerfile` |
-| [ttrss](application/ttrss/) | `grinch27/ttrss` | `latest` | `amd64`, `arm64` | `alpine:latest` | `Dockerfile` |
-| [vlmcsd](application/vlmcsd/) | `grinch27/vlmcsd` | `latest` | `amd64`, `arm64`, `386` | `alpine:latest` | `Dockerfile` |
+| Application | Registry repository | Tags | Platforms | Base image | Dockerfiles | Detected version | Probe status |
+|---|---|---|---|---|---|---|---|
+| [adguardvpn-cli](application/adguardvpn-cli/) | `grinch27/adguardvpn-cli` | `nightly`, `beta`, `release` | `amd64`, `arm64` | `alpine:latest` | `Dockerfile` | `unknown` | `success` |
+| [aria2](application/aria2/) | `grinch27/aria2` | `latest` | `amd64`, `arm64` | `alpine:latest` | `Dockerfile` | `1.37.0` | `success` |
+| [baidunetdisk](application/baidunetdisk/) | `grinch27/baidunetdisk` | `dev` | `amd64`, `arm64` | `debian:stable-slim` | `Dockerfile` | `4.17.7` | `success` |
+| [cloudflare-warp](application/cloudflare-warp/) | `grinch27/cloudflare-warp` | `latest` | `amd64`, `arm64` | `ubuntu:devel` | `Dockerfile` | `unknown` | `success` |
+| [curl](application/curl/) | `grinch27/curl` | `latest` | `amd64`, `arm64` | `alpine:edge` | `Dockerfile` | `unknown` | `success` |
+| [dnscrypt-proxy](application/dnscrypt-proxy/) | `grinch27/dnscrypt-proxy` | `latest` | `amd64`, `arm64` | `alpine:edge` | `Dockerfile` | `2.1.18` | `success` |
+| [doh-nosni](application/doh-nosni/) | `grinch27/doh-nosni` | `latest` | `amd64`, `arm64` | `debian:sid-slim` | `Dockerfile` | `unknown` | `success` |
+| [expressvpn](application/expressvpn/) | `grinch27/expressvpn` | `latest` | `amd64`, `arm64`, `386`, `arm/v7` | `debian:stable-slim` | `Dockerfile` | `unknown` | `success` |
+| [ffmpeg](application/ffmpeg/) | `grinch27/ffmpeg` | `latest` | `amd64` | `ubuntu:devel` | `Dockerfile` | `unknown` | `meta_app_missing` |
+| [nordvpn](application/nordvpn/) | `grinch27/nordvpn` | `latest` | `amd64`, `arm64` | `debian:stable-slim` | `Dockerfile` | `5.4.1` | `success` |
+| [novnc](application/novnc/) | `grinch27/novnc` | `latest` | `amd64`, `arm64` | `debian:stable-slim` | `Dockerfile` | `1.7.0` | `success` |
+| [novnc_alpine](application/novnc_alpine/) | `grinch27/novnc` | `latest` | `amd64`, `arm64` | `alpine:latest` | `Dockerfile` | `unknown` | `success` |
+| [openwrt](application/openwrt/) | `grinch27/openwrt` | `main` | `amd64` | `ubuntu:devel` | `Dockerfile` | `unknown` | `success` |
+| [privoxy](application/privoxy/) | `grinch27/privoxy` | `latest` | `amd64`, `arm64` | `alpine:latest` | `Dockerfile` | `4.0.0` | `success` |
+| [protonvpn](application/protonvpn/) | `grinch27/protonvpn` | `latest` | `amd64` | `debian:stable-slim` | `Dockerfile` | `1.0.8` | `success` |
+| [runner](application/runner/) | `grinch27/runner` | `dev`, `slim`, `actions`, `actions-slim` | `amd64` | `debian:testing-slim` | `Dockerfile`, `slim.Dockerfile`, `actions.Dockerfile`, `actions-slim.Dockerfile` | `unknown` | `success` |
+| [samba](application/samba/) | `grinch27/samba` | `latest`, `alpine` | `amd64`, `arm64` | `debian:testing-slim` + `alpine: alpine:latest` | `Dockerfile`, `alpine.Dockerfile` | `4.25.0` | `success` |
+| [sdnext](application/sdnext/) | `grinch27/sdnext` | `latest` | `amd64` | `rocm/dev-ubuntu-24.04` | `Dockerfile` | `7.2` | `success` |
+| [sdnext-dev](application/sdnext-dev/) | `grinch27/sdnext` | `dev` | `amd64` | `ubuntu:24.04` | `Dockerfile` | `7.11` | `success` |
+| [squid](application/squid/) | `grinch27/squid` | `latest` | `amd64`, `arm64` | `alpine:latest` | `Dockerfile` | `7.6-VCS` | `success` |
+| [stable-diffusion-webui-amdgpu](application/stable-diffusion-webui-amdgpu/) | `grinch27/stable-diffusion-webui-amdgpu` | `latest` | `amd64` | `rocm/dev-ubuntu-24.04` | `Dockerfile` | `7.2` | `success` |
+| [steamcmd](application/steamcmd/) | `grinch27/steamcmd` | `dev` | `amd64` | `debian:testing-slim` | `Dockerfile` | `unknown` | `success` |
+| [ttrss](application/ttrss/) | `grinch27/ttrss` | `latest` | `amd64`, `arm64` | `alpine:latest` | `Dockerfile` | `1113-5-g70e0357` | `success` |
+| [vlmcsd](application/vlmcsd/) | `grinch27/vlmcsd` | `latest` | `amd64`, `arm64`, `386` | `alpine:latest` | `Dockerfile` | `1113-5-g70e0357` | `success` |
 <!-- app-summary:end -->
 
 > **Known conflict / 已知冲突：** `novnc` and `novnc_alpine` both use `grinch27/novnc:latest`. The two directories do not own independent output tags. No tags are changed by this documentation update.
@@ -69,8 +69,7 @@ flowchart LR
 | Section | Maintainer | Actions behavior |
 |---|---|---|
 | `app-config` JSON | Manual review / `catalog.py set` | **Authoritative** app and target settings |
-| `app-summary` | Derived from `app-config` | Read-only overview; never parsed as configuration |
-| `app-version-table` | Monitor | Displayed upstream version probes; not proof of published images |
+| `app-summary` | Derived from `app-config` and monitor versions | Only visible data table; never parsed as configuration |
 | `app-version-json` | Monitor | Stored state used to compare version changes |
 
 Common commands:
@@ -491,43 +490,9 @@ Documentation: [application layout](application/route.md), [workflow consolidati
 
 </details>
 
-## Container Version Matrix
+## Version snapshot / 监控数据快照
 
-Maintained by GitHub Actions. **This table reports version-detection results, not completed image builds or registry publication.** `unknown` indicates the version was not resolved. / 这里仅展示版本探测，不表示镜像已完成发布。
-
-<!-- markdownlint-disable MD060 -->
-<!-- app-version-table:start -->
-Auto-generated by .github/workflows/monitor-images.yml
-Volatile run metadata is intentionally omitted; this section changes only when semantic image state changes.
-
-| Application | Detected version | Probe platform | Probe status |
-|---|---|---|---|
-| [adguardvpn-cli](application/adguardvpn-cli/) | `unknown` | `linux/amd64` | `success` |
-| [aria2](application/aria2/) | `1.37.0` | `linux/amd64` | `success` |
-| [baidunetdisk](application/baidunetdisk/) | `4.17.7` | `linux/amd64` | `success` |
-| [cloudflare-warp](application/cloudflare-warp/) | `unknown` | `linux/amd64` | `success` |
-| [curl](application/curl/) | `unknown` | `linux/amd64` | `success` |
-| [dnscrypt-proxy](application/dnscrypt-proxy/) | `2.1.18` | `linux/amd64` | `success` |
-| [doh-nosni](application/doh-nosni/) | `unknown` | `linux/amd64` | `success` |
-| [expressvpn](application/expressvpn/) | `unknown` | `linux/amd64` | `success` |
-| [ffmpeg](application/ffmpeg/) | `unknown` | `linux/amd64` | `meta_app_missing` |
-| [nordvpn](application/nordvpn/) | `5.4.1` | `linux/amd64` | `success` |
-| [novnc](application/novnc/) | `1.7.0` | `linux/amd64` | `success` |
-| [novnc_alpine](application/novnc_alpine/) | `unknown` | `linux/amd64` | `success` |
-| [openwrt](application/openwrt/) | `unknown` | `linux/amd64` | `success` |
-| [privoxy](application/privoxy/) | `4.0.0` | `linux/amd64` | `success` |
-| [protonvpn](application/protonvpn/) | `1.0.8` | `linux/amd64` | `success` |
-| [runner](application/runner/) | `unknown` | `linux/amd64` | `success` |
-| [samba](application/samba/) | `4.25.0` | `linux/amd64` | `success` |
-| [sdnext](application/sdnext/) | `7.2` | `linux/amd64` | `success` |
-| [sdnext-dev](application/sdnext-dev/) | `7.11` | `linux/amd64` | `success` |
-| [squid](application/squid/) | `7.6-VCS` | `linux/amd64` | `success` |
-| [stable-diffusion-webui-amdgpu](application/stable-diffusion-webui-amdgpu/) | `7.2` | `linux/amd64` | `success` |
-| [steamcmd](application/steamcmd/) | `unknown` | `linux/amd64` | `success` |
-| [ttrss](application/ttrss/) | `1113-5-g70e0357` | `linux/amd64` | `success` |
-| [vlmcsd](application/vlmcsd/) | `1113-5-g70e0357` | `linux/amd64` | `success` |
-<!-- app-version-table:end -->
-<!-- markdownlint-enable MD060 -->
+Monitoring JSON below is retained for semantic comparison; the combined application table above is the only visible data table. Version probes are not evidence of successful publishing.
 
 <details>
 <summary><strong>Show generated version JSON / 展开版本监控 JSON</strong></summary>
