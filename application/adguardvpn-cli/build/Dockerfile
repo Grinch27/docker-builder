@@ -45,9 +45,9 @@ RUN set -x \
     && tag_download=$(curl -fsSL "https://api.github.com/repos/AdguardTeam/AdGuardVPNCLI/tags" | \
         jq -r --arg tag_target "$tag_target" '.[] | select(.name | contains($tag_target)) | .name' | head -n 1) \
     && test -n "${tag_download}" \
-    # Beta assets omit the channel suffix; nightly assets retain it.
+    # Beta mirror tag has a -beta suffix; the asset preserves its -rc.N pre-release version.
     && asset_version=${tag_download#v} \
-    && if [ "${tag_target}" = beta ]; then asset_version=${asset_version%%-*}; fi \
+    && if [ "${tag_target}" = beta ]; then asset_version=${asset_version%-beta}; fi \
     && URL_download="https://github.com/AdguardTeam/AdGuardVPNCLI/releases/download/${tag_download}/adguardvpn-cli-${asset_version}-linux-${cpu}.tar.gz" \
     && FILE_download="/tmp/adguardvpn-cli.tar.gz" \
     && PATH_adguardvpn_cli="/opt/adguardvpn_cli" \

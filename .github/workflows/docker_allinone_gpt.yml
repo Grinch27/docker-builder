@@ -27,6 +27,7 @@ on:
       - "scripts/ci/test_materialize_test_hooks.py"
       - "scripts/ci/test_catalog.py"
       - "scripts/ci/build-image.sh"
+      - "application/**/build/**"
       - ".github/workflows/docker_allinone.yml"
       - ".github/workflows/monitor-images.yml"
       - ".github/workflows/callable-fetch-app-version.yml"
@@ -2069,7 +2070,7 @@ jobs:
 
   full-build-plan:
     name: Prepare all 52 catalog target-platform combinations
-    if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[full-build]') }}
+    if: ${{ github.event_name == 'push' && (contains(github.event.head_commit.message, '[full-build]') || contains(github.event.head_commit.message, '[full-retest:')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -2081,6 +2082,8 @@ jobs:
       - name: Validate canonical catalog and assemble all-platform matrix
         id: plan
         shell: bash
+        env:
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
           set -euo pipefail
           python3 scripts/ci/catalog.py validate
@@ -2088,6 +2091,7 @@ jobs:
           python3 - <<'PY'
           import json
           import os
+          import re
           import sys
           from pathlib import Path
           sys.path.insert(0, 'scripts/ci')
@@ -2100,10 +2104,15 @@ jobs:
           assert len(cfg['apps']) == 24
           assert sum(len(v['targets']) for v in cfg['apps'].values()) == 30
           assert len(entries) == 52
+          match=re.search(r'\[full-retest:([a-z0-9_.-]+):([a-z0-9_.-]+)\]', os.environ.get('COMMIT_MESSAGE',''))
+          if match:
+              entries=[e for e in entries if e['app'] == match.group(1) and e['tag'] == match.group(2)]
+              if not entries:
+                  raise ValueError('No configured target for '+match.group(0))
           with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as f:
               f.write('matrix=' + json.dumps({'include': entries}, separators=(',', ':')) + '\n')
               f.write('count=' + str(len(entries)) + '\n')
-          print('Plan:', len(entries), 'target-platform builds, nonpublishing')
+          print('Plan:', len(entries), 'target-platform builds, nonpublishing', match.group(0) if match else 'full')
           PY
 
   full-build-all-platforms:
