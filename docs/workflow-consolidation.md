@@ -107,3 +107,17 @@ Stage-2 inventory itself changes **documentation only**; zero workflows removed 
 ### Stage 2 integration checkpoint — shared production dispatcher
 
 `docker_allinone.yml` now presents `execution_route: production|dev` on manual dispatch. `production` is the unchanged default for cron/repository dispatch, and the existing `prepare` job is skipped on Dev-only manual invocations. `dev` calls `.github/workflows/docker_allinone_dev.yml` through `workflow_call`, preserving `auto`, `build`, and dedicated promotion modes, including optional `target_id` and promotion version/revision inputs. The Dev YAML remains independently manually dispatchable until this wrapper path is actually tested. No production image publishing was initiated by this change; GitHub Actions syntax validation and static routing tests do not prove a live Dev promotion.
+
+
+## Stage 2 completed non-production layer consolidation (2026-10-16)
+
+The new `diagnostics.yml` is the single manual diagnostics entry for app-version probes and OCI layer inspection. Internally it reuses `callable-fetch-app-version.yml` and `callable-fetch-layers.yml`. The `platform-details` matrix preserves the historical `layers-<image>-<arch>/layers.json` and `layer-info-<image>-<arch>/image_*.json` artifact schemas. A new `collect` job uploads `diagnostics-layer-summary` containing `base_layers.json` and `aggregated_layers.json`.
+
+Verified on `main` before retirement:
+- `38868334453`: version + per-image layer artifacts, including explicit contract check — success.
+- `38868702585`, `38868775865`: per-arch raw inspect and layers compatibility artifacts — success.
+- `38869143288`: all five selected images × amd64/arm64 detailed probes; 26 Artifacts, full compatibility validation — success.
+- `38869288771`: layer aggregation and final artifact contract — success.
+- `38869062943`: Production All-in-One -> reusable Dev preflight, no monitor/build/publish in Dev route — success.
+
+With those tests successful, retire `baseimage_dev.yml`, `call-fetch_stable.yml`, and `call-fetch_dev.yml`. `callable-fetch-layers.yml` stays as an internal callee. Legacy `repository_dispatch` consumers of the deleted files were not discoverable in the repository; external clients must use `diagnostics.yml` manual dispatch. The old `baseimage_dev.yml` path-scoped pull-request trigger was not carried over automatically. `meta-app_dev.yml` remains until its all-platform probing behavior is reviewed; the canonical version probe currently uses a preferred platform. Legacy Docker/GHCR promotion remains separately implemented in Dev and must not be deleted until real publishing parity is tested.

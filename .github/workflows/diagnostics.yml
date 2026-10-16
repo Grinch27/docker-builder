@@ -32,6 +32,10 @@ on:
         description: "Single image override for layer inspection"
         type: string
         default: ""
+      custom_env:
+        description: "Optional app version probe custom environment"
+        type: string
+        default: ""
 
 # Called legacy reusable workflows currently request write-all.
 permissions: write-all
@@ -79,6 +83,7 @@ jobs:
     with:
       app_branch: ${{ inputs.app_branch || 'vlmcsd' }}
       tag_repo: ${{ inputs.tag_repo || 'latest' }}
+      custom_env: ${{ inputs.custom_env || '' }}
 
   layers:
     name: OCI layers ${{ matrix.image_name }}

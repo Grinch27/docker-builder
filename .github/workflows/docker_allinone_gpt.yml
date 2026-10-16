@@ -30,6 +30,8 @@ on:
       - ".github/workflows/build-docker_indocker.yml"
       - ".github/workflows/docker_allinone_dev.yml"
       - ".github/workflows/meta-app_dev.yml"
+      - ".github/workflows/diagnostics.yml"
+      - "scripts/ci/inspect-image-platform.sh"
       - ".github/workflows/call-build_dev.yml"
   workflow_dispatch:
     inputs:
@@ -1923,6 +1925,7 @@ jobs:
           python3 -m unittest discover -s scripts/ci -p 'test_catalog.py' -v
           python3 -m unittest discover -s scripts/ci -p 'test_table_catalog_lab.py' -v
           python3 -m unittest discover -s scripts/ci -p 'test_aggregate_layers.py' -v
+          python3 scripts/ci/test-workflow-graph.py
           python3 scripts/ci/catalog.py matrix --kind version > /tmp/version-matrix.json
           python3 scripts/ci/catalog.py matrix --kind build > /tmp/build-matrix.json
           test "$(jq '.include | length' /tmp/version-matrix.json)" -eq 24
