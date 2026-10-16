@@ -106,6 +106,48 @@ def embedded_tests_from_text(text):
         raise ValueError('Missing or duplicated table test column')
     return scripts
 
+
+# Meta-app sources share HTML escaping with the existing embedded tests.
+META_CELL = re.compile(
+    r'<!-- app-meta:([a-z0-9_.-]+):start --><details><summary>Meta-app</summary>' +
+    r'<pre><code>(.*?)</code></pre></details><!-- app-meta:\1:end -->')
+META_MISSING = re.compile(r'<!-- app-meta:([a-z0-9_.-]+):missing -->—')
+
+def embedded_meta_from_text(text):
+    """Read original metadata scripts with explicit missing-probe validation."""
+    if text.count(SUMMARY_START)!=1 or text.count(SUMMARY_END)!=1:
+        raise ValueError('Expected exactly one app-summary table')
+    region=text.split(SUMMARY_START,1)[1].split(SUMMARY_END,1)[0]
+    scripts,missing={},set()
+    for match in META_CELL.finditer(region):
+        name,encoded=match.groups()
+        if name in scripts:
+            raise ValueError('Duplicate embedded meta-app: '+name)
+        prefix=region[region.rfind('\n',0,match.start())+1:match.start()]
+        if not prefix.startswith('| ['+name+'](application/'+name+'/) |'):
+            raise ValueError('Meta-app attached to wrong application: '+name)
+        script=html.unescape(encoded)
+        if not script.startswith('#!/bin/sh\n') or '\0' in script or '\r' in script:
+            raise ValueError('Invalid embedded meta-app: '+name)
+        if encode_embedded_test(script)!=encoded:
+            raise ValueError('Noncanonical HTML meta-app cell: '+name)
+        scripts[name]=script
+    for match in META_MISSING.finditer(region):
+        name=match.group(1)
+        if name in missing or name in scripts:
+            raise ValueError('Duplicate meta-app missing marker: '+name)
+        prefix=region[region.rfind('\n',0,match.start())+1:match.start()]
+        if not prefix.startswith('| ['+name+'](application/'+name+'/) |'):
+            raise ValueError('Missing meta-app marker on wrong application: '+name)
+        missing.add(name)
+    if region.count('<!-- app-meta:')!=2*len(scripts)+len(missing):
+        raise ValueError('Malformed meta-app cell markers')
+    if region.count(' | <!-- app-meta:')!=len(scripts)+len(missing):
+        raise ValueError('Missing or duplicated meta-app table column')
+    if set(scripts)|missing!=set(embedded_tests_from_text(text)):
+        raise ValueError('Meta-app cells do not cover application table')
+    return scripts
+
 def validate(c, root):
     if not isinstance(c, dict) or c.get('schema_version') != 1:
         raise ValueError('Unsupported catalog schema')
@@ -123,6 +165,9 @@ def validate(c, root):
     embedded_tests=embedded_tests_from_text((root/'README.md').read_text(encoding='utf-8'))
     if set(embedded_tests)!=set(apps):
         raise ValueError('README embedded tests do not match app catalog')
+    embedded_meta=embedded_meta_from_text((root/'README.md').read_text(encoding='utf-8'))
+    if not set(embedded_meta).issubset(apps):
+        raise ValueError('README meta-app scripts do not match catalog')
     refs, seen = {}, set()
     for name, app in apps.items():
         if not isinstance(app, dict):
@@ -218,14 +263,16 @@ def snapshot_from_readme(text):
     if not isinstance(records,list): raise ValueError('Snapshot must be a list')
     return records
 
-def render_summary(c, records=None, scripts=None):
+def render_summary(c, records=None, scripts=None, meta_scripts=None):
     observed={r['app_branch']:r for r in (records or [])}
     n=sum(len(a['targets']) for a in c['apps'].values())
     rows=[f'**{len(c["apps"])} applications / {n} build targets** (generated from configuration below).',
-          '', '| Application | Registry repository | Tags | Platforms | Base image | Dockerfiles | Detected version | Probe status | Test |',
-          '|---|---|---|---|---|---|---|---|---|']
+          '', '| Application | Registry repository | Tags | Platforms | Base image | Dockerfiles | Detected version | Probe status | Meta-app | Test |',
+          '|---|---|---|---|---|---|---|---|---|---|']
     if scripts is None or set(scripts)!=set(c['apps']):
         raise ValueError('Application test scripts must cover configured apps')
+    if meta_scripts is None or not set(meta_scripts).issubset(c['apps']):
+        raise ValueError('Meta-app scripts must belong to configured apps')
     bt=chr(96)
     for name,a in sorted(c['apps'].items()):
         tags=', '.join(bt+t['tag']+bt for t in a['targets'])
@@ -240,8 +287,12 @@ def render_summary(c, records=None, scripts=None):
                  if record else '—')
         status=(bt+str(record.get('status') or 'unknown').replace('|','\\|')+bt
                 if record else '—')
+        meta_cell=('<!-- app-meta:'+name+':start --><details><summary>Meta-app</summary><pre><code>'+
+                   encode_embedded_test(meta_scripts[name])+
+                   '</code></pre></details><!-- app-meta:'+name+':end -->'
+                   if name in meta_scripts else '<!-- app-meta:'+name+':missing -->—')
         rows.append('| ['+name+'](application/'+name+'/) | '+bt+a['repository']+bt+' | '+
-                    tags+' | '+platforms+' | '+base+' | '+files+' | '+version+' | '+status+' | '+
+                    tags+' | '+platforms+' | '+base+' | '+files+' | '+version+' | '+status+' | '+meta_cell+' | '+
                     '<!-- app-test:'+name+':start --><details><summary>Test</summary><pre><code>'+ 
                     encode_embedded_test(scripts[name])+
                     '</code></pre></details><!-- app-test:'+name+':end --> |')
@@ -253,7 +304,7 @@ def updated_summary(text,c):
     left,rest=text.split(SUMMARY_START,1)
     middle,right=rest.split(SUMMARY_END,1)
     if SUMMARY_END in middle: raise ValueError('Out-of-order summary markers')
-    return left+SUMMARY_START+'\n'+render_summary(c,snapshot_from_readme(text),embedded_tests_from_text(text))+'\n'+SUMMARY_END+right
+    return left+SUMMARY_START+'\n'+render_summary(c,snapshot_from_readme(text),embedded_tests_from_text(text),embedded_meta_from_text(text))+'\n'+SUMMARY_END+right
 
 def atomic_write(path,old,new):
     if new==old: return 'unchanged'
@@ -336,7 +387,10 @@ def main():
                 check_summary(readme,c)
                 print('app-summary: current')
             elif args.write: print(write_summary(readme,c))
-            else: print(render_summary(c))
+            else:
+                source=readme.read_text(encoding='utf-8')
+                print(render_summary(c,snapshot_from_readme(source),
+                                     embedded_tests_from_text(source),embedded_meta_from_text(source)))
         elif args.command=='matrix':
             print(json.dumps(matrix(c,args.kind,args.runner),separators=(',',':')))
         elif args.command in ('get','env','tags'):

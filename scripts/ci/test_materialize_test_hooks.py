@@ -77,5 +77,40 @@ class EmbeddedTests(unittest.TestCase):
                                   capture_output=True,text=True,check=True,env=env)
             self.assertEqual(result.stdout,'version=1.37.0\n')
 
+
+    def test_meta_23_scripts_and_missing_ffmpeg(self):
+        meta=hooks.scripts(ROOT,'meta')
+        self.assertEqual(len(meta),23)
+        self.assertNotIn('ffmpeg',meta)
+        self.assertEqual(set(meta)|{'ffmpeg'},set(hooks.scripts(ROOT)))
+        with tempfile.TemporaryDirectory() as d:
+            root=self.make_temp(d)
+            for name,script in meta.items():
+                self.assertEqual(hooks.materialize(root,name,'meta'),'generated')
+                self.assertEqual(hooks.materialize(root,name,'meta'),'existing')
+                self.assertEqual((root/'application'/name/'meta-app'/'meta-app.sh').read_bytes(),
+                                 script.encode('utf-8'))
+            self.assertEqual(hooks.materialize(root,'ffmpeg','meta'),'missing')
+            self.assertFalse((root/'application'/'ffmpeg'/'meta-app'/'meta-app.sh').exists())
+
+    def test_meta_refuses_foreign_script_and_markers(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=self.make_temp(d)
+            target=root/'application'/'aria2'/'meta-app'/'meta-app.sh'
+            target.parent.mkdir(parents=True)
+            target.write_text('#!/bin/sh\necho changed\n')
+            with self.assertRaisesRegex(ValueError,'differs'):
+                hooks.materialize(root,'aria2','meta')
+            target.unlink()
+            target.symlink_to(root/'README.md')
+            with self.assertRaisesRegex(ValueError,'Symlink'):
+                hooks.materialize(root,'aria2','meta')
+        source=(ROOT/'README.md').read_text(encoding='utf-8')
+        with self.assertRaisesRegex(ValueError,'Malformed'):
+            catalog.embedded_meta_from_text(source.replace(
+                '<!-- app-meta:runner:start -->','<!-- broken -->',1))
+        with self.assertRaisesRegex(ValueError,'No embedded'):
+            hooks.materialize(ROOT,'unknown-app','meta')
+
 if __name__=='__main__':
     unittest.main(verbosity=2)

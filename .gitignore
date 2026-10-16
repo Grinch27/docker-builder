@@ -4,5 +4,6 @@ PROJECT_REPORT_FOR_GPT.md
 /tmp
 *.tar.gz
 
-# README.md app-tests is the canonical test source; temporary files belong only to Actions.
+# README.md is canonical for tests and metadata hooks; workspace files are transient.
 /application/*/test/test.sh
+/application/*/meta-app/meta-app.sh

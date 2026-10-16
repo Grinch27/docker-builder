@@ -67,3 +67,11 @@ The same declarative `first_line` extractor now covers `doh-nosni` (installed `d
 All 24 built-image tests are now stored **in an expandable HTML table in root README.md** (24 rows, one per application), enclosed by `app-tests` and per-app `app-test` markers. Scripts retain exact POSIX shell source; HTML escape codes preserve newline and pipe within table cells. `scripts/ci/materialize_test_hooks.py` generates the legacy `application/<app>/test/test.sh` only in the Actions checkout. The 18 original files are retained during byte-for-byte parity validation and are to be retired only after test success. The six previously declarative `image_probe` values are now replaced by scripts in that table; the production JSON still solely controls build settings and monitored state.
 
 The `Applications / 应用清单` Markdown table includes a ninth **Test** column, with one expandable `<details><pre><code>` shell script per application. The former standalone `Application test scripts` section has been removed. Test markers stay inside `app-summary`; catalog and monitor regeneration parse the existing scripts first, preserving all 24 script bodies. Scripts only execute inside the built container.
+
+
+### README-embedded meta-app scripts
+
+The Applications table now contains 23 expandable upstream metadata scripts;
+ffmpeg deliberately has no metadata probe. Run `python3 scripts/ci/materialize_test_hooks.py --app APP --kind meta` before scanning `application/APP/meta-app/*.sh`.
+The generator preserves original shell source and does not execute it on the host.
+`--kind test` remains the default for built-image testing.

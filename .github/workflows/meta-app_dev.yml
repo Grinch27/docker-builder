@@ -145,6 +145,7 @@ jobs:
             log_container=$(mktemp)
             docker exec ${{ env.container_name }} mkdir -p ${{ env.dir_container }}
 
+            python3 "${GITHUB_WORKSPACE}/scripts/ci/materialize_test_hooks.py" --app "$(basename "$PWD")" --kind meta
             dir_step="meta-app"
             dir_original=$(pwd)
             if [ -d "${dir_step}" ]; then

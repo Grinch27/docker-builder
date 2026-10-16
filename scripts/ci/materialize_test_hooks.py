@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Materialize canonical README HTML-table shell tests in the Actions workspace.
+"""Materialize canonical README test and meta-app shell scripts.
 
-The original application-specific shell logic is preserved byte-for-byte.
-Never executes a README script on the host; the existing workflow invokes
-the ephemeral file inside the built image.
+Unknowns: future applications may legitimately lack a metadata probe.
+Risks: prevent foreign-file overwrites, symlink following and host execution.
+Verification: byte parity, explicit absence, idempotence and workflow behavior.
 """
 import argparse
 from pathlib import Path
@@ -11,21 +11,35 @@ import catalog
 
 ROOT=Path(__file__).resolve().parents[2]
 
-def scripts(root):
+def scripts(root,kind='test'):
     text=(root/'README.md').read_text(encoding='utf-8')
-    return catalog.embedded_tests_from_text(text)
+    if kind=='test':
+        return catalog.embedded_tests_from_text(text)
+    if kind=='meta':
+        return catalog.embedded_meta_from_text(text)
+    raise ValueError('Unknown script kind: '+kind)
 
-def materialize(root,app):
-    script=scripts(root).get(app)
+def materialize(root,app,kind='test'):
+    text=(root/'README.md').read_text(encoding='utf-8')
+    if app not in catalog.catalog_data_from_text(text)['apps']:
+        raise ValueError('No embedded README script for '+app)
+    script=scripts(root,kind).get(app)
+    directory,filename=('meta-app','meta-app.sh') if kind=='meta' else ('test','test.sh')
+    target=root/'application'/app/directory/filename
     if script is None:
-        raise ValueError('No embedded README test for '+app)
-    target=root/'application'/app/'test'/'test.sh'
+        if kind!='meta':
+            raise ValueError('No embedded README test for '+app)
+        if target.exists() or target.is_symlink():
+            raise ValueError('Unexpected script for missing meta-app: '+app)
+        return 'missing'
+    if target.is_symlink():
+        raise ValueError('Symlink at generated script path: '+str(target))
     if target.is_file():
         if target.read_bytes()!=script.encode('utf-8'):
-            raise ValueError('Existing app test differs from README: '+app)
+            raise ValueError('Existing app script differs from README: '+app)
         return 'existing'
     if target.exists():
-        raise ValueError('Unexpected application test path: '+str(target))
+        raise ValueError('Unexpected application script path: '+str(target))
     target.parent.mkdir(parents=True,exist_ok=True)
     target.write_bytes(script.encode('utf-8'))
     target.chmod(0o755)
@@ -34,8 +48,9 @@ def materialize(root,app):
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--app',required=True)
+    p.add_argument('--kind',choices=('test','meta'),default='test')
     args=p.parse_args()
-    print(args.app+': '+materialize(ROOT,args.app))
+    print(args.app+': '+materialize(ROOT,args.app,args.kind))
 
 if __name__=='__main__':
     main()

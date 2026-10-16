@@ -211,7 +211,7 @@ class CatalogTests(unittest.TestCase):
 
     def test_summary_matches_canonical_json(self):
         self.assertTrue(catalog.check_summary(ROOT/'README.md',self.config))
-        view=catalog.render_summary(self.config,scripts=catalog.embedded_tests_from_text((ROOT/'README.md').read_text(encoding='utf-8')))
+        view=catalog.render_summary(self.config,scripts=catalog.embedded_tests_from_text((ROOT/'README.md').read_text(encoding='utf-8')),meta_scripts=catalog.embedded_meta_from_text((ROOT/'README.md').read_text(encoding='utf-8')))
         self.assertEqual(view.count('](application/'),24)
         self.assertIn('alpine.Dockerfile',view)
 
@@ -254,6 +254,9 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(text.count('| Application |'),1)
         self.assertNotIn('## Application test scripts',text)
         self.assertEqual(text.count('<details><summary>Test</summary>'),24)
+        self.assertEqual(text.count('<details><summary>Meta-app</summary>'),23)
+        self.assertIn('<!-- app-meta:ffmpeg:missing -->—',text)
+        self.assertEqual(len(catalog.embedded_meta_from_text(text)),23)
         self.assertNotIn('<!-- app-version-table:start -->',text)
         self.assertIn('Detected version',text)
         self.assertEqual(text.split(catalog.SUMMARY_START,1)[1].split(catalog.SUMMARY_END,1)[0].count('](application/'),24)

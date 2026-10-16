@@ -519,6 +519,7 @@ jobs:
             log_container=$(mktemp)
             docker exec -u 0 "${container_name}" mkdir -p "${dir_container}"
 
+            python3 "${GITHUB_WORKSPACE}/scripts/ci/materialize_test_hooks.py" --app "$(basename "$PWD")" --kind meta
             dir_step="meta-app"
             if [[ -d "${dir_step}" ]]; then
               shopt -s nullglob
