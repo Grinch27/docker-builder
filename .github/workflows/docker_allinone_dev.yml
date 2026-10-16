@@ -707,6 +707,7 @@ jobs:
             exit 1
           fi
 
+          python3 scripts/ci/materialize_test_hooks.py --app "${APP_BRANCH}"
           shopt -s nullglob
           test_scripts=("${dir_app}"/test/*.sh)
           if ((${#test_scripts[@]} == 0)); then

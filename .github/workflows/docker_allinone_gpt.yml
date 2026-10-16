@@ -23,6 +23,8 @@ on:
       - "scripts/ci/test_aggregate_layers.py"
       - "scripts/ci/probe-image.sh"
       - "scripts/ci/test_probe_image.py"
+      - "scripts/ci/materialize_test_hooks.py"
+      - "scripts/ci/test_materialize_test_hooks.py"
       - "scripts/ci/test_catalog.py"
       - "scripts/ci/build-image.sh"
       - ".github/workflows/docker_allinone.yml"
@@ -130,6 +132,7 @@ jobs:
           cid=$(docker run --detach --entrypoint /bin/sh "$image" -c 'sleep 600')
           cleanup() { docker rm -f "$cid" >/dev/null 2>&1 || true; docker image rm "$image" >/dev/null 2>&1 || true; }
           trap cleanup EXIT
+          python3 scripts/ci/materialize_test_hooks.py --app "$app"
           docker cp scripts/ci/probe-image.sh "$cid:/tmp/probe-image.sh"
           docker cp "application/$app/test/test.sh" "$cid:/tmp/legacy-test.sh"
           docker exec --user 0 "$cid" /bin/sh /tmp/probe-image.sh "$app" > "$RUNNER_TEMP/shared-version.log"
@@ -750,6 +753,7 @@ jobs:
           out="$RUNNER_TEMP/smoke-$TARGET_ID"
           mkdir -p "$out"
           [[ -f "$dockerfile" && -f "$baseline_file" ]] || { echo "::error::Dockerfile or baseline missing"; exit 1; }
+          python3 scripts/ci/materialize_test_hooks.py --app "${APP_BRANCH}"
           shopt -s nullglob
           test_scripts=("$dir_app"/test/*.sh)
           if (( ${#test_scripts[@]} == 0 )); then
@@ -1181,6 +1185,7 @@ jobs:
             exit 1
           fi
 
+          python3 scripts/ci/materialize_test_hooks.py --app "${APP_BRANCH}"
           shopt -s nullglob
           test_scripts=("${dir_app}"/test/*.sh)
           if ((${#test_scripts[@]} == 0)); then
@@ -1969,6 +1974,7 @@ jobs:
           python3 -m unittest discover -s scripts/ci -p 'test_table_catalog_lab.py' -v
           python3 -m unittest discover -s scripts/ci -p 'test_aggregate_layers.py' -v
           python3 -m unittest discover -s scripts/ci -p 'test_probe_image.py' -v
+          python3 -m unittest discover -s scripts/ci -p 'test_materialize_test_hooks.py' -v
           python3 scripts/ci/test-workflow-graph.py
           python3 scripts/ci/catalog.py matrix --kind version > /tmp/version-matrix.json
           python3 scripts/ci/catalog.py matrix --kind build > /tmp/build-matrix.json
@@ -1986,6 +1992,7 @@ jobs:
           test "$(find application -name vars.env | wc -l)" -eq 0
           test "$(find application -name build.sh | wc -l)" -eq 0
           test "$(find application -name tag_version.sh | wc -l)" -eq 0
+          for app in aria2 curl privoxy squid dnscrypt-proxy; do test ! -e "application/$app/test/test.sh"; done
           cp README.md README.catalog-test.md
           python3 scripts/ci/catalog.py set --readme README.catalog-test.md --app runner --field base_image --value debian:testing-slim
           cp README.catalog-test.md README.catalog-test.first.md

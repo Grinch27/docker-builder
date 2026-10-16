@@ -790,6 +790,7 @@ jobs:
               "${registry_local}/${repo_dockerhub}:${tag_repo}"
 
             dir_step="test"
+            python3 "${PATH_self}/scripts/ci/materialize_test_hooks.py" --app "$(basename "$PWD")"
             if [[ -d "${dir_step}" ]]; then
               cd "./${dir_step}"
               echo "Changed to directory: $(pwd)"

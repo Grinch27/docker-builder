@@ -623,6 +623,7 @@ jobs:
 
             dir_step="test"
             dir_original=$(pwd)
+            python3 "${GITHUB_WORKSPACE}/scripts/ci/materialize_test_hooks.py" --app "$(basename "$PWD")"
             if [ -d "${dir_step}" ]; then
               cd ./${dir_step}
               echo "Changed to directory: $(pwd)"
