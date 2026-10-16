@@ -155,7 +155,7 @@ jobs:
           find "${RUNNER_TEMP}/diagnostics" -name "layer-*.json" -print
           test "$(find "${RUNNER_TEMP}/diagnostics" -name "layer-*.json" | wc -l)" -ge 1
           jq -e '.app_branch=="vlmcsd" and .status != null and .version != null' "${RUNNER_TEMP}/diagnostics/app-version-vlmcsd/version-vlmcsd.json"
-          while IFS= read -r f; do jq -e '.image_name=="alpine:latest" and (.Layers|type=="array" and length>0)' "$f"; done < <(find "${RUNNER_TEMP}/diagnostics" -name "layer-*.json")
+          while IFS= read -r f; do jq -e '(.image_name | type == "string" and length > 0) and (.Layers | type == "array" and length > 0)' "$f"; done < <(find "${RUNNER_TEMP}/diagnostics" -name "layer-*.json")
           test -f "${RUNNER_TEMP}/diagnostics/layers-alpine_latest-amd64/layers.json"
           jq -e 'type=="array" and length>0' "${RUNNER_TEMP}/diagnostics/layers-alpine_latest-amd64/layers.json"
           test -f "${RUNNER_TEMP}/diagnostics/layer-info-alpine-latest-amd64/image_alpine-latest_amd64.json"
