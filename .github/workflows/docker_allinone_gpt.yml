@@ -2066,6 +2066,98 @@ jobs:
           PY
           echo "Catalog and target environment: PASS"
 
+
+  full-build-plan:
+    name: Prepare all 52 catalog target-platform combinations
+    if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[full-build]') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      count: ${{ steps.plan.outputs.count }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate canonical catalog and assemble all-platform matrix
+        id: plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/catalog.py validate
+          python3 scripts/ci/catalog.py summary --check
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, 'scripts/ci')
+          import catalog
+          cfg=catalog.catalog_from_readme(Path('README.md'))
+          entries=[{'app': app, 'tag': target['tag'], 'platform': platform}
+                   for app, meta in cfg['apps'].items()
+                   for target in meta['targets']
+                   for platform in meta['platforms']]
+          assert len(cfg['apps']) == 24
+          assert sum(len(v['targets']) for v in cfg['apps'].values()) == 30
+          assert len(entries) == 52
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as f:
+              f.write('matrix=' + json.dumps({'include': entries}, separators=(',', ':')) + '\n')
+              f.write('count=' + str(len(entries)) + '\n')
+          print('Plan:', len(entries), 'target-platform builds, nonpublishing')
+          PY
+
+  full-build-all-platforms:
+    name: Build and test ${{ matrix.app }}:${{ matrix.tag }} / ${{ matrix.platform }} (no publish)
+    needs: full-build-plan
+    if: ${{ needs.full-build-plan.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix: ${{ fromJSON(needs.full-build-plan.outputs.matrix) }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Enable cross-platform emulation
+        uses: docker/setup-qemu-action@v3
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build image, execute README Test, and inspect result
+        shell: bash
+        env:
+          APP: ${{ matrix.app }}
+          TARGET_TAG: ${{ matrix.tag }}
+          TARGET_PLATFORM: ${{ matrix.platform }}
+        run: |
+          set -euo pipefail
+          target="$(python3 scripts/ci/catalog.py get --app "$APP" --tag "$TARGET_TAG")"
+          base_image="$(jq -er .base_image <<<"$target")"
+          dockerfile="$(jq -er .dockerfile <<<"$target")"
+          build_arg="$(jq -r .build_arg <<<"$target")"
+          arch_branch="$TARGET_PLATFORM"
+          image_ref="full-check-${APP}:${TARGET_TAG}-${TARGET_PLATFORM//\//-}"
+          export base_image dockerfile build_arg arch_branch image_ref
+          export build_output=load
+          (
+            cd "application/${APP}/build"
+            bash "$GITHUB_WORKSPACE/scripts/ci/build-image.sh"
+          )
+          docker image inspect "$image_ref" >/dev/null
+          python3 scripts/ci/materialize_test_hooks.py --app "$APP"
+          cid=""
+          cleanup() {
+            if [[ -n "$cid" ]]; then docker rm -f "$cid" >/dev/null 2>&1 || true; fi
+            docker image rm -f "$image_ref" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          cid="$(docker run --detach --platform "$TARGET_PLATFORM" --entrypoint /bin/sh "$image_ref" -c 'sleep 600')"
+          docker cp "application/${APP}/test/test.sh" "$cid:/tmp/test.sh"
+          docker exec --user 0 "$cid" /bin/sh /tmp/test.sh
+          printf 'PASS app=%s tag=%s platform=%s (local only)\n' "$APP" "$TARGET_TAG" "$TARGET_PLATFORM" | tee -a "$GITHUB_STEP_SUMMARY"
+
   catalog-build-smoke:
     name: "Buildx ${{ matrix.app }}:${{ matrix.tag }} (local registry only)"
     if: "${{ github.event_name == 'push' && startsWith(github.event.head_commit.message, 'ci: smoke catalog build') }}"
