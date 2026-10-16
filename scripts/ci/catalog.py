@@ -9,6 +9,7 @@ import html
 import json
 import os
 import re
+import shlex
 import sys
 import tempfile
 from pathlib import Path
@@ -263,11 +264,25 @@ def snapshot_from_readme(text):
     if not isinstance(records,list): raise ValueError('Snapshot must be a list')
     return records
 
+def render_build_preview(name, app):
+    """Nonpublishing Buildx commands derived from each configured target."""
+    commands = []
+    for target in app['targets']:
+        argv = ['docker', 'buildx', 'build', '--platform', ','.join(app['platforms']),
+                '--file', 'application/' + name + '/build/' + target.get('dockerfile', 'Dockerfile'),
+                '--build-arg', 'base_image=' + target.get('base_image', app['base_image'])]
+        if target.get('build_arg'):
+            argv += ['--build-arg', 'build_arg=' + target['build_arg']]
+        argv += ['--output', 'type=cacheonly', 'application/' + name + '/build']
+        commands.append('# target: ' + target['tag'] + '\n' +
+                        ' '.join(shlex.quote(arg) for arg in argv))
+    return '\n'.join(commands)
+
 def render_summary(c, records=None, scripts=None, meta_scripts=None):
     observed={r['app_branch']:r for r in (records or [])}
     n=sum(len(a['targets']) for a in c['apps'].values())
-    rows=[f'**{len(c["apps"])} applications / {n} build targets** (generated from configuration below).',
-          '', '| Application | Registry repository | Tags | Platforms | Base image | Dockerfiles | Detected version | Probe status | Meta-app | Test |',
+    rows=[f'**{len(c["apps"])} applications / {n} build targets** (generated from configuration above).',
+          '', '| Application | Registry repository | Tags | Platforms | Base image | Dockerfiles | Detected version | Probe status | Build | Meta-app | Test |',
           '|---|---|---|---|---|---|---|---|---|---|']
     if scripts is None or set(scripts)!=set(c['apps']):
         raise ValueError('Application test scripts must cover configured apps')
@@ -287,12 +302,15 @@ def render_summary(c, records=None, scripts=None, meta_scripts=None):
                  if record else '—')
         status=(bt+str(record.get('status') or 'unknown').replace('|','\\|')+bt
                 if record else '—')
+        build_cell=('<!-- app-build:'+name+':start --><details><summary>Build</summary><pre><code>'+
+                    encode_embedded_test(render_build_preview(name,a))+
+                    '</code></pre></details><!-- app-build:'+name+':end -->')
         meta_cell=('<!-- app-meta:'+name+':start --><details><summary>Meta-app</summary><pre><code>'+
                    encode_embedded_test(meta_scripts[name])+
                    '</code></pre></details><!-- app-meta:'+name+':end -->'
                    if name in meta_scripts else '<!-- app-meta:'+name+':missing -->—')
         rows.append('| ['+name+'](application/'+name+'/) | '+bt+a['repository']+bt+' | '+
-                    tags+' | '+platforms+' | '+base+' | '+files+' | '+version+' | '+status+' | '+meta_cell+' | '+
+                    tags+' | '+platforms+' | '+base+' | '+files+' | '+version+' | '+status+' | '+build_cell+' | '+meta_cell+' | '+
                     '<!-- app-test:'+name+':start --><details><summary>Test</summary><pre><code>'+ 
                     encode_embedded_test(scripts[name])+
                     '</code></pre></details><!-- app-test:'+name+':end --> |')

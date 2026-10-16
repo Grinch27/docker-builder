@@ -7,7 +7,7 @@
 ### 配置和脚本唯一来源
 
 - `README.md` 中 `app-config` 标记内的 schema-v2 JSON 是应用/构建 Target 配置与 `monitor.records` 的权威记录；`config` 经人工审核，监控工作流只在真实状态变化时更新 `monitor.records`。不要把 Markdown 应用清单当成 JSON 配置来源。
-- `README.md` 的 **Applications / 应用清单** 位于文末，`app-summary` 标记内的展示字段由配置和监控记录生成。**Meta-app / Test 两列例外：其中每个应用的完整 Shell 代码是脚本的唯一维护源。** 保留 `app-meta:<app>`、`app-test:<app>`、`app-summary`、`app-config` 及所有结束标记；勿手工批量重排、转义或删改源码。
+- `README.md` 的 **Applications / 应用清单** 位于文末，`app-summary` 标记内的展示字段由配置和监控记录生成。**Meta-app / Test 两列例外：其中每个应用的完整 Shell 代码是脚本的唯一维护源。** `Build` 列由 JSON 为全部 30 个 Target 生成非发布 Buildx 验证命令，不是第三份可手工维护的脚本来源。 保留 `app-meta:<app>`、`app-test:<app>`、`app-summary`、`app-config` 及所有结束标记；勿手工批量重排、转义或删改源码。
 - `scripts/ci/materialize_test_hooks.py --app APP --kind meta` 在 Actions checkout 中恢复 `application/APP/meta-app/meta-app.sh`；`--kind test`（默认）恢复 `application/APP/test/test.sh`。工作流必须先生成文件，再枚举/读取/执行对应路径。生成器不能覆盖不同内容或符号链接，不会在宿主上执行 Shell。当前基线：24 个应用、30 个 Target、23 份 Meta-app、24 份 Test；`ffmpeg` 不存在有效的 Meta-app 脚本，不应无依据制造版本探针。
 - 每个应用的 `application/APP/build/` 保留 Dockerfile 及其 `COPY`、`ADD`、构建步骤依赖。清理每应用文件之前要检查构建上下文、工作流与跨仓库引用；不要从文件名或重复 SHA 直接推定可以删除。具体目录及命令见本文件下方「应用目录与命令」章节。
 
@@ -44,6 +44,7 @@ python3 scripts/ci/catalog.py summary --check
 - 正式定时构建与发布入口为 `.github/workflows/docker_allinone.yml`；独立监控是 `monitor-images.yml`；`docker_allinone_gpt.yml` 承担非发布回归；`docker_allinone_dev.yml` 提供实验与 Dev 入口；`diagnostics.yml` 提供诊断。检查真实触发条件、权限和依赖，不要根据旧文档判断某 YAML 是否仍存在。
 - 保留 `pull_artifact-dev.yml`、`download_artifact.yml` 的独立用途。对于其余共享/兼容工作流，先搜索 `uses: ./.github/workflows/...`、`workflow_call`、手动和外部 `repository_dispatch` 使用方，再考虑合并/删除；仓库内部未找到调用者不代表没有外部消费者。
 - **`execution_route=dev` 且 `dev_mode=preflight`** 是已知的非发布预检路径；Dev `auto`/`build` 或 `promote-*` 有可能创建 Release 或向 Docker Hub/GHCR 发布。不要将这些模式当成 dry run。未获单独授权，禁止更改正式 Registry/Tag/Release、上传镜像、删除历史镜像或操作密钥。
+- `scripts/ci/build-image.sh` 统一生产 `registry`（默认）与 Dev/GPT `load` 构建命令；切换模式时不得改变 Registry 的标签、版本 Label、输出目的地。`Build` 表格示例使用 `type=cacheonly`，不会发布镜像，也不能替代生产验收。
 - 检查、构建、应用测试、发布是不同的验证等级。只通过版本探针、配置校验或跳过了发布的 Actions Job，不能据此声称全链路发布等价。镜像平台、Base image、标签策略、Artifact 命名、监控语义及独立工具应保持兼容，变动要有对应实测证据。
 
 ### 修改后必检项

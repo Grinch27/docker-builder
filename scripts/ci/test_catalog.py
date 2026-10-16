@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import copy
 import json
+import os
+import subprocess
 import shutil
 import sys
 import tempfile
@@ -354,6 +356,59 @@ class CatalogTests(unittest.TestCase):
         self.assertNotEqual(original.split(catalog.SUMMARY_START,1)[1].split(catalog.SUMMARY_END,1)[0],
                             updated.split(catalog.SUMMARY_START,1)[1].split(catalog.SUMMARY_END,1)[0])
         self.assertEqual(len(monitor_state.parse_readme_versions(updated)),24)
+
+    def test_build_commands_cover_all_30_targets_without_publish(self):
+        text=(ROOT/'README.md').read_text(encoding='utf-8')
+        self.assertEqual(text.count('<details><summary>Build</summary>'),24)
+        for name, app in self.config['apps'].items():
+            with self.subTest(app=name):
+                expected=catalog.encode_embedded_test(catalog.render_build_preview(name,app))
+                start='<!-- app-build:'+name+':start --><details><summary>Build</summary><pre><code>'
+                end='</code></pre></details><!-- app-build:'+name+':end -->'
+                self.assertEqual(text.split(start,1)[1].split(end,1)[0],expected)
+                self.assertIn('type=cacheonly',expected)
+                self.assertNotIn('--push',expected)
+                self.assertEqual(expected.count('# target: '),len(app['targets']))
+
+    def test_shared_buildx_registry_and_load_contracts(self):
+        builder=ROOT/'scripts/ci/build-image.sh'
+        with tempfile.TemporaryDirectory() as dirname:
+            root=Path(dirname)
+            (root/'Dockerfile').write_text('FROM scratch\n',encoding='utf-8')
+            bindir=root/'bin'
+            bindir.mkdir()
+            docker=bindir/'docker'
+            docker.write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$BUILD_ARGV_LOG"\n',encoding='utf-8')
+            docker.chmod(0o755)
+            log=root/'argv.log'
+            env={**os.environ, 'PATH':str(bindir)+os.pathsep+os.environ.get('PATH',''),
+                 'BUILD_ARGV_LOG':str(log),'arch_branch':'linux/amd64',
+                 'base_image':'alpine:latest','dockerfile':'Dockerfile',
+                 'build_arg':'update_channel=nightly'}
+            registry={**env,'repo_dockerhub':'grinch27/example','tag_repo':'nightly',
+                      'registry_local':'127.0.0.1:5000','version':'1.2.3'}
+            registry.pop('build_output',None)
+            subprocess.run(['bash',str(builder)],cwd=root,env=registry,check=True)
+            args=log.read_text(encoding='utf-8').splitlines()
+            self.assertEqual(args[:2],['buildx','build'])
+            self.assertIn('127.0.0.1:5000/grinch27/example:nightly',args)
+            self.assertIn('version=1.2.3',args)
+            self.assertIn('type=registry,registry.insecure=true',args)
+            self.assertNotIn('--load',args)
+            load={**env,'build_output':'load','image_ref':'example:test'}
+            subprocess.run(['bash',str(builder)],cwd=root,env=load,check=True)
+            args=log.read_text(encoding='utf-8').splitlines()
+            self.assertIn('example:test',args)
+            self.assertIn('--load',args)
+            self.assertNotIn('--label',args)
+            self.assertNotIn('--output',args)
+            log.unlink()
+            invalid={**env,'build_output':'load'}
+            invalid.pop('image_ref',None)
+            result=subprocess.run(['bash',str(builder)],cwd=root,env=invalid,
+                                  capture_output=True,text=True)
+            self.assertNotEqual(result.returncode,0)
+            self.assertFalse(log.exists())
 
 
 if __name__ == "__main__":

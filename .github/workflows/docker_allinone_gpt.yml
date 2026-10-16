@@ -1223,20 +1223,13 @@ jobs:
 
             printf '\n=== %s %s ===\n' "${TARGET_ID}" "${platform}"
 
-            build_args=(
-              docker buildx build
-              --platform "${platform}"
-              --file "${resolved_dockerfile}"
-              --tag "${local_ref}"
-              --build-arg "base_image=${base_image}"
-              --load
-            )
-            if [[ -n "${build_arg:-}" ]]; then
-              build_args+=(--build-arg "build_arg=${build_arg}")
-            fi
-            build_args+=("${dir_app}/build")
-
-            if ! "${build_args[@]}"; then
+            if ! (
+              cd "${dir_app}/build"
+              arch_branch="${platform}" base_image="${base_image}" \
+                dockerfile="${dockerfile}" build_arg="${build_arg:-}" \
+                build_output=load image_ref="${local_ref}" \
+                bash "${GITHUB_WORKSPACE}/scripts/ci/build-image.sh"
+            ); then
               status=failed
               reason=build_failed
             fi
