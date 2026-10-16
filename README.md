@@ -23,7 +23,7 @@ python3 -m unittest discover -s scripts/ci -p 'test_materialize_test_hooks.py' -
 
 **注意：** `novnc` 与 `novnc_alpine` 共享 `grinch27/novnc:latest`。版本探针成功不代表镜像已经发布。
 
-参考：[应用目录规则](application/route.md) · [仓库维护与历史记录](AGENTS.md)。
+参考：[仓库维护规范、应用目录与历史记录](AGENTS.md)。
 
 ## Machine-readable configuration / Actions 配置
 

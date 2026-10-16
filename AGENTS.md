@@ -9,7 +9,35 @@
 - `README.md` 中 `app-config` 标记内的 schema-v2 JSON 是应用/构建 Target 配置与 `monitor.records` 的权威记录；`config` 经人工审核，监控工作流只在真实状态变化时更新 `monitor.records`。不要把 Markdown 应用清单当成 JSON 配置来源。
 - `README.md` 的 **Applications / 应用清单** 位于文末，`app-summary` 标记内的展示字段由配置和监控记录生成。**Meta-app / Test 两列例外：其中每个应用的完整 Shell 代码是脚本的唯一维护源。** 保留 `app-meta:<app>`、`app-test:<app>`、`app-summary`、`app-config` 及所有结束标记；勿手工批量重排、转义或删改源码。
 - `scripts/ci/materialize_test_hooks.py --app APP --kind meta` 在 Actions checkout 中恢复 `application/APP/meta-app/meta-app.sh`；`--kind test`（默认）恢复 `application/APP/test/test.sh`。工作流必须先生成文件，再枚举/读取/执行对应路径。生成器不能覆盖不同内容或符号链接，不会在宿主上执行 Shell。当前基线：24 个应用、30 个 Target、23 份 Meta-app、24 份 Test；`ffmpeg` 不存在有效的 Meta-app 脚本，不应无依据制造版本探针。
-- 每个应用的 `application/APP/build/` 保留 Dockerfile 及其 `COPY`、`ADD`、构建步骤依赖。清理每应用文件之前要检查构建上下文、工作流与跨仓库引用；不要从文件名或重复 SHA 直接推定可以删除。详情参阅 [application/route.md](application/route.md)（部分旧阶段内容可能已经过时）。
+- 每个应用的 `application/APP/build/` 保留 Dockerfile 及其 `COPY`、`ADD`、构建步骤依赖。清理每应用文件之前要检查构建上下文、工作流与跨仓库引用；不要从文件名或重复 SHA 直接推定可以删除。具体目录及命令见本文件下方「应用目录与命令」章节。
+
+### 应用目录与命令 / Application layout
+
+新增应用以 `application/<app>/build/` 为最小构建目录，保留 Dockerfile 和所有 `COPY`、`ADD` 及构建阶段使用的静态文件。可以存在多个 Dockerfile；每个 Target 应在 README `app-config` JSON 中声明对应 Dockerfile、平台、基础镜像和标签策略。
+
+元数据与镜像内测试的 **源码只维护在 README Applications 表格**。工作流运行时按需生成 `application/<app>/meta-app/meta-app.sh`（`--kind meta`）和 `application/<app>/test/test.sh`（默认 `--kind test`），而不是重新向仓库加入两份重复的持久化脚本。`ffmpeg` 的 Meta-app 缺失状态要保留，除非另有经验证的探针实施决策。
+
+常用只读命令（仓库根目录运行）：
+
+```bash
+python3 scripts/ci/catalog.py validate
+python3 scripts/ci/catalog.py matrix --kind build
+python3 scripts/ci/catalog.py get --app runner --tag actions
+python3 scripts/ci/catalog.py env --app runner --tag actions
+python3 scripts/ci/catalog.py tags --app runner --tag actions --version 1.0 --consistent true
+```
+
+经明确授权的配置维护示例（只修改 `app-config` 以及其生成展示，不发布镜像）：
+
+```bash
+python3 scripts/ci/catalog.py set --app runner --field base_image --value debian:testing-slim
+python3 scripts/ci/catalog.py set --scope target --app samba --tag alpine --field base_image --value alpine:latest
+python3 scripts/ci/catalog.py set --scope target --app runner --tag actions --field dockerfile --value actions.Dockerfile
+python3 scripts/ci/catalog.py set --scope app --app vlmcsd --field platforms --value linux/amd64,linux/arm64,linux/386
+python3 scripts/ci/catalog.py summary --check
+```
+
+不要将旧 `app-version-table`、`app-version-json` 或旧版 `image_probe` 的配置方式视为当前生产结构；这些是下面历史文档记录的先前阶段。`novnc` 与 `novnc_alpine` 的同一发布标签冲突未自动修复；生产、Dev 和兼容工作流的发布路径需要各自验证。
 
 ### 工作流及发布边界
 
@@ -336,3 +364,85 @@ With those tests successful, retire `baseimage_dev.yml`, `call-fetch_stable.yml`
 Removed workflow names must not be silently referenced by external automation. The replacement `diagnostics.yml` exposes a manual profile (`stable` five images / `base` three images), optional single-image override, and version probe inputs.
 
 **Safe Dev default correction.** `execution_route=dev` now defaults to `dev_mode=preflight`; users must explicitly select `auto`, `build`, or a `promote-*` mode. Code review confirms Dev `auto`/`build` can create GitHub Releases and push Docker Hub/GHCR tags when a candidate needs promotion. Neither is a dry-run mode. Do not use these modes for nonpublishing integration tests. The existing GPT nested `preflight` test remains the only verified production-to-Dev execution route.
+
+### 历史文件 E — Application layout / route.md
+
+> 来源：`application/route.md`（本次删除）；原 Blob：`aaa0a664aee9fc4f98ad811b76f6eb0e7e7430c9`。以下为**历史记录**，保留旧阶段配置及文件布局描述供追溯，不能覆盖前部现行规范。
+
+#### docker-builder application layout
+
+The canonical app and target configuration is the JSON block in
+[README.md](README.md) between the app-config markers. It replaces
+per-app env/vars.env, build/build.sh and push/tag_version.sh.
+
+Use this directory structure for a new app:
+
+    application/<app>/
+    ├── build/
+    │   ├── Dockerfile
+    │   └── any files used by COPY, ADD or Dockerfile build steps
+    ├── meta-app/
+    │   └── meta-app.sh
+    └── test/
+        └── test.sh
+
+Multiple Dockerfiles, build support scripts and configuration assets remain
+inside build/; each target names its Dockerfile in the root README catalog.
+
+To manage configs from the repository root:
+
+    python3 scripts/ci/catalog.py validate
+    python3 scripts/ci/catalog.py matrix --kind build
+    python3 scripts/ci/catalog.py get --app runner --tag actions
+    python3 scripts/ci/catalog.py env --app runner --tag actions
+    python3 scripts/ci/catalog.py tags --app runner --tag actions --version 1.0 --consistent true
+
+Supported simple write (only affects app-config):
+
+    python3 scripts/ci/catalog.py set --app runner --field base_image --value debian:testing-slim
+
+For target additions or changes to platforms, edit the single JSON block,
+run validate and the non-publishing GPT Actions smoke before relying on
+the production workflow. The app-version-table and app-version-json sections
+are generated runtime state, not configuration inputs.
+
+Existing compatibility notes:
+- Both novnc and novnc_alpine currently target grinch27/novnc:latest.
+  The parser reports this pre-existing ownership conflict; it does not
+  change published tags without an explicit decision.
+- samba:alpine now uses alpine.Dockerfile with alpine:latest base image.
+- Legacy manual/Dev workflows consume the shared catalog and generic
+  build executor; their full publishing paths need separate regression.
+
+Target-specific update example (preserves all other README sections):
+
+    python3 scripts/ci/catalog.py set --scope target --app samba --tag alpine --field base_image --value alpine:latest
+    python3 scripts/ci/catalog.py set --scope target --app runner --tag actions --field dockerfile --value actions.Dockerfile
+
+Application platform update:
+
+    python3 scripts/ci/catalog.py set --scope app --app vlmcsd --field platforms --value linux/amd64,linux/arm64,linux/386
+
+README's human-readable `app-summary` is derived from the canonical `app-config` JSON. The `catalog.py set` operation updates both atomically; after manually editing the JSON run `python3 scripts/ci/catalog.py summary --write` followed by `summary --check`. Collapsible JSON containers are presentation only and do not affect Actions.
+
+Unified README data schema v2: a single `app-config` fenced JSON document contains `config` (reviewed static settings) and `monitor.records` (Actions-owned historical observations). The visible table combines both. The legacy separate version JSON is removed; the parser retains read-only compatibility for historical v1 documents. Do not edit `monitor.records` manually unless restoring an audited snapshot.
+
+Shared actual-image probe migration: `scripts/ci/probe-image.sh` supports `aria2`, `curl`, `privoxy`, `squid`, and `dnscrypt-proxy` via `sh probe-image.sh APP` executed inside the built image. Do not remove application test scripts until the non-publishing `[probe-smoke]` parity matrix and every caller migration pass. Expected upstream version and actual installed version remain separate.
+
+P1 runtime migration: five simple image version hooks are now **generated only in the Actions workspace** by `python3 scripts/ci/materialize_test_hooks.py --app APP`. The generator embeds the shared POSIX `probe-image.sh` logic into the legacy `application/APP/test/test.sh` execution path, allowing existing production, Dev, GPT and compatibility build jobs to run unchanged tests while no longer committing five redundant per-app scripts. Calls must occur before scanning `test/*.sh` or checking whether the `test/` directory exists. Do not use generated files as permanent repository sources.
+
+Declarative image tests (Phase 2): `README.md` Schema v2 `config.apps.<app>.image_probe` contains an `argv` array and an `extract` descriptor (`first_line`, `first_field` or `prefix_field`). `scripts/ci/materialize_test_hooks.py` validates these fields and creates a short `test.sh` in the Actions checkout only. It does not evaluate arbitrary shell snippets from README. The old `scripts/ci/probe-image.sh` is a temporary test oracle for the first five profiles and not the production configuration source.
+
+The same declarative `first_line` extractor now covers `doh-nosni` (installed `dnscrypt-proxy -version`). Its custom multi-stage Dockerfile is unchanged; both architectures remain gated by non-publishing Buildx parity.
+
+All 24 built-image tests are now stored **in an expandable HTML table in root README.md** (24 rows, one per application), enclosed by `app-tests` and per-app `app-test` markers. Scripts retain exact POSIX shell source; HTML escape codes preserve newline and pipe within table cells. `scripts/ci/materialize_test_hooks.py` generates the legacy `application/<app>/test/test.sh` only in the Actions checkout. The 18 original files are retained during byte-for-byte parity validation and are to be retired only after test success. The six previously declarative `image_probe` values are now replaced by scripts in that table; the production JSON still solely controls build settings and monitored state.
+
+The `Applications / 应用清单` Markdown table includes a ninth **Test** column, with one expandable `<details><pre><code>` shell script per application. The former standalone `Application test scripts` section has been removed. Test markers stay inside `app-summary`; catalog and monitor regeneration parse the existing scripts first, preserving all 24 script bodies. Scripts only execute inside the built container.
+
+
+###### README-embedded meta-app scripts
+
+The Applications table now contains 23 expandable upstream metadata scripts;
+ffmpeg deliberately has no metadata probe. Run `python3 scripts/ci/materialize_test_hooks.py --app APP --kind meta` before scanning `application/APP/meta-app/*.sh`.
+The generator preserves original shell source and does not execute it on the host.
+`--kind test` remains the default for built-image testing.
