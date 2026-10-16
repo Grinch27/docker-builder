@@ -332,18 +332,40 @@ jobs:
             /tmp/monitor-output/versions.json
           retention-days: 7
 
-      - name: Commit README updates
+      - name: Commit README updates (preserve current config on concurrent push)
         if: ${{ steps.monitor.outputs.readme_changed == 'true' }}
+        env:
+          BUILD_TARGETS: ${{ needs.prepare.outputs.build_targets }}
+          FORCE_BUILD: ${{ needs.prepare.outputs.force_build }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add README.md
-          if git diff --cached --quiet; then
-            exit 0
-          fi
-          git commit -m "ci: update stable container version matrix in README"
-          git push
+          for attempt in 1 2 3; do
+            git add README.md
+            if git diff --cached --quiet; then
+              echo "README already up to date."
+              exit 0
+            fi
+            git commit -m "ci: update stable container version matrix in README"
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            if [ "${attempt}" -eq 3 ]; then
+              echo "::error::README update push failed after 3 attempts"
+              exit 1
+            fi
+            echo "Concurrent main update detected; regenerating version sections on latest main."
+            git fetch origin main
+            git reset --hard origin/main
+            python3 scripts/ci/monitor_state.py \
+              --artifact-root /tmp/app-version-artifacts \
+              --readme-path README.md \
+              --output-dir "/tmp/monitor-output-retry-${attempt}" \
+              --build-targets-json "${BUILD_TARGETS}" \
+              --force-build "${FORCE_BUILD}" \
+              --workflow-name ".github/workflows/docker_allinone.yml"
+          done
 
   check:
     name: Check ${{ matrix.app_branch }}:${{ matrix.tag_repo }}
@@ -1047,22 +1069,27 @@ jobs:
 
       - name: (Push) Image to ${{ env.registry_push }}
         id: push
-        continue-on-error: true # 允许此步骤失败但继续执行后续步骤
         if: ${{ steps.check-result.outputs.changed == 'true' && (env.publish == 'true') }}
         working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
           echo "Current working directory: $(pwd)"
           set -euo pipefail
-          mapfile -t tag_array < <(
+          tags_json=$(
+            
             python3 "${GITHUB_WORKSPACE}/scripts/ci/catalog.py" tags \
-              --app "${app_branch}" --tag "${tag_repo}" --version "${version}" \
-              --consistent "${consistent}" | jq -r '.[]'
+            --app "${app_branch}" --tag "${tag_repo}" --version "${version}" \
+            --consistent "${consistent}"
           )
+          mapfile -t tag_array < <(jq -r '.[]' <<< "${tags_json}")
+          if [ "${#tag_array[@]}" -eq 0 ]; then
+            echo "::error::No publication tags returned" >&2
+            exit 1
+          fi
 
           IFS=',' read -ra registries <<< "${{ env.registry_push }}"
           for registry_remote in "${registries[@]}"; do
             for tag_each in "${tag_array[@]}"; do
-              docker buildx imagetools create --tag "${registry_remote}/${{ env.repo_dockerhub }}:${tag_each}" "${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}" || echo "Failed to push ${tag_each} to ${registry_remote}, but continuing..."
+              docker buildx imagetools create --tag "${registry_remote}/${{ env.repo_dockerhub }}:${tag_each}" "${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}"
             done
           done
 

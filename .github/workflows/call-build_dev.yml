@@ -92,7 +92,7 @@ jobs:
             # custom_env: "dockerfile=slim.Dockerfile"
           - app_branch: "samba"
             tag_repo: "alpine"
-            custom_env: "dockerfile=alpine.Dockerfile"
+            custom_env: "base_image=alpine:latest;dockerfile=alpine.Dockerfile"
           # curl
           - app_branch: "curl"
             tag_repo: "latest"

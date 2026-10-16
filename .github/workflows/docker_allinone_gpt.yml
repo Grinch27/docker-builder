@@ -24,6 +24,7 @@ on:
       - ".github/workflows/build-docker_indocker.yml"
       - ".github/workflows/docker_allinone_dev.yml"
       - ".github/workflows/meta-app_dev.yml"
+      - ".github/workflows/call-build_dev.yml"
   workflow_dispatch:
     inputs:
       mode:

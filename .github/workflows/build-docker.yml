@@ -698,10 +698,16 @@ jobs:
         run: |
           echo "Current working directory: $(pwd)"
           set -euo pipefail
-          mapfile -t tag_array < <(
+          tags_json=$(
+            
             python3 "${GITHUB_WORKSPACE}/scripts/ci/catalog.py" tags --app "${app_branch}" \
-              --tag "${tag_repo}" --version "${version}" --consistent "${consistent}" --app-only | jq -r '.[]'
+            --tag "${tag_repo}" --version "${version}" --consistent "${consistent}" --app-only
           )
+          mapfile -t tag_array < <(jq -r '.[]' <<< "${tags_json}")
+          if [ "${#tag_array[@]}" -eq 0 ]; then
+            echo "::error::No publication tags returned" >&2
+            exit 1
+          fi
 
           IFS=',' read -ra registries <<< "${{ env.registry_push }}"
           for registry_remote in "${registries[@]}"; do
