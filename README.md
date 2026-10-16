@@ -2,6 +2,403 @@
 
 Github Actions for Docker Image Building
 
+## Application Configuration
+
+This version-controlled JSON block is the application configuration source of truth. Edit it through `scripts/ci/catalog.py` or by a reviewed commit. The generated version sections below are separate run output.
+
+<!-- app-config:start -->
+```json
+{
+  "schema_version": 1,
+  "apps": {
+    "adguardvpn-cli": {
+      "repository": "grinch27/adguardvpn-cli",
+      "base_image": "alpine:latest",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ],
+      "tag_policy": "keep",
+      "targets": [
+        {
+          "tag": "nightly",
+          "dockerfile": "Dockerfile",
+          "build_arg": "update_channel=nightly"
+        },
+        {
+          "tag": "beta",
+          "dockerfile": "Dockerfile",
+          "build_arg": "update_channel=beta"
+        },
+        {
+          "tag": "release",
+          "dockerfile": "Dockerfile",
+          "build_arg": "update_channel=release"
+        }
+      ]
+    },
+    "aria2": {
+      "repository": "grinch27/aria2",
+      "base_image": "alpine:latest",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ],
+      "tag_policy": "strip_channel",
+      "targets": [
+        {
+          "tag": "latest",
+          "dockerfile": "Dockerfile"
+        }
+      ]
+    },
+    "baidunetdisk": {
+      "repository": "grinch27/baidunetdisk",
+      "base_image": "debian:stable-slim",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ],
+      "tag_policy": "strip_channel",
+      "targets": [
+        {
+          "tag": "dev",
+          "dockerfile": "Dockerfile"
+        }
+      ]
+    },
+    "cloudflare-warp": {
+      "repository": "grinch27/cloudflare-warp",
+      "base_image": "ubuntu:devel",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ],
+      "tag_policy": "strip_channel",
+      "targets": [
+        {
+          "tag": "latest",
+          "dockerfile": "Dockerfile"
+        }
+      ]
+    },
+    "curl": {
+      "repository": "grinch27/curl",
+      "base_image": "alpine:edge",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ],
+      "tag_policy": "keep",
+      "targets": [
+        {
+          "tag": "latest",
+          "dockerfile": "Dockerfile"
+        }
+      ]
+    },
+    "dnscrypt-proxy": {
+      "repository": "grinch27/dnscrypt-proxy",
+      "base_image": "alpine:edge",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ],
+      "tag_policy": "strip_channel",
+      "targets": [
+        {
+          "tag": "latest",
+          "dockerfile": "Dockerfile"
+        }
+      ]
+    },
+    "doh-nosni": {
+      "repository": "grinch27/doh-nosni",
+      "base_image": "debian:sid-slim",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ],
+      "tag_policy": "strip_channel",
+      "targets": [
+        {
+          "tag": "latest",
+          "dockerfile": "Dockerfile"
+        }
+      ]
+    },
+    "expressvpn": {
+      "repository": "grinch27/expressvpn",
+      "base_image": "debian:stable-slim",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64",
+        "linux/386",
+        "linux/arm/v7"
+      ],
+      "tag_policy": "strip_channel",
+      "targets": [
+        {
+          "tag": "latest",
+          "dockerfile": "Dockerfile"
+        }
+      ]
+    },
+    "ffmpeg": {
+      "repository": "grinch27/ffmpeg",
+      "base_image": "ubuntu:devel",
+      "platforms": [
+        "linux/amd64"
+      ],
+      "tag_policy": "none",
+      "targets": [
+        {
+          "tag": "latest",
+          "dockerfile": "Dockerfile"
+        }
+      ]
+    },
+    "nordvpn": {
+      "repository": "grinch27/nordvpn",
+      "base_image": "debian:stable-slim",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ],
+      "tag_policy": "strip_channel",
+      "targets": [
+        {
+          "tag": "latest",
+          "dockerfile": "Dockerfile"
+        }
+      ]
+    },
+    "novnc": {
+      "repository": "grinch27/novnc",
+      "base_image": "debian:stable-slim",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ],
+      "tag_policy": "strip_channel",
+      "targets": [
+        {
+          "tag": "latest",
+          "dockerfile": "Dockerfile"
+        }
+      ]
+    },
+    "novnc_alpine": {
+      "repository": "grinch27/novnc",
+      "base_image": "alpine:latest",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ],
+      "tag_policy": "none",
+      "targets": [
+        {
+          "tag": "latest",
+          "dockerfile": "Dockerfile"
+        }
+      ]
+    },
+    "openwrt": {
+      "repository": "grinch27/openwrt",
+      "base_image": "ubuntu:devel",
+      "platforms": [
+        "linux/amd64"
+      ],
+      "tag_policy": "none",
+      "targets": [
+        {
+          "tag": "main",
+          "dockerfile": "Dockerfile"
+        }
+      ]
+    },
+    "privoxy": {
+      "repository": "grinch27/privoxy",
+      "base_image": "alpine:latest",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ],
+      "tag_policy": "strip_channel",
+      "targets": [
+        {
+          "tag": "latest",
+          "dockerfile": "Dockerfile"
+        }
+      ]
+    },
+    "protonvpn": {
+      "repository": "grinch27/protonvpn",
+      "base_image": "debian:stable-slim",
+      "platforms": [
+        "linux/amd64"
+      ],
+      "tag_policy": "none",
+      "targets": [
+        {
+          "tag": "latest",
+          "dockerfile": "Dockerfile"
+        }
+      ]
+    },
+    "runner": {
+      "repository": "grinch27/runner",
+      "base_image": "debian:testing-slim",
+      "platforms": [
+        "linux/amd64"
+      ],
+      "tag_policy": "none",
+      "targets": [
+        {
+          "tag": "dev",
+          "dockerfile": "Dockerfile"
+        },
+        {
+          "tag": "slim",
+          "dockerfile": "slim.Dockerfile"
+        },
+        {
+          "tag": "actions",
+          "dockerfile": "actions.Dockerfile"
+        },
+        {
+          "tag": "actions-slim",
+          "dockerfile": "actions-slim.Dockerfile"
+        }
+      ]
+    },
+    "samba": {
+      "repository": "grinch27/samba",
+      "base_image": "debian:testing-slim",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ],
+      "tag_policy": "strip_channel",
+      "targets": [
+        {
+          "tag": "latest",
+          "dockerfile": "Dockerfile"
+        },
+        {
+          "tag": "alpine",
+          "dockerfile": "alpine.Dockerfile"
+        }
+      ]
+    },
+    "sdnext": {
+      "repository": "grinch27/sdnext",
+      "base_image": "rocm/dev-ubuntu-24.04",
+      "platforms": [
+        "linux/amd64"
+      ],
+      "tag_policy": "strip_channel_and_spaces",
+      "targets": [
+        {
+          "tag": "latest",
+          "dockerfile": "Dockerfile"
+        }
+      ]
+    },
+    "sdnext-dev": {
+      "repository": "grinch27/sdnext",
+      "base_image": "ubuntu:24.04",
+      "platforms": [
+        "linux/amd64"
+      ],
+      "tag_policy": "strip_channel_and_spaces",
+      "targets": [
+        {
+          "tag": "dev",
+          "dockerfile": "Dockerfile",
+          "build_arg": "therock_version=7.11.0,therock_release_type=stable,therock_amdgpu_family=gfx110X-all"
+        }
+      ]
+    },
+    "squid": {
+      "repository": "grinch27/squid",
+      "base_image": "alpine:latest",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ],
+      "tag_policy": "strip_channel",
+      "targets": [
+        {
+          "tag": "latest",
+          "dockerfile": "Dockerfile"
+        }
+      ]
+    },
+    "stable-diffusion-webui-amdgpu": {
+      "repository": "grinch27/stable-diffusion-webui-amdgpu",
+      "base_image": "rocm/dev-ubuntu-24.04",
+      "platforms": [
+        "linux/amd64"
+      ],
+      "tag_policy": "strip_channel_and_spaces",
+      "targets": [
+        {
+          "tag": "latest",
+          "dockerfile": "Dockerfile"
+        }
+      ]
+    },
+    "steamcmd": {
+      "repository": "grinch27/steamcmd",
+      "base_image": "debian:testing-slim",
+      "platforms": [
+        "linux/amd64"
+      ],
+      "tag_policy": "none",
+      "targets": [
+        {
+          "tag": "dev",
+          "dockerfile": "Dockerfile"
+        }
+      ]
+    },
+    "ttrss": {
+      "repository": "grinch27/ttrss",
+      "base_image": "alpine:latest",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ],
+      "tag_policy": "strip_channel",
+      "targets": [
+        {
+          "tag": "latest",
+          "dockerfile": "Dockerfile"
+        }
+      ]
+    },
+    "vlmcsd": {
+      "repository": "grinch27/vlmcsd",
+      "base_image": "alpine:latest",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64",
+        "linux/386"
+      ],
+      "tag_policy": "strip_channel",
+      "targets": [
+        {
+          "tag": "latest",
+          "dockerfile": "Dockerfile"
+        }
+      ]
+    }
+  }
+}
+```
+<!-- app-config:end -->
+
 ## Container Version Matrix
 
 This section is maintained automatically by GitHub Actions.
