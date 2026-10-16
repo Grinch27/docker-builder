@@ -221,6 +221,32 @@ class CatalogTests(unittest.TestCase):
                        '<!-- app-version-json:start -->','<!-- app-version-json:end -->']:
             self.assertEqual(readme.count(marker),1,marker)
         self.assertEqual(catalog.catalog_from_readme(ROOT/'README.md'),self.config)
+    def test_monitor_round_trip_keeps_config_and_summary(self):
+        import monitor_state
+        original=(ROOT/'README.md').read_text(encoding='utf-8')
+        records=monitor_state.parse_readme_versions(original)
+        self.assertEqual(len(records),24)
+        self.assertEqual(len(records[0]),len(monitor_state.README_FIELDS))
+        regenerated=monitor_state.render_readme(original,records,
+            '.github/workflows/monitor-images.yml')
+        self.assertEqual(regenerated,original)
+        self.assertEqual(monitor_state.semantic_changed_apps(records,records),[])
+        self.assertEqual(catalog.catalog_from_readme(ROOT/'README.md'),self.config)
+
+    def test_monitor_refresh_does_not_modify_canonical_config(self):
+        import monitor_state
+        original=(ROOT/'README.md').read_text(encoding='utf-8')
+        versions=monitor_state.parse_readme_versions(original)
+        changed=[dict(r) for r in versions]
+        changed[0]['version']='test-version-value'
+        updated=monitor_state.render_readme(original,changed,
+            '.github/workflows/docker_allinone.yml')
+        self.assertEqual(original.split(catalog.START,1)[1].split(catalog.END,1)[0],
+                         updated.split(catalog.START,1)[1].split(catalog.END,1)[0])
+        self.assertEqual(original.split(catalog.SUMMARY_START,1)[1].split(catalog.SUMMARY_END,1)[0],
+                         updated.split(catalog.SUMMARY_START,1)[1].split(catalog.SUMMARY_END,1)[0])
+        self.assertEqual(len(monitor_state.parse_readme_versions(updated)),24)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
