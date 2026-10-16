@@ -102,12 +102,12 @@ class CatalogTests(unittest.TestCase):
             marker = "<!-- app-version-table:start -->"
             self.assertIn(marker, old)
             self.assertEqual(catalog.update(path, copy.deepcopy(self.config),
-                                            "runner", "base_image", "debian:testing-slim"),
+                                            "runner", "base_image", "debian:stable-slim"),
                              "updated")
             first = path.read_text(encoding="utf-8")
             refreshed = catalog.catalog_from_readme(path)
             self.assertEqual(catalog.update(path, refreshed, "runner",
-                                            "base_image", "debian:testing-slim"), "unchanged")
+                                            "base_image", "debian:stable-slim"), "unchanged")
             self.assertEqual(first, path.read_text(encoding="utf-8"))
             self.assertEqual(old.split(marker, 1)[1], first.split(marker, 1)[1])
             self.assertEqual(catalog.catalog_from_readme(path), refreshed)
@@ -121,6 +121,42 @@ class CatalogTests(unittest.TestCase):
                 catalog.END, "", 1), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "marker pair"):
                 catalog.catalog_from_readme(path)
+
+    def test_target_setting_update_is_idempotent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            (directory / "application").symlink_to(ROOT / "application", target_is_directory=True)
+            readme = directory / "README.md"
+            shutil.copyfile(ROOT / "README.md", readme)
+            original = readme.read_text(encoding="utf-8")
+            self.assertEqual(catalog.update(readme, copy.deepcopy(self.config),
+                                            "samba", "base_image", "alpine:edge",
+                                            scope="target", tag="alpine"), "updated")
+            result = catalog.catalog_from_readme(readme)
+            self.assertEqual(catalog.get(result, "samba", "alpine")["base_image"],
+                             "alpine:edge")
+            self.assertEqual(catalog.get(result, "samba", "latest")["base_image"],
+                             "debian:testing-slim")
+            self.assertEqual(catalog.update(readme, result, "samba", "base_image",
+                                            "alpine:edge", scope="target",
+                                            tag="alpine"), "unchanged")
+            self.assertEqual(original.split(catalog.END, 1)[1],
+                             readme.read_text(encoding="utf-8").split(catalog.END, 1)[1])
+
+    def test_reject_unsafe_target_update(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            (directory / "application").symlink_to(ROOT / "application", target_is_directory=True)
+            readme = directory / "README.md"
+            shutil.copyfile(ROOT / "README.md", readme)
+            with self.assertRaisesRegex(ValueError, "missing Dockerfile"):
+                catalog.update(readme, copy.deepcopy(self.config), "runner",
+                               "dockerfile", "missing.Dockerfile",
+                               scope="target", tag="actions")
+            with self.assertRaisesRegex(ValueError, "Unknown target"):
+                catalog.update(readme, copy.deepcopy(self.config), "runner",
+                               "dockerfile", "Dockerfile",
+                               scope="target", tag="unknown")
 
 
 if __name__ == "__main__":

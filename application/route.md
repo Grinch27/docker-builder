@@ -42,3 +42,12 @@ Existing compatibility notes:
 - samba:alpine now uses alpine.Dockerfile with alpine:latest base image.
 - Legacy manual/Dev workflows consume the shared catalog and generic
   build executor; their full publishing paths need separate regression.
+
+Target-specific update example (preserves all other README sections):
+
+    python3 scripts/ci/catalog.py set --scope target --app samba --tag alpine --field base_image --value alpine:latest
+    python3 scripts/ci/catalog.py set --scope target --app runner --tag actions --field dockerfile --value actions.Dockerfile
+
+Application platform update:
+
+    python3 scripts/ci/catalog.py set --scope app --app vlmcsd --field platforms --value linux/amd64,linux/arm64,linux/386

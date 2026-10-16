@@ -114,24 +114,45 @@ def tags(item,version,consistent):
             result.append(value)
     return result
 
-def update(readme,c,app,field,value):
-    if field not in ('repository','base_image'):
-        raise ValueError('set supports only repository or base_image; use JSON for target settings')
-    c['apps'][app][field]=value
-    validate(c,readme.parent)
-    current=readme.read_text(encoding='utf-8')
-    before,remaining=current.split(START,1)
-    _,after=remaining.split(END,1)
-    payload=before+START+'\n'+FENCE+'json\n'+json.dumps(c,indent=2,ensure_ascii=False,sort_keys=True)+'\n'+FENCE+'\n'+END+after
-    if payload==current: return 'unchanged'
-    with tempfile.NamedTemporaryFile('w',encoding='utf-8',dir=readme.parent,delete=False,prefix='.app-config-') as f:
+def update(readme, c, app, field, value, *, scope='app', tag='latest'):
+    """Atomically change only the static README catalog JSON block."""
+    if app not in c['apps']:
+        raise ValueError('Unknown app: '+app)
+    if scope == 'app':
+        if field not in ('repository', 'base_image', 'platforms', 'tag_policy'):
+            raise ValueError('Unsupported app field: '+str(field))
+        dest = c['apps'][app]
+    elif scope == 'target':
+        if field not in ('base_image', 'dockerfile', 'build_arg', 'tag_policy'):
+            raise ValueError('Unsupported target field: '+str(field))
+        targets = [t for t in c['apps'][app]['targets'] if t['tag'] == tag]
+        if len(targets) != 1:
+            raise ValueError('Unknown target: '+app+':'+tag)
+        dest = targets[0]
+    else:
+        raise ValueError('Invalid scope: '+str(scope))
+    if field == 'platforms':
+        value = [p.strip() for p in value.split(',') if p.strip()]
+    dest[field] = value
+    validate(c, readme.parent)
+    current = readme.read_text(encoding='utf-8')
+    before, remaining = current.split(START, 1)
+    _, after = remaining.split(END, 1)
+    payload = (before + START + '\n' + FENCE + 'json\n' +
+               json.dumps(c, indent=2, ensure_ascii=False) +
+               '\n' + FENCE + '\n' + END + after)
+    if payload == current:
+        return 'unchanged'
+    with tempfile.NamedTemporaryFile('w', encoding='utf-8', dir=readme.parent,
+                                     delete=False, prefix='.app-config-') as f:
         f.write(payload)
-        name=f.name
+        name = f.name
     try:
-        os.chmod(name,readme.stat().st_mode & 0o777)
-        os.replace(name,readme)
+        os.chmod(name, readme.stat().st_mode & 0o777)
+        os.replace(name, readme)
     finally:
-        if os.path.exists(name): os.unlink(name)
+        if os.path.exists(name):
+            os.unlink(name)
     return 'updated'
 
 def main():
@@ -146,6 +167,7 @@ def main():
     p.add_argument('--consistent',default='false')
     p.add_argument('--output')
     p.add_argument('--app-only',action='store_true')
+    p.add_argument('--scope',choices=['app','target'],default='app')
     p.add_argument('--field')
     p.add_argument('--value')
     args=p.parse_args()
@@ -173,7 +195,7 @@ def main():
         else:
             if not args.app or args.field is None or args.value is None:
                 raise ValueError('--app --field --value required')
-            print(update(readme,c,args.app,args.field,args.value))
+            print(update(readme,c,args.app,args.field,args.value,scope=args.scope,tag=args.tag))
     except (KeyError,ValueError,OSError,json.JSONDecodeError) as e:
         print('catalog:',e,file=sys.stderr)
         return 2
