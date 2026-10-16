@@ -84,14 +84,14 @@ python3 scripts/ci/catalog.py set --scope target --app samba --tag alpine --fiel
 
 Keep `config` manually reviewed and allow Actions to update only `monitor.records`. If you edit the canonical JSON manually, run `python3 scripts/ci/catalog.py summary --write` to refresh the visible table, then run `summary --check` and the unit tests. `catalog.py set` updates both JSON and the application table atomically. / 手动修改 JSON 后先同步应用表，再进行完整检查。
 
-Documentation: [application layout](application/route.md), [workflow consolidation](docs/workflow-consolidation.md).
+Documentation: [application layout](application/route.md), [workflow consolidation](docs/workflow-consolidation.md). [Markdown-only table feasibility lab / 纯表格方案隔离研究](docs/markdown-table-lab.md) is experimental and **not** used by production Actions.
 
 ## Machine-readable configuration / Actions 配置
 
 <details>
-<summary><strong>Show canonical application JSON / 展开配置 JSON</strong></summary>
+<summary><strong>Show combined configuration and monitor JSON (schema v2) / 展开统一配置与监控 JSON</strong></summary>
 
-**For Actions:** Preserve the `app-config` markers and fenced JSON exactly. / 请勿修改配置标记或 JSON 格式。
+**For Actions:** This single JSON block contains `config` (reviewed, authoritative application settings) and `monitor.records` (historical application-level probes, updated by Actions). Preserve its `app-config` markers and fenced JSON; Actions do not read the visible table. / 请保留 JSON 和标记；表格只是展示，不是运行时配置源。
 
 <!-- app-config:start -->
 ```json
