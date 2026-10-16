@@ -19,6 +19,8 @@ on:
       - "scripts/ci/monitor_state.py"
       - "scripts/ci/table_catalog_lab.py"
       - "scripts/ci/test_table_catalog_lab.py"
+      - "scripts/ci/aggregate-layer-artifacts.py"
+      - "scripts/ci/test_aggregate_layers.py"
       - "scripts/ci/test_catalog.py"
       - "scripts/ci/build-image.sh"
       - ".github/workflows/docker_allinone.yml"
@@ -1920,6 +1922,7 @@ jobs:
           python3 scripts/ci/catalog.py summary --check
           python3 -m unittest discover -s scripts/ci -p 'test_catalog.py' -v
           python3 -m unittest discover -s scripts/ci -p 'test_table_catalog_lab.py' -v
+          python3 -m unittest discover -s scripts/ci -p 'test_aggregate_layers.py' -v
           python3 scripts/ci/catalog.py matrix --kind version > /tmp/version-matrix.json
           python3 scripts/ci/catalog.py matrix --kind build > /tmp/build-matrix.json
           test "$(jq '.include | length' /tmp/version-matrix.json)" -eq 24

@@ -135,9 +135,35 @@ jobs:
           path: ${{ runner.temp }}/diagnostics/image_*.json
           if-no-files-found: error
           retention-days: 1
+  collect:
+    name: Aggregate OCI Layers
+    needs: [prepare, layers]
+    if: ${{ github.event_name == 'push' || inputs.mode == 'layers' || inputs.mode == 'both' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@main
+      - name: Download per-image layer artifacts
+        uses: actions/download-artifact@main
+        with:
+          pattern: layers-*
+          path: ${{ runner.temp }}/layer-artifacts
+      - name: Produce JSON summary
+        env:
+          LAYER_ARTIFACT_ROOT: ${{ runner.temp }}/layer-artifacts
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/aggregate-layer-artifacts.py "${LAYER_ARTIFACT_ROOT}" "${RUNNER_TEMP}/layer-reports"
+      - name: Upload merged layers and status report
+        uses: actions/upload-artifact@main
+        with:
+          name: diagnostics-layer-summary
+          path: ${{ runner.temp }}/layer-reports/*.json
+          retention-days: 1
+          if-no-files-found: error
   validate:
     name: Validate non-publishing diagnostics artifacts
-    needs: [version, layers, platform-details]
+    needs: [version, layers, platform-details, collect]
     runs-on: ubuntu-latest
     if: ${{ always() && github.event_name == 'push' }}
     steps:
@@ -152,6 +178,8 @@ jobs:
         run: |
           set -euo pipefail
           test -f "${RUNNER_TEMP}/diagnostics/app-version-vlmcsd/version-vlmcsd.json"
+          test -f "${RUNNER_TEMP}/diagnostics/diagnostics-layer-summary/aggregated_layers.json"
+          jq -e '.Layers | type == "array" and length > 0' "${RUNNER_TEMP}/diagnostics/diagnostics-layer-summary/aggregated_layers.json"
           find "${RUNNER_TEMP}/diagnostics" -name "layer-*.json" -print
           test "$(find "${RUNNER_TEMP}/diagnostics" -name "layer-*.json" | wc -l)" -ge 1
           jq -e '.app_branch=="vlmcsd" and .status != null and .version != null' "${RUNNER_TEMP}/diagnostics/app-version-vlmcsd/version-vlmcsd.json"
