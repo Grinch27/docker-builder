@@ -15,6 +15,8 @@ from pathlib import Path
 START = '<!-- app-config:start -->'
 END = '<!-- app-config:end -->'
 FENCE = chr(96) * 3
+SUMMARY_START = '<!-- app-summary:start -->'
+SUMMARY_END = '<!-- app-summary:end -->'
 TAG = re.compile(r'^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$')
 NAME = re.compile(r'^[a-z0-9][a-z0-9_.-]*$')
 POLICIES = {'none', 'keep', 'strip_channel', 'strip_channel_and_spaces'}
@@ -127,6 +129,52 @@ def tags(item,version,consistent):
             result.append(value)
     return result
 
+def render_summary(c):
+    n=sum(len(a['targets']) for a in c['apps'].values())
+    rows=[f'**{len(c["apps"])} applications / {n} build targets** (generated from configuration below).',
+          '', '| Application | Registry repository | Tags | Platforms | Base image | Dockerfiles |',
+          '|---|---|---|---|---|---|']
+    for name,a in sorted(c['apps'].items()):
+        tags=', '.join('`'+t['tag']+'`' for t in a['targets'])
+        platforms=', '.join('`'+p.replace('linux/','',1)+'`' for p in a['platforms'])
+        o=['`'+t['tag']+': '+t['base_image']+'`' for t in a['targets']
+           if t.get('base_image') and t['base_image']!=a['base_image']]
+        base='`'+a['base_image']+'`'+(' + '+', '.join(o) if o else '')
+        files=', '.join('`'+f+'`' for f in dict.fromkeys(
+            t.get('dockerfile','Dockerfile') for t in a['targets']))
+        rows.append('| ['+name+'](application/'+name+'/) | `'+a['repository']+'` | '+
+                    tags+' | '+platforms+' | '+base+' | '+files+' |')
+    return '\n'.join(rows)
+
+def updated_summary(text,c):
+    if text.count(SUMMARY_START)!=1 or text.count(SUMMARY_END)!=1:
+        raise ValueError('Expected one app-summary marker pair')
+    left,rest=text.split(SUMMARY_START,1)
+    middle,right=rest.split(SUMMARY_END,1)
+    if SUMMARY_END in middle: raise ValueError('Out-of-order summary markers')
+    return left+SUMMARY_START+'\n'+render_summary(c)+'\n'+SUMMARY_END+right
+
+def atomic_write(path,old,new):
+    if new==old: return 'unchanged'
+    with tempfile.NamedTemporaryFile('w',encoding='utf-8',dir=path.parent,delete=False,prefix='.app-config-') as f:
+        f.write(new)
+        name=f.name
+    try:
+        os.chmod(name,path.stat().st_mode & 0o777)
+        os.replace(name,path)
+    finally:
+        if os.path.exists(name): os.unlink(name)
+    return 'updated'
+
+def write_summary(readme,c):
+    old=readme.read_text(encoding='utf-8')
+    return atomic_write(readme,old,updated_summary(old,c))
+
+def check_summary(readme,c):
+    text=readme.read_text(encoding='utf-8')
+    if text!=updated_summary(text,c):
+        raise ValueError('README app-summary is stale; run catalog.py summary --write')
+    return True
 def update(readme, c, app, field, value, *, scope='app', tag='latest'):
     """Atomically change only the static README catalog JSON block."""
     if app not in c['apps']:
@@ -154,23 +202,12 @@ def update(readme, c, app, field, value, *, scope='app', tag='latest'):
     payload = (before + START + '\n' + FENCE + 'json\n' +
                json.dumps(c, indent=2, ensure_ascii=False) +
                '\n' + FENCE + '\n' + END + after)
-    if payload == current:
-        return 'unchanged'
-    with tempfile.NamedTemporaryFile('w', encoding='utf-8', dir=readme.parent,
-                                     delete=False, prefix='.app-config-') as f:
-        f.write(payload)
-        name = f.name
-    try:
-        os.chmod(name, readme.stat().st_mode & 0o777)
-        os.replace(name, readme)
-    finally:
-        if os.path.exists(name):
-            os.unlink(name)
-    return 'updated'
+    payload=updated_summary(payload,c)
+    return atomic_write(readme,current,payload)
 
 def main():
     p=argparse.ArgumentParser()
-    p.add_argument('command',choices=['validate','matrix','get','env','tags','set'])
+    p.add_argument('command',choices=['validate','matrix','get','env','tags','set','summary'])
     p.add_argument('--readme',default='README.md')
     p.add_argument('--kind',choices=['version','build'],default='build')
     p.add_argument('--runner',default='ubuntu-latest')
@@ -180,6 +217,8 @@ def main():
     p.add_argument('--consistent',default='false')
     p.add_argument('--output')
     p.add_argument('--app-only',action='store_true')
+    p.add_argument('--check',action='store_true')
+    p.add_argument('--write',action='store_true')
     p.add_argument('--scope',choices=['app','target'],default='app')
     p.add_argument('--field')
     p.add_argument('--value')
@@ -189,6 +228,13 @@ def main():
         c=catalog_from_readme(readme)
         if args.command=='validate':
             print(json.dumps(validate(c,readme.parent),sort_keys=True))
+        elif args.command=='summary':
+            if args.check and args.write: raise ValueError('check and write conflict')
+            if args.check:
+                check_summary(readme,c)
+                print('app-summary: current')
+            elif args.write: print(write_summary(readme,c))
+            else: print(render_summary(c))
         elif args.command=='matrix':
             print(json.dumps(matrix(c,args.kind,args.runner),separators=(',',':')))
         elif args.command in ('get','env','tags'):
