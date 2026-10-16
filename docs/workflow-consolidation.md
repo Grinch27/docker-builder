@@ -102,3 +102,8 @@ Do not remove a callee while one of these caller edges remains. External `reposi
 
 Stage-2 inventory itself changes **documentation only**; zero workflows removed or modified at this audit checkpoint.
 
+
+
+### Stage 2 integration checkpoint — shared production dispatcher
+
+`docker_allinone.yml` now presents `execution_route: production|dev` on manual dispatch. `production` is the unchanged default for cron/repository dispatch, and the existing `prepare` job is skipped on Dev-only manual invocations. `dev` calls `.github/workflows/docker_allinone_dev.yml` through `workflow_call`, preserving `auto`, `build`, and dedicated promotion modes, including optional `target_id` and promotion version/revision inputs. The Dev YAML remains independently manually dispatchable until this wrapper path is actually tested. No production image publishing was initiated by this change; GitHub Actions syntax validation and static routing tests do not prove a live Dev promotion.

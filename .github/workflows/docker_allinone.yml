@@ -24,6 +24,33 @@ on:
         options:
           - "true"
           - "false"
+      execution_route:
+        description: "Production or isolated Dev execution"
+        type: choice
+        required: true
+        default: production
+        options: [production, dev]
+      dev_mode:
+        description: "Used only when execution_route=dev"
+        type: choice
+        required: false
+        default: auto
+        options: [auto, build, promote-dockerhub, promote-ghcr, promote-all]
+      target_id:
+        description: "Optional Dev target; required for Dev promotion"
+        type: string
+        required: false
+        default: ""
+      version:
+        description: "Dev version assertion or promotion version"
+        type: string
+        required: false
+        default: ""
+      revision:
+        description: "Dev promotion revision"
+        type: string
+        required: false
+        default: ""
 
 run-name: >-
   Docker All in One -
@@ -54,6 +81,18 @@ env:
   COMPOSE_DOCKER_CLI_BUILD: "1"
 
 jobs:
+  experimental:
+    name: Reusable Dev build and promotion experiment
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.execution_route == 'dev' }}
+    uses: ./.github/workflows/docker_allinone_dev.yml
+    with:
+      mode: ${{ inputs.dev_mode || 'auto' }}
+      target_id: ${{ inputs.target_id || '' }}
+      version: ${{ inputs.version || '' }}
+      revision: ${{ inputs.revision || '' }}
+      force_build: ${{ inputs.force_build || 'false' }}
+    secrets: inherit
+
   runner-image:
     name: ubuntu-latest - runner-image
     runs-on: ubuntu-latest
@@ -67,6 +106,7 @@ jobs:
   prepare:
     name: Prepare Matrices
     needs: runner-image
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.execution_route != 'dev' }}
     runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
     outputs:
       version_matrix: ${{ steps.prepare.outputs.version_matrix }}

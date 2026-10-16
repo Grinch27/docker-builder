@@ -3,6 +3,29 @@ name: Docker All in One Dev
 on:
   # Transitional build/promotion reference: on-demand/external only, no duplicate daily runs.
   repository_dispatch:
+  workflow_call:
+    inputs:
+      mode:
+        type: string
+        required: false
+        default: auto
+      target_id:
+        type: string
+        required: false
+        default: ""
+      version:
+        type: string
+        required: false
+        default: ""
+      revision:
+        type: string
+        required: false
+        default: ""
+      force_build:
+        type: string
+        required: false
+        default: "false"
+
   workflow_dispatch:
     inputs:
       mode:

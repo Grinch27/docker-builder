@@ -1975,6 +1975,14 @@ jobs:
                              ('version',''),('version','null'),('version','bad\nvalue')]:
               bad = dict(valid); bad[key] = value
               assert not accepted(bad), (key, value)
+          # Orchestration guard: Dev route must not start the production monitor/build.
+          assert "uses: ./.github/workflows/docker_allinone_dev.yml" in prod
+          assert "inputs.execution_route == 'dev'" in prod
+          assert "inputs.execution_route != 'dev'" in prod
+          dev = Path(".github/workflows/docker_allinone_dev.yml").read_text()
+          assert "  workflow_call:" in dev
+          for field in ("mode","target_id","version","revision","force_build"):
+              assert "      "+field+":" in dev
           production_build = prod.split("\n  build:\n",1)[1]
           for step_name in ["Initialize environment","(Env) Load catalog target settings","(Disk) Expand workspace","(Clean) Docker Images","(Setup) Docker","(Setup) Docker Data Root","Setup Docker Buildx","(Service) Local Registry","Build and push to local registry","(Inspect) Layers with skopeo","(Test) Docker image","(Output) Save","(release.md) Generate"]:
               block = production_build.split("      - name: "+step_name+"\n",1)[1].split("      - name:",1)[0]
