@@ -1997,6 +1997,8 @@ jobs:
           assert "inputs.execution_route != 'dev'" in prod
           dev = Path(".github/workflows/docker_allinone_dev.yml").read_text()
           assert "  workflow_call:" in dev
+          assert 'default: preflight' in prod
+          assert "inputs.dev_mode || 'preflight'" in prod
           for field in ("mode","target_id","version","revision","force_build"):
               assert "      "+field+":" in dev
           production_build = prod.split("\n  build:\n",1)[1]

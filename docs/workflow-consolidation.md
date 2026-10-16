@@ -132,3 +132,5 @@ With those tests successful, retire `baseimage_dev.yml`, `call-fetch_stable.yml`
 - **Not yet proven:** real Dev build/GHCR promotion, end-to-end production publication, legacy meta-app all-platform equivalent behavior. `docker_allinone_dev.yml` and `meta-app_dev.yml` must remain until these are validated.
 
 Removed workflow names must not be silently referenced by external automation. The replacement `diagnostics.yml` exposes a manual profile (`stable` five images / `base` three images), optional single-image override, and version probe inputs.
+
+**Safe Dev default correction.** `execution_route=dev` now defaults to `dev_mode=preflight`; users must explicitly select `auto`, `build`, or a `promote-*` mode. Code review confirms Dev `auto`/`build` can create GitHub Releases and push Docker Hub/GHCR tags when a candidate needs promotion. Neither is a dry-run mode. Do not use these modes for nonpublishing integration tests. The existing GPT nested `preflight` test remains the only verified production-to-Dev execution route.

@@ -60,8 +60,8 @@ on:
         description: "Used only when execution_route=dev"
         type: choice
         required: false
-        default: auto
-        options: [auto, build, promote-dockerhub, promote-ghcr, promote-all]
+        default: preflight
+        options: [preflight, auto, build, promote-dockerhub, promote-ghcr, promote-all]
       target_id:
         description: "Optional Dev target; required for Dev promotion"
         type: string
@@ -112,7 +112,7 @@ jobs:
     if: ${{ inputs.execution_route == 'dev' }}
     uses: ./.github/workflows/docker_allinone_dev.yml
     with:
-      mode: ${{ inputs.dev_mode || 'auto' }}
+      mode: ${{ inputs.dev_mode || 'preflight' }}
       target_id: ${{ inputs.target_id || '' }}
       version: ${{ inputs.version || '' }}
       revision: ${{ inputs.revision || '' }}
