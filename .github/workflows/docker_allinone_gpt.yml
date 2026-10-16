@@ -14,6 +14,9 @@ on:
       - main
     paths:
       - ".github/workflows/docker_allinone_gpt.yml"
+      - "README.md"
+      - "scripts/ci/catalog.py"
+      - "scripts/ci/build-image.sh"
   workflow_dispatch:
     inputs:
       mode:
@@ -1880,3 +1883,29 @@ jobs:
           if [[ "${overall_fail}" -ne 0 ]]; then
             exit 1
           fi
+
+  validate-catalog:
+    name: Validate README app catalog (no publish)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@main
+      - name: Validate catalog schema, file paths and targets
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/catalog.py validate
+          python3 scripts/ci/catalog.py matrix --kind version > /tmp/version-matrix.json
+          python3 scripts/ci/catalog.py matrix --kind build > /tmp/build-matrix.json
+          test "$(jq '.include | length' /tmp/version-matrix.json)" -eq 24
+          test "$(jq '.include | length' /tmp/build-matrix.json)" -eq 30
+          python3 scripts/ci/catalog.py get --app runner --tag actions
+          python3 scripts/ci/catalog.py env --app runner --tag actions --output /tmp/runner-env
+          grep -Fx 'dockerfile=actions.Dockerfile' /tmp/runner-env
+          python3 scripts/ci/catalog.py env --app adguardvpn-cli --tag latest --app-only > /tmp/meta-env
+          grep -Fx 'base_image=alpine:latest' /tmp/meta-env
+          python3 scripts/ci/catalog.py tags --app runner --tag actions --version 1.0 --consistent true > /tmp/runner-tags
+          test "$(jq 'length' /tmp/runner-tags)" -eq 1
+          python3 scripts/ci/catalog.py tags --app dnscrypt-proxy --tag latest --version 2.1.18 --consistent true > /tmp/dnscrypt-tags
+          test "$(jq 'length' /tmp/dnscrypt-tags)" -eq 2
+          echo "Catalog and target environment: PASS"

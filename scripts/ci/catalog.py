@@ -140,6 +140,7 @@ def main():
     p.add_argument('--version',default='')
     p.add_argument('--consistent',default='false')
     p.add_argument('--output')
+    p.add_argument('--app-only',action='store_true')
     p.add_argument('--field')
     p.add_argument('--value')
     args=p.parse_args()
@@ -152,14 +153,14 @@ def main():
             print(json.dumps(matrix(c,args.kind,args.runner),separators=(',',':')))
         elif args.command in ('get','env','tags'):
             if not args.app: raise ValueError('--app is required')
-            item=get(c,args.app,args.tag)
+            item=(get(c,args.app,c['apps'][args.app]['targets'][0]['tag']) if args.app_only and args.command=='env' else get(c,args.app,args.tag))
             if args.command=='get':
                 print(json.dumps(item,sort_keys=True))
             elif args.command=='tags':
                 print(json.dumps(tags(item,args.version,args.consistent.lower()=='true')))
             else:
                 keys=('repo_dockerhub','arch_branch','base_image','dockerfile','build_arg','tag_policy')
-                data=''.join(k+'='+item[k]+'\n' for k in keys)
+                data=''.join(k+'='+item[k]+'\n' for k in keys if not args.app_only or k in ('repo_dockerhub','arch_branch','base_image'))
                 if args.output:
                     with open(args.output,'a',encoding='utf-8') as f: f.write(data)
                 else: print(data,end='')
