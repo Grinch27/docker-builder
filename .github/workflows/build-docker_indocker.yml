@@ -251,20 +251,14 @@ jobs:
 
       - name: (Env) Load .env files
         id: env-app
-        working-directory: ${{ env.PATH_app }}
+        working-directory: /
         run: |
-          echo "Current working directory: $(pwd)"
-
-          shopt -s nullglob
-          env_dir="./env"
-          if [[ -d "${env_dir}" ]]; then
-            for env_file in "${env_dir}"/*.env; do
-              echo "Loading env file: ${env_file}"
-              awk -F= '/^[a-zA-Z_][a-zA-Z0-9_]*=/ {printf "%s=%s\n", $1, $2}' "${env_file}" | tee -a "$GITHUB_ENV"
-            done
-          else
-            echo "No directory found: ${env_dir}"
+          set -euo pipefail
+          if ! command -v python3 >/dev/null 2>&1; then
+            apt-get -yqq update
+            apt-get -yqq install python3
           fi
+          python3 "${PATH_self}/scripts/ci/catalog.py" env --readme "${PATH_self}/README.md" --app "${app_branch}" --app-only --output "${GITHUB_ENV}"
 
       - name: (Env) Validate app settings
         id: env-validate
@@ -726,26 +720,10 @@ jobs:
         if: steps.summary.outputs.changed == 'true' && !cancelled()
         working-directory: ${{ env.PATH_app }}
         run: |
-          echo "Current working directory: $(pwd)"
-
-          dir_step="build"
-          build_script="build.sh"
-          if [[ -d "${dir_step}" ]]; then
-            cd "./${dir_step}"
-            echo "Changed to directory: $(pwd)"
-
-            if [[ ! -f "${build_script}" ]]; then
-              echo "Missing build script: ${build_script}"
-              exit 1
-            fi
-
-            chmod +x "./${build_script}"
-            sh "./${build_script}"
-          else
-            echo "No directory found"
-          fi
-
-          echo "status=success" | tee -a "${GITHUB_OUTPUT}"
+          set -euo pipefail
+          cd "${PATH_app}/build"
+          bash "${PATH_self}/scripts/ci/build-image.sh"
+          echo "status=success" >> "${GITHUB_OUTPUT}"
 
       - name: (Inspect) Layers with skopeo
         id: inspect
@@ -861,27 +839,13 @@ jobs:
         run: |
           echo "Current working directory: $(pwd)"
 
-          declare -a tag_array=("${tag_repo}")
-          tag_version="${tag_repo}-${version}"
+          set -euo pipefail
+          mapfile -t tag_array < <(
+            python3 "${PATH_self}/scripts/ci/catalog.py" tags --readme "${PATH_self}/README.md" \
+              --app "${app_branch}" --tag "${tag_repo}" --version "${version}" \
+              --consistent "${consistent}" --app-only | jq -r '.[]'
+          )
           registry_copy_image="quay.io/skopeo/stable:latest"
-
-          dir_step="push"
-          if [[ -d "${dir_step}" ]]; then
-            cd "./${dir_step}"
-            echo "Changed to directory: $(pwd)"
-
-            shopt -s nullglob
-            for script_file in ./*.sh; do
-              chmod +x "${script_file}"
-              source "${script_file}"
-            done
-          else
-            echo "No directory found"
-          fi
-
-          if [[ "${consistent}" == "true" && -n "${tag_version}" ]]; then
-            tag_array+=("${tag_version}")
-          fi
 
           docker pull "${registry_copy_image}"
           if ! docker run --rm --network host curlimages/curl:8.12.1 -fsS --connect-timeout 2 "${registry_local_probe}" >/dev/null; then

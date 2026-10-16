@@ -70,30 +70,10 @@ jobs:
 
       - name: Load Env
         id: env-app
-        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
-          echo "Current working directory: $(pwd)"
-
-          dir_step="env"
-          dir_original=$(pwd)
-          if [ -d "${dir_step}" ]; then
-            cd ./${dir_step}
-            echo "Changed to directory: $(pwd)"
-
-            for env_file in ./*.env; do
-              if [ -f "${env_file}" ]; then
-                echo "Loading env file: ${env_file}"
-                cat "${env_file}" | awk -F= '/^[a-zA-Z_][a-zA-Z0-9_]*=/ {printf "%s=%s\n", $1, $2}' | tee -a $GITHUB_ENV
-              fi
-            done
-
-            cd "${dir_original}"
-            echo "Changed back to original directory: $(pwd)"
-          else
-            echo "No directory found"
-          fi
-
-          echo "status=success" | tee -a ${GITHUB_OUTPUT}
+          set -euo pipefail
+          python3 scripts/ci/catalog.py env --app "${app_branch}" --app-only --output "${GITHUB_ENV}"
+          echo "status=success" >> "${GITHUB_OUTPUT}"
 
       - name: Load Custom Environment Variables
         id: env-custom

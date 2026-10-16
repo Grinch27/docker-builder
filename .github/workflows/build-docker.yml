@@ -141,30 +141,9 @@ jobs:
 
       - name: (Env) Load .env files
         id: env-app
-        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
-          echo "Current working directory: $(pwd)"
-
-          dir_step="env"
-          dir_original=$(pwd)
-          if [ -d "${dir_step}" ]; then
-            cd ./${dir_step}
-            echo "Changed to directory: $(pwd)"
-
-            for env_file in ./*.env; do
-              if [ -f "${env_file}" ]; then
-                echo "Loading env file: ${env_file}"
-                cat "${env_file}" | awk -F= '/^[a-zA-Z_][a-zA-Z0-9_]*=/ {printf "%s=%s\n", $1, $2}' | tee -a $GITHUB_ENV
-              fi
-            done
-
-            cd "${dir_original}"
-            echo "Changed back to original directory: $(pwd)"
-          else
-            echo "No directory found"
-          fi
-
-          echo "status=success" | tee -a ${GITHUB_OUTPUT}
+          set -euo pipefail
+          python3 scripts/ci/catalog.py env --app "${app_branch}" --app-only --output "${GITHUB_ENV}"
 
       - name: (Env) Load Custom inputs
         id: env-custom
@@ -603,32 +582,11 @@ jobs:
 
       - name: Build and push to local registry
         id: build
-        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
+        working-directory: "${{ github.workspace }}/${{ env.dir_app }}/build"
         run: |
-          echo "Current working directory: $(pwd)"
-
-          dir_step="build"
-          build_script="build.sh"
-          dir_original=$(pwd)
-          if [ -d "${dir_step}" ]; then
-            cd ./${dir_step}
-            echo "Changed to directory: $(pwd)"
-
-            if [ ! -f "${build_script}" ]; then
-              echo "Missing build script: ${build_script}"
-              exit 1
-            fi
-
-            chmod +x "./${build_script}"
-            sh "./${build_script}"
-
-            cd "${dir_original}"
-            echo "Changed back to original directory: $(pwd)"
-          else
-            echo "No directory found"
-          fi
-
-          echo "status=success" | tee -a ${GITHUB_OUTPUT}
+          set -euo pipefail
+          bash "${GITHUB_WORKSPACE}/scripts/ci/build-image.sh"
+          echo "status=success" >> "${GITHUB_OUTPUT}"
 
       - name: (Inspect) Layers with skopeo
         id: inspect
@@ -739,29 +697,11 @@ jobs:
         working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
           echo "Current working directory: $(pwd)"
-          declare -a tag_array=("${{ env.tag_repo }}")
-          tag_version="${{ env.tag_repo }}-${{ env.version }}"
-
-          dir_step="push"
-          dir_original=$(pwd)
-          if [ -d "${dir_step}" ]; then
-            cd ./${dir_step}
-            echo "Changed to directory: $(pwd)"
-
-            for script_file in ./*.sh; do
-              chmod +x "${script_file}"
-              source "${script_file}"
-            done
-
-            cd "${dir_original}"
-            echo "Changed back to original directory: $(pwd)"
-          else
-            echo "No directory found"
-          fi
-
-          if [ "${{ env.consistent }}" == "true" ] && [ -n "${tag_version}" ]; then
-            tag_array+=("${tag_version}")
-          fi
+          set -euo pipefail
+          mapfile -t tag_array < <(
+            python3 "${GITHUB_WORKSPACE}/scripts/ci/catalog.py" tags --app "${app_branch}" \
+              --tag "${tag_repo}" --version "${version}" --consistent "${consistent}" --app-only | jq -r '.[]'
+          )
 
           IFS=',' read -ra registries <<< "${{ env.registry_push }}"
           for registry_remote in "${registries[@]}"; do

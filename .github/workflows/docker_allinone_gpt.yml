@@ -20,6 +20,10 @@ on:
       - ".github/workflows/docker_allinone.yml"
       - ".github/workflows/monitor-images.yml"
       - ".github/workflows/callable-fetch-app-version.yml"
+      - ".github/workflows/build-docker.yml"
+      - ".github/workflows/build-docker_indocker.yml"
+      - ".github/workflows/docker_allinone_dev.yml"
+      - ".github/workflows/meta-app_dev.yml"
   workflow_dispatch:
     inputs:
       mode:
@@ -1911,4 +1915,7 @@ jobs:
           test "$(jq 'length' /tmp/runner-tags)" -eq 1
           python3 scripts/ci/catalog.py tags --app dnscrypt-proxy --tag latest --version 2.1.18 --consistent true > /tmp/dnscrypt-tags
           test "$(jq 'length' /tmp/dnscrypt-tags)" -eq 2
+          test "$(find application -name vars.env | wc -l)" -eq 0
+          test "$(find application -name build.sh | wc -l)" -eq 0
+          test "$(find application -name tag_version.sh | wc -l)" -eq 0
           echo "Catalog and target environment: PASS"

@@ -287,7 +287,8 @@ This version-controlled JSON block is the application configuration source of tr
         },
         {
           "tag": "alpine",
-          "dockerfile": "alpine.Dockerfile"
+          "dockerfile": "alpine.Dockerfile",
+          "base_image": "alpine:latest"
         }
       ]
     },

@@ -153,7 +153,8 @@ def main():
             print(json.dumps(matrix(c,args.kind,args.runner),separators=(',',':')))
         elif args.command in ('get','env','tags'):
             if not args.app: raise ValueError('--app is required')
-            item=(get(c,args.app,c['apps'][args.app]['targets'][0]['tag']) if args.app_only and args.command=='env' else get(c,args.app,args.tag))
+            item=(get(c,args.app,c['apps'][args.app]['targets'][0]['tag']) if args.app_only and args.command in ('env','tags') else get(c,args.app,args.tag))
+            if args.app_only and args.command=='tags': item['tag_repo']=args.tag
             if args.command=='get':
                 print(json.dumps(item,sort_keys=True))
             elif args.command=='tags':

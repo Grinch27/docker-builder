@@ -238,7 +238,9 @@ jobs:
             : > "${env_file}"
             : > "${keys_file}"
             shopt -s nullglob
-            env_files=("${dir_app}"/env/*.env)
+            catalog_file=$(mktemp)
+            python3 scripts/ci/catalog.py env --app "${app_branch}" --app-only > "${catalog_file}"
+            env_files=("${catalog_file}")
             for file in "${env_files[@]}"; do
               awk -F= '/^[A-Za-z_][A-Za-z0-9_]*=/ {print $1}' "${file}" >> "${keys_file}"
             done
@@ -307,7 +309,7 @@ jobs:
                   version_assertion: $version_assertion
                 }')
             printf '%s\n' "${item}" >> "${selected_jsonl}"
-            rm -f "${env_file}" "${keys_file}"
+            rm -f "${env_file}" "${keys_file}" "${catalog_file}"
           done < <(jq -c '.include[]' <<< "${targets}")
 
           target_matrix=$(jq -sc '{include: .}' "${selected_jsonl}")
@@ -622,13 +624,11 @@ jobs:
 
           apply_app_env() {
             set -a
-            shopt -s nullglob
-            local files=("${dir_app}"/env/*.env)
-            local file
-            for file in "${files[@]}"; do
-              # shellcheck disable=SC1090
-              . "${file}"
-            done
+            local catalog_file
+            catalog_file=$(mktemp)
+            python3 scripts/ci/catalog.py env --app "${APP_BRANCH}" --app-only > "${catalog_file}"
+            . "${catalog_file}"
+            rm -f "${catalog_file}"
             if [[ -n "${CUSTOM_ENV}" ]]; then
               eval "${CUSTOM_ENV}"
             fi
@@ -1143,13 +1143,11 @@ jobs:
 
           apply_app_env() {
             set -a
-            shopt -s nullglob
-            local files=("${dir_app}"/env/*.env)
-            local file
-            for file in "${files[@]}"; do
-              # shellcheck disable=SC1090
-              . "${file}"
-            done
+            local catalog_file
+            catalog_file=$(mktemp)
+            python3 scripts/ci/catalog.py env --app "${APP_BRANCH}" --app-only > "${catalog_file}"
+            . "${catalog_file}"
+            rm -f "${catalog_file}"
             if [[ -n "${CUSTOM_ENV}" ]]; then
               eval "${CUSTOM_ENV}"
             fi
