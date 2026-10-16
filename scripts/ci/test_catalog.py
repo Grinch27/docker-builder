@@ -26,6 +26,29 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(set(tests),set(self.config['apps']))
         self.assertTrue(all(s.startswith('#!/bin/sh') for s in tests.values()))
 
+    def test_monitor_refresh_preserves_all_embedded_tests(self):
+        import monitor_state
+        text=(ROOT/'README.md').read_text(encoding='utf-8')
+        source=catalog.embedded_tests_from_text(text)
+        versions=catalog.snapshot_from_readme(text)
+        changed=[dict(x) for x in versions]
+        changed[0]['version']='simulated-version-change'
+        refreshed=monitor_state.render_readme(text,changed,'monitor-images.yml')
+        self.assertEqual(catalog.embedded_tests_from_text(refreshed),source)
+        self.assertEqual(refreshed.count('<!-- app-test:'),48)
+        self.assertEqual(catalog.updated_summary(refreshed,self.config),refreshed)
+
+    def test_embedded_test_cells_preserve_multiline_and_validate_row_ownership(self):
+        text=(ROOT/'README.md').read_text(encoding='utf-8')
+        scripts=catalog.embedded_tests_from_text(text)
+        self.assertIn('import torch',scripts['sdnext-dev'])
+        self.assertIn('Runner.Listener',scripts['runner'])
+        self.assertIn('/etc/openwrt_release',scripts['openwrt'])
+        self.assertIn('&#124;',text)
+        edited=text.replace('<!-- app-test:runner:start -->','<!-- app-test:openwrt:start -->',1)
+        with self.assertRaisesRegex(ValueError,'Malformed|wrong application'):
+            catalog.embedded_tests_from_text(edited)
+
     def test_catalog_covers_exactly_all_app_directories(self):
         stats = catalog.validate(self.config, ROOT)
         self.assertEqual(stats["apps"], 24)
@@ -188,7 +211,7 @@ class CatalogTests(unittest.TestCase):
 
     def test_summary_matches_canonical_json(self):
         self.assertTrue(catalog.check_summary(ROOT/'README.md',self.config))
-        view=catalog.render_summary(self.config)
+        view=catalog.render_summary(self.config,scripts=catalog.embedded_tests_from_text((ROOT/'README.md').read_text(encoding='utf-8')))
         self.assertEqual(view.count('](application/'),24)
         self.assertIn('alpine.Dockerfile',view)
 
@@ -229,6 +252,8 @@ class CatalogTests(unittest.TestCase):
     def test_single_visible_table_contains_app_and_probe_data(self):
         text=(ROOT/'README.md').read_text(encoding='utf-8')
         self.assertEqual(text.count('| Application |'),1)
+        self.assertNotIn('## Application test scripts',text)
+        self.assertEqual(text.count('<details><summary>Test</summary>'),24)
         self.assertNotIn('<!-- app-version-table:start -->',text)
         self.assertIn('Detected version',text)
         self.assertEqual(text.split(catalog.SUMMARY_START,1)[1].split(catalog.SUMMARY_END,1)[0].count('](application/'),24)

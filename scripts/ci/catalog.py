@@ -73,37 +73,38 @@ def catalog_from_readme(path):
     return catalog
 
 
-TESTS_START = '<!-- app-tests:start -->'
-TESTS_END = '<!-- app-tests:end -->'
-TEST_ROW = re.compile(
-    r'<tr><td><code>([a-z0-9_.-]+)</code></td><td>' +
-    r'<!-- app-test:\1:start --><details><summary>View test\.sh</summary>' +
-    r'<pre><code>(.*?)</code></pre></details><!-- app-test:\1:end -->' +
-    r'</td></tr>')
+TEST_CELL = re.compile(
+    r'<!-- app-test:([a-z0-9_.-]+):start --><details><summary>Test</summary>' +
+    r'<pre><code>(.*?)</code></pre></details><!-- app-test:\1:end -->')
 
 def encode_embedded_test(script):
     return (script.replace('&','&amp;').replace('<','&lt;').replace('>','&gt;')
             .replace('|','&#124;').replace('\n','&#10;').replace('\r','&#13;'))
 
 def embedded_tests_from_text(text):
-    """Parse exact shell sources from the README expandable HTML table."""
-    if text.count(TESTS_START)!=1 or text.count(TESTS_END)!=1:
-        raise ValueError('Expected one application-test table')
-    region=text.split(TESTS_START,1)[1].split(TESTS_END,1)[0]
+    """Read all 24 exact script bodies from the main application table."""
+    if text.count(SUMMARY_START)!=1 or text.count(SUMMARY_END)!=1:
+        raise ValueError('Expected exactly one app-summary table')
+    region=text.split(SUMMARY_START,1)[1].split(SUMMARY_END,1)[0]
     scripts={}
-    for match in TEST_ROW.finditer(region):
+    for match in TEST_CELL.finditer(region):
         name,encoded=match.groups()
-        if name in scripts: raise ValueError('Duplicate embedded test: '+name)
+        if name in scripts:
+            raise ValueError('Duplicate embedded test: '+name)
+        prefix=region[region.rfind('\n',0,match.start())+1:match.start()]
+        if not prefix.startswith('| ['+name+'](application/'+name+'/) |'):
+            raise ValueError('Test attached to wrong application: '+name)
         script=html.unescape(encoded)
         if not script.startswith('#!/bin/sh\n') or '\0' in script or '\r' in script:
             raise ValueError('Invalid embedded shell test: '+name)
         if encode_embedded_test(script)!=encoded:
             raise ValueError('Noncanonical HTML test cell: '+name)
         scripts[name]=script
-    if len(scripts)!=region.count('<tr><td><code>') or not scripts:
-        raise ValueError('Malformed or missing application test rows')
+    if not scripts or region.count('<!-- app-test:')!=2*len(scripts):
+        raise ValueError('Malformed or missing application test cells')
+    if region.count(' | <!-- app-test:')!=len(scripts):
+        raise ValueError('Missing or duplicated table test column')
     return scripts
-
 
 def validate(c, root):
     if not isinstance(c, dict) or c.get('schema_version') != 1:
@@ -217,12 +218,14 @@ def snapshot_from_readme(text):
     if not isinstance(records,list): raise ValueError('Snapshot must be a list')
     return records
 
-def render_summary(c, records=None):
+def render_summary(c, records=None, scripts=None):
     observed={r['app_branch']:r for r in (records or [])}
     n=sum(len(a['targets']) for a in c['apps'].values())
     rows=[f'**{len(c["apps"])} applications / {n} build targets** (generated from configuration below).',
-          '', '| Application | Registry repository | Tags | Platforms | Base image | Dockerfiles | Detected version | Probe status |',
-          '|---|---|---|---|---|---|---|---|']
+          '', '| Application | Registry repository | Tags | Platforms | Base image | Dockerfiles | Detected version | Probe status | Test |',
+          '|---|---|---|---|---|---|---|---|---|']
+    if scripts is None or set(scripts)!=set(c['apps']):
+        raise ValueError('Application test scripts must cover configured apps')
     bt=chr(96)
     for name,a in sorted(c['apps'].items()):
         tags=', '.join(bt+t['tag']+bt for t in a['targets'])
@@ -238,7 +241,10 @@ def render_summary(c, records=None):
         status=(bt+str(record.get('status') or 'unknown').replace('|','\\|')+bt
                 if record else '—')
         rows.append('| ['+name+'](application/'+name+'/) | '+bt+a['repository']+bt+' | '+
-                    tags+' | '+platforms+' | '+base+' | '+files+' | '+version+' | '+status+' |')
+                    tags+' | '+platforms+' | '+base+' | '+files+' | '+version+' | '+status+' | '+
+                    '<!-- app-test:'+name+':start --><details><summary>Test</summary><pre><code>'+ 
+                    encode_embedded_test(scripts[name])+
+                    '</code></pre></details><!-- app-test:'+name+':end --> |')
     return '\n'.join(rows)
 
 def updated_summary(text,c):
@@ -247,7 +253,7 @@ def updated_summary(text,c):
     left,rest=text.split(SUMMARY_START,1)
     middle,right=rest.split(SUMMARY_END,1)
     if SUMMARY_END in middle: raise ValueError('Out-of-order summary markers')
-    return left+SUMMARY_START+'\n'+render_summary(c,snapshot_from_readme(text))+'\n'+SUMMARY_END+right
+    return left+SUMMARY_START+'\n'+render_summary(c,snapshot_from_readme(text),embedded_tests_from_text(text))+'\n'+SUMMARY_END+right
 
 def atomic_write(path,old,new):
     if new==old: return 'unchanged'
