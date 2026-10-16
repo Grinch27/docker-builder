@@ -1950,7 +1950,7 @@ jobs:
           PY
           echo "Catalog and target environment: PASS"
 
-catalog-build-smoke:
+  catalog-build-smoke:
     name: "Buildx ${{ matrix.app }}:${{ matrix.tag }} (local registry only)"
     if: "${{ github.event_name == 'push' && startsWith(github.event.head_commit.message, 'ci: smoke catalog build') }}"
     runs-on: ubuntu-latest
