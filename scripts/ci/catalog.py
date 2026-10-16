@@ -5,6 +5,7 @@ The config block is human-maintained. Version-table and version-json remain
 generated run output; catalog writes never rewrite those other blocks.
 """
 import argparse
+import html
 import json
 import os
 import re
@@ -20,7 +21,7 @@ SUMMARY_END = '<!-- app-summary:end -->'
 TAG = re.compile(r'^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$')
 NAME = re.compile(r'^[a-z0-9][a-z0-9_.-]*$')
 POLICIES = {'none', 'keep', 'strip_channel', 'strip_channel_and_spaces'}
-APP_KEYS = {'repository', 'base_image', 'platforms', 'tag_policy', 'targets', 'image_probe'}
+APP_KEYS = {'repository', 'base_image', 'platforms', 'tag_policy', 'targets'}
 TARGET_KEYS = {'tag', 'dockerfile', 'build_arg', 'base_image', 'tag_policy'}
 
 def catalog_document_from_text(text):
@@ -72,35 +73,37 @@ def catalog_from_readme(path):
     return catalog
 
 
-def validate_image_probe(name, profile):
-    """Structured version probe only: no shell fragments or dynamic evaluation."""
-    if not isinstance(profile, dict) or set(profile) != {'argv', 'extract'}:
-        raise ValueError(name + ': image_probe requires argv and extract')
-    argv = profile['argv']
-    if not isinstance(argv, list) or not 1 <= len(argv) <= 8:
-        raise ValueError(name + ': invalid image_probe argv')
-    if any(not isinstance(part, str) or not part or len(part) > 128 or
-           any(ord(ch) < 32 or ord(ch) == 127 for ch in part) for part in argv):
-        raise ValueError(name + ': unsafe image_probe argument')
-    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', argv[0]) or argv[0] in ('sh','bash','ash','dash','python','python3','env'):
-        raise ValueError(name + ': image_probe executable must be a direct CLI')
-    extract = profile['extract']
-    if not isinstance(extract, dict):
-        raise ValueError(name + ': invalid image_probe extract')
-    kind = extract.get('kind')
-    expected = ({'first_line': {'kind'}, 'first_field': {'kind','field'},
-                 'prefix_field': {'kind','match','field'}}).get(kind)
-    if expected is None or set(extract) != expected:
-        raise ValueError(name + ': invalid image_probe extraction schema')
-    if kind != 'first_line':
-        field = extract['field']
-        if type(field) is not int or not 1 <= field <= 20:
-            raise ValueError(name + ': invalid image_probe field')
-    if kind == 'prefix_field':
-        match = extract['match']
-        if not isinstance(match, str) or not match or len(match) > 100 or any(ord(ch) < 32 or ord(ch) == 127 for ch in match):
-            raise ValueError(name + ': invalid image_probe prefix')
-    return True
+TESTS_START = '<!-- app-tests:start -->'
+TESTS_END = '<!-- app-tests:end -->'
+TEST_ROW = re.compile(
+    r'<tr><td><code>([a-z0-9_.-]+)</code></td><td>' +
+    r'<!-- app-test:\1:start --><details><summary>View test\.sh</summary>' +
+    r'<pre><code>(.*?)</code></pre></details><!-- app-test:\1:end -->' +
+    r'</td></tr>')
+
+def encode_embedded_test(script):
+    return (script.replace('&','&amp;').replace('<','&lt;').replace('>','&gt;')
+            .replace('|','&#124;').replace('\n','&#10;').replace('\r','&#13;'))
+
+def embedded_tests_from_text(text):
+    """Parse exact shell sources from the README expandable HTML table."""
+    if text.count(TESTS_START)!=1 or text.count(TESTS_END)!=1:
+        raise ValueError('Expected one application-test table')
+    region=text.split(TESTS_START,1)[1].split(TESTS_END,1)[0]
+    scripts={}
+    for match in TEST_ROW.finditer(region):
+        name,encoded=match.groups()
+        if name in scripts: raise ValueError('Duplicate embedded test: '+name)
+        script=html.unescape(encoded)
+        if not script.startswith('#!/bin/sh\n') or '\0' in script or '\r' in script:
+            raise ValueError('Invalid embedded shell test: '+name)
+        if encode_embedded_test(script)!=encoded:
+            raise ValueError('Noncanonical HTML test cell: '+name)
+        scripts[name]=script
+    if len(scripts)!=region.count('<tr><td><code>') or not scripts:
+        raise ValueError('Malformed or missing application test rows')
+    return scripts
+
 
 def validate(c, root):
     if not isinstance(c, dict) or c.get('schema_version') != 1:
@@ -116,6 +119,9 @@ def validate(c, root):
     missing_from_catalog = sorted(existing - set(apps))
     if missing_from_catalog:
         raise ValueError("Unregistered application directories: " + ", ".join(missing_from_catalog))
+    embedded_tests=embedded_tests_from_text((root/'README.md').read_text(encoding='utf-8'))
+    if set(embedded_tests)!=set(apps):
+        raise ValueError('README embedded tests do not match app catalog')
     refs, seen = {}, set()
     for name, app in apps.items():
         if not isinstance(app, dict):
@@ -134,10 +140,8 @@ def validate(c, root):
             raise ValueError(name+': bad platform')
         if not isinstance(base,str) or not base or '\n' in base:
             raise ValueError(name+': invalid base')
-        if 'image_probe' in app:
-            validate_image_probe(name, app['image_probe'])
-        if 'image_probe' not in app and not (root/'application'/name/'test'/'test.sh').is_file():
-            raise ValueError(name + ': missing test.sh or image_probe declaration')
+        if name not in embedded_tests:
+            raise ValueError(name + ': no embedded test.sh')
         if app.get('tag_policy','keep') not in POLICIES:
             raise ValueError(name+': invalid policy')
         ts=app.get('targets')

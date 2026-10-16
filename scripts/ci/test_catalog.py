@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import copy
 import json
-import json
 import shutil
 import sys
 import tempfile
@@ -20,6 +19,12 @@ class CatalogTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.config = catalog.catalog_from_readme(ROOT / "README.md")
+
+    def test_24_canonical_test_scripts_in_readme_table(self):
+        tests=catalog.embedded_tests_from_text((ROOT/'README.md').read_text(encoding='utf-8'))
+        self.assertEqual(len(tests),24)
+        self.assertEqual(set(tests),set(self.config['apps']))
+        self.assertTrue(all(s.startswith('#!/bin/sh') for s in tests.values()))
 
     def test_catalog_covers_exactly_all_app_directories(self):
         stats = catalog.validate(self.config, ROOT)
