@@ -48,11 +48,12 @@ jobs:
         id: select
         env:
           IMAGE_OVERRIDE: ${{ inputs.image_name || '' }}
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message || '' }}
           LAYER_PROFILE: ${{ inputs.layer_profile || 'stable' }}
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+          if [[ "${GITHUB_EVENT_NAME}" == "push" && "${COMMIT_MESSAGE}" != *"[diagnostics-full]"* ]]; then
             images='["alpine:latest"]'
           elif [[ -n "${IMAGE_OVERRIDE}" ]]; then
             images=$(jq -cn --arg name "${IMAGE_OVERRIDE}" '[$name]')
@@ -63,7 +64,7 @@ jobs:
           fi
           jq -e 'type == "array" and length > 0 and all(.[]; type == "string" and length > 0)' <<< "${images}" >/dev/null
           echo "images=${images}" >> "${GITHUB_OUTPUT}"
-          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+          if [[ "${GITHUB_EVENT_NAME}" == "push" && "${COMMIT_MESSAGE}" != *"[diagnostics-full]"* ]]; then
             platforms='[{"image_name":"alpine:latest","arch":"amd64"}]'
           else
             platforms=$(jq -cn --argjson images "${images}" \
@@ -145,6 +146,8 @@ jobs:
         with:
           path: ${{ runner.temp }}/diagnostics
       - name: Validate version and layer outputs
+        env:
+          GITHUB_EVENT_HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message || '' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -157,4 +160,10 @@ jobs:
           jq -e 'type=="array" and length>0' "${RUNNER_TEMP}/diagnostics/layers-alpine_latest-amd64/layers.json"
           test -f "${RUNNER_TEMP}/diagnostics/layer-info-alpine-latest-amd64/image_alpine-latest_amd64.json"
           jq -e '.image=="alpine:latest" and .architecture=="amd64" and (.raw_data.Layers|type=="array" and length>0)' "${RUNNER_TEMP}/diagnostics/layer-info-alpine-latest-amd64/image_alpine-latest_amd64.json"
+          if [[ "${GITHUB_EVENT_HEAD_COMMIT_MESSAGE:-}" == *"[diagnostics-full]"* ]]; then
+            test "$(find "${RUNNER_TEMP}/diagnostics" -name layers.json | wc -l)" -eq 10
+            test "$(find "${RUNNER_TEMP}/diagnostics" -name "image_*.json" | wc -l)" -eq 10
+            test "$(find "${RUNNER_TEMP}/diagnostics" -name "layer-*.json" | wc -l)" -eq 5
+            echo "Full five-image two-architecture parity: PASS"
+          fi
           echo "Diagnostic version + layer Artifact contract: PASS"
