@@ -36,10 +36,10 @@ def generate(app, profile):
                      shlex.quote(str(extract['field']))+
                      ' \'NR==1 { print $field; exit }\')')
     else:
-        lines.append('version=$(printf "%s\n" "$result" | awk -v match='+
+        lines.append('version=$(printf "%s\n" "$result" | awk -v needle='+
                      shlex.quote(extract['match'])+
                      ' -v field='+shlex.quote(str(extract['field']))+
-                     ' \'index($0,match)==1 { print $field; exit }\')')
+                     ' \'index($0,needle)==1 { print $field; exit }\')')
     lines += [
         'if [ -z "$version" ]; then echo "Empty actual image version: ' + app + '" >&2; exit 1; fi',
         'case "$version" in *[![:print:]]*) echo "Invalid multiline image version" >&2; exit 1;; esac',

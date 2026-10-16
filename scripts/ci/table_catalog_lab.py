@@ -5,6 +5,7 @@ This is a strict, deliberately wide, ONE-TABLE lossless roundtrip study.
 No GitHub workflow, Docker build, or README write path imports this module.
 """
 
+import json
 import re
 
 FIELDS = (
@@ -12,7 +13,7 @@ FIELDS = (
     'Target tag', 'Dockerfile', 'Target base override', 'Build arg',
     'Target tag policy override', 'Probe tag', 'Probe repository',
     'Probe base', 'Probe architectures', 'Probe platform',
-    'Probe version', 'Probe status',
+    'Probe version', 'Probe status', 'Image probe JSON',
 )
 
 def encode(value):
@@ -58,7 +59,8 @@ def render(config, records):
                     target.get('base_image',''),target.get('build_arg',''),
                     target.get('tag_policy',''),r['tag_repo'],r['repo_dockerhub'],
                     r['base_image'],r['arch_branch'],r['platform_used'],
-                    r['version'],r['status']]
+                    r['version'],r['status'],
+                    json.dumps(settings['image_probe'],sort_keys=True,separators=(',',':')) if 'image_probe' in settings else '']
             lines.append('| '+' | '.join(encode(v) for v in values)+' |')
     return '\n'.join(lines)+'\n'
 
@@ -75,15 +77,17 @@ def parse(table):
         fields=parse_line(line)
         if len(fields)!=len(FIELDS): raise ValueError("Missing or excess columns")
         (app,repo,base,platforms,policy,tag,doc,override,arg,tag_policy,
-         probe_tag,probe_repo,probe_base,probe_arch,probe_platform,version,status)=fields
+         probe_tag,probe_repo,probe_base,probe_arch,probe_platform,version,status,probe_json)=fields
         if not app or not repo or not tag or not base or not policy:
             raise ValueError("Required configuration cell empty")
         if (app,tag) in seen: raise ValueError("Duplicate target")
         seen.add((app,tag))
         shared={'repository':repo,'base_image':base,
                 'platforms':platforms.split(','),'tag_policy':policy}
+        if probe_json:
+            shared['image_probe']=json.loads(probe_json)
         if app not in apps: apps[app]={**shared,'targets':[]}
-        if any(apps[app][key]!=value for key,value in shared.items()):
+        if set(apps[app]) - {'targets'} != set(shared) or any(apps[app][key]!=value for key,value in shared.items()):
             raise ValueError("Conflicting application settings")
         target={'tag':tag,'dockerfile':doc}
         if override: target['base_image']=override

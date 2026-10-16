@@ -22,7 +22,7 @@ class TableCatalogLabTests(unittest.TestCase):
         self.assertEqual(result['apps'],24)
         self.assertEqual(result['targets'],30)
         self.assertEqual(result['observations'],24)
-        self.assertEqual(result['table_columns'],17)
+        self.assertEqual(result['table_columns'],18)
 
     def test_reject_duplicate_target(self):
         table=lab.render(self.config,self.monitor)
