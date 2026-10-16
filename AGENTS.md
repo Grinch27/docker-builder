@@ -60,6 +60,22 @@ python3 scripts/ci/test-workflow-graph.py
 - 若确实修改了 `config`，使用 `catalog.py set` 或先修改 JSON 再运行 `catalog.py summary --write`；不应使用 `summary --write` 来补救 Meta-app/Test 源码丢失或错误引用。
 - 比较 README 重写前后的 `config`、`monitor.records`、24 个应用行及全部 Meta-app/Test 脚本源码；验证无损 HTML 编解码、幂等、不覆盖非生成文件、`ffmpeg` 缺失语义、文件末尾表格位置。工作流变更时再检查 YAML 语法和内部调用关系；非发布 Actions 的成功不能替代生产发布验收。
 
+### 清理记录与可恢复资料 / Archived unused files
+
+以下文件在 `main@0673902af205` 核验时不属于 README 配置指定的构建目标，也未在仓库当前的工作流、CI 脚本中发现按路径引用。为减少应用目录的冗余文件，移出当前工作树；**原文件全文仍可通过固定 Git Commit 查看与恢复**。这不代表不存在外部独立使用这些历史路径的消费者。
+
+| 原路径（历史快照） | 清理原因 |
+|---|---|
+| [`application/.example/meta-app/meta-app.sh`](https://github.com/Grinch27/docker-builder/blob/0673902af205e47b1b9b6727c1155f8a6b4267fc/application/.example/meta-app/meta-app.sh) | 旧版元数据示例；当前已改为 README 内嵌 |
+| [`application/.example/test/test.sh`](https://github.com/Grinch27/docker-builder/blob/0673902af205e47b1b9b6727c1155f8a6b4267fc/application/.example/test/test.sh) | 旧版镜像测试示例；当前已改为 README 内嵌 |
+| [`application/ffmpeg/build/Testing.dockerfile`](https://github.com/Grinch27/docker-builder/blob/0673902af205e47b1b9b6727c1155f8a6b4267fc/application/ffmpeg/build/Testing.dockerfile) | 与 `docker-ffmpeg.dockerfile` 完全同一 Git Blob 的冗余副本 |
+| [`application/aria2/build/command.md`](https://github.com/Grinch27/docker-builder/blob/0673902af205e47b1b9b6727c1155f8a6b4267fc/application/aria2/build/command.md) | aria2c 命令选项参考及旧帮助输出 |
+| [`application/privoxy/build/config.md`](https://github.com/Grinch27/docker-builder/blob/0673902af205e47b1b9b6727c1155f8a6b4267fc/application/privoxy/build/config.md) | Privoxy 配置选项参考 |
+| [`application/cloudflare-warp/test/warp-cli-discovered.md`](https://github.com/Grinch27/docker-builder/blob/0673902af205e47b1b9b6727c1155f8a6b4267fc/application/cloudflare-warp/test/warp-cli-discovered.md) | 2026-06-07 warp-cli 递归命令发现快照 |
+| [`application/cloudflare-warp/test/warp-cli-full.md`](https://github.com/Grinch27/docker-builder/blob/0673902af205e47b1b9b6727c1155f8a6b4267fc/application/cloudflare-warp/test/warp-cli-full.md) | 2026-06-07 warp-cli 完整帮助快照 |
+
+保留 `application/.example/build/` 的两份 Dockerfile 模板，保留 `application/ffmpeg/build/docker-ffmpeg.dockerfile` 作为上游版本的单一参考副本，并保持 `application/ffmpeg/build/Dockerfile`、`Dev.dockerfile` 不变。只有经独立回归证实后才考虑进一步变动工作流和构建资源。
+
 ## 历史研究与迁移记录 / Historical archive
 
 以下内容逐份保留原 `docs/` 文档的叙述、历史 SHA、决策及测试证据。由于这些文档涵盖了不同阶段，部分“现有”“保持不变”“后续候选”等表述只适用于对应历史时间点；**不得据此直接实施删除、发布或调整触发条件**。历史信息与本文件前部“当前维护规范”冲突时，以当前仓库实际内容、实时测试和用户最新授权为准。
