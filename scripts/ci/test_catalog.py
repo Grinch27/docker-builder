@@ -180,6 +180,47 @@ class CatalogTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'app must be object'):
             catalog.validate(c, ROOT)
 
+    def test_summary_matches_canonical_json(self):
+        self.assertTrue(catalog.check_summary(ROOT/'README.md',self.config))
+        view=catalog.render_summary(self.config)
+        self.assertEqual(view.count('](application/'),24)
+        self.assertIn('alpine.Dockerfile',view)
+
+    def test_set_refreshes_summary_and_preserves_version_section(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory=Path(tmp)
+            (directory/'application').symlink_to(ROOT/'application',target_is_directory=True)
+            path=directory/'README.md'
+            shutil.copyfile(ROOT/'README.md',path)
+            old=path.read_text(encoding='utf-8')
+            self.assertEqual(catalog.update(path,copy.deepcopy(self.config),'samba','base_image',
+                'alpine:edge',scope='target',tag='alpine'),'updated')
+            after=path.read_text(encoding='utf-8')
+            self.assertIn('`alpine: alpine:edge`',after)
+            self.assertTrue(catalog.check_summary(path,catalog.catalog_from_readme(path)))
+            self.assertEqual(old.split(catalog.END,1)[1],after.split(catalog.END,1)[1])
+            self.assertEqual(catalog.write_summary(path,catalog.catalog_from_readme(path)),'unchanged')
+
+    def test_summary_staleness_detected_and_repaired(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory=Path(tmp)
+            (directory/'application').symlink_to(ROOT/'application',target_is_directory=True)
+            path=directory/'README.md'
+            current=(ROOT/'README.md').read_text(encoding='utf-8')
+            path.write_text(current.replace('24 applications / 30 build targets',
+                '23 applications / 30 build targets',1),encoding='utf-8')
+            with self.assertRaisesRegex(ValueError,'stale'):
+                catalog.check_summary(path,catalog.catalog_from_readme(path))
+            self.assertEqual(catalog.write_summary(path,catalog.catalog_from_readme(path)),'updated')
+            self.assertTrue(catalog.check_summary(path,catalog.catalog_from_readme(path)))
+
+    def test_collapsible_markers_are_unchanged_for_actions(self):
+        readme=(ROOT/'README.md').read_text(encoding='utf-8')
+        for marker in [catalog.START,catalog.END,catalog.SUMMARY_START,catalog.SUMMARY_END,
+                       '<!-- app-version-table:start -->','<!-- app-version-table:end -->',
+                       '<!-- app-version-json:start -->','<!-- app-version-json:end -->']:
+            self.assertEqual(readme.count(marker),1,marker)
+        self.assertEqual(catalog.catalog_from_readme(ROOT/'README.md'),self.config)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
