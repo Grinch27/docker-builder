@@ -92,6 +92,16 @@ env:
   DOCKER_BUILDKIT: "1"
 
 jobs:
+  unified-dev-route-smoke:
+    name: Production entry -> Dev preflight (no publish)
+    if: ${{ github.event_name == 'push' }}
+    uses: ./.github/workflows/docker_allinone.yml
+    with:
+      execution_route: dev
+      dev_mode: preflight
+      force_build: "false"
+    secrets: inherit
+
   runner-image:
     name: ubuntu-latest - runner-image
     runs-on: ubuntu-latest

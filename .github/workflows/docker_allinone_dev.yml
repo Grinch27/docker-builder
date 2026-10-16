@@ -86,6 +86,23 @@ env:
   DOCKER_BUILDKIT: "1"
 
 jobs:
+  preflight:
+    name: Read-only catalog and routing preflight
+    if: ${{ inputs.mode == 'preflight' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout application catalog
+        uses: actions/checkout@main
+      - name: Verify 24 apps and 30 build targets without publishing
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/catalog.py validate
+          python3 scripts/ci/catalog.py summary --check
+          count=$(python3 scripts/ci/catalog.py matrix --kind build | jq '.include|length')
+          test "${count}" -eq 30
+          echo "Combined production -> Dev reusable preflight: PASS"
+
   runner-image:
     name: ubuntu-latest - runner-image
     runs-on: ubuntu-latest
@@ -98,6 +115,7 @@ jobs:
 
   inspect:
     name: ${{ needs.runner-image.outputs.RUNNER_IMAGE }} - inspect
+    if: ${{ inputs.mode != 'preflight' }}
     needs: runner-image
     runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
     outputs:
