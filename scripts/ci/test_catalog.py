@@ -15,6 +15,23 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import catalog  # noqa: E402
 
 
+def assert_unrelated_readme_content_preserved(test, before, after):
+    """Catalog edits may refresh the table; not scripts, monitoring or prose."""
+    test.assertEqual(before.split(catalog.START, 1)[0],
+                     after.split(catalog.START, 1)[0])
+    test.assertEqual(
+        before.split(catalog.END, 1)[1].split(catalog.SUMMARY_START, 1)[0],
+        after.split(catalog.END, 1)[1].split(catalog.SUMMARY_START, 1)[0])
+    test.assertEqual(before.split(catalog.SUMMARY_END, 1)[1],
+                     after.split(catalog.SUMMARY_END, 1)[1])
+    test.assertEqual(catalog.snapshot_from_readme(before),
+                     catalog.snapshot_from_readme(after))
+    test.assertEqual(catalog.embedded_tests_from_text(before),
+                     catalog.embedded_tests_from_text(after))
+    test.assertEqual(catalog.embedded_meta_from_text(before),
+                     catalog.embedded_meta_from_text(after))
+
+
 class CatalogTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -138,7 +155,7 @@ class CatalogTests(unittest.TestCase):
             self.assertEqual(catalog.update(path, refreshed, "runner",
                                             "base_image", "debian:stable-slim"), "unchanged")
             self.assertEqual(first, path.read_text(encoding="utf-8"))
-            self.assertEqual(old.split(marker, 1)[1], first.split(marker, 1)[1])
+            assert_unrelated_readme_content_preserved(self, old, first)
             self.assertEqual(catalog.catalog_from_readme(path), refreshed)
 
     def test_reject_broken_readme_markers(self):
@@ -169,8 +186,8 @@ class CatalogTests(unittest.TestCase):
             self.assertEqual(catalog.update(readme, result, "samba", "base_image",
                                             "alpine:edge", scope="target",
                                             tag="alpine"), "unchanged")
-            self.assertEqual(original.split(catalog.END, 1)[1],
-                             readme.read_text(encoding="utf-8").split(catalog.END, 1)[1])
+            assert_unrelated_readme_content_preserved(
+                self, original, readme.read_text(encoding="utf-8"))
 
     def test_reject_unsafe_target_update(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -227,7 +244,7 @@ class CatalogTests(unittest.TestCase):
             after=path.read_text(encoding='utf-8')
             self.assertIn('`alpine: alpine:edge`',after)
             self.assertTrue(catalog.check_summary(path,catalog.catalog_from_readme(path)))
-            self.assertEqual(old.split(catalog.END,1)[1],after.split(catalog.END,1)[1])
+            assert_unrelated_readme_content_preserved(self, old, after)
             self.assertEqual(catalog.write_summary(path,catalog.catalog_from_readme(path)),'unchanged')
 
     def test_summary_staleness_detected_and_repaired(self):
@@ -249,6 +266,12 @@ class CatalogTests(unittest.TestCase):
 ]:
             self.assertEqual(readme.count(marker),1,marker)
         self.assertEqual(catalog.catalog_from_readme(ROOT/'README.md'),self.config)
+    def test_applications_table_is_last_section(self):
+        text=(ROOT/'README.md').read_text(encoding='utf-8')
+        self.assertLess(text.index(catalog.END), text.index(catalog.SUMMARY_START))
+        self.assertTrue(text.endswith(catalog.SUMMARY_END+'\n'))
+        self.assertEqual(text.count('## Applications / 应用清单'), 1)
+
     def test_single_visible_table_contains_app_and_probe_data(self):
         text=(ROOT/'README.md').read_text(encoding='utf-8')
         self.assertEqual(text.count('| Application |'),1)
