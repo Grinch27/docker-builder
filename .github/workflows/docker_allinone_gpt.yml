@@ -1950,7 +1950,8 @@ jobs:
           production_build = prod.split("\n  build:\n",1)[1]
           for step_name in ["Initialize environment","(Env) Load catalog target settings","(Disk) Expand workspace","(Clean) Docker Images","(Setup) Docker","(Setup) Docker Data Root","Setup Docker Buildx","(Service) Local Registry","Build and push to local registry","(Inspect) Layers with skopeo","(Test) Docker image","(Output) Save","(release.md) Generate"]:
               block = production_build.split("      - name: "+step_name+"\n",1)[1].split("      - name:",1)[0]
-              assert "if: ${{ steps.check-result.outputs.changed == 'true' }}" in block, step_name
+              expected_if = "if: " + chr(36) + "{{ steps.check-result.outputs.changed == 'true' }}"
+              assert expected_if in block, step_name
           PY
           echo "Catalog and target environment: PASS"
 
