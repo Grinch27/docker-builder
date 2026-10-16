@@ -66,7 +66,7 @@ jobs:
           if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
             platforms='[{"image_name":"alpine:latest","arch":"amd64"}]'
           else
-            platforms=$(jq -cn --argjson images "${images}"
+            platforms=$(jq -cn --argjson images "${images}" \
               '[$images[] as $image | ["amd64","arm64"][] as $arch | {image_name:$image,arch:$arch}]')
           fi
           echo "platforms=${platforms}" >> "${GITHUB_OUTPUT}"
