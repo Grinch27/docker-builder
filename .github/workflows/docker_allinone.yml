@@ -821,6 +821,7 @@ jobs:
         uses: actions/checkout@main
 
       - name: Initialize environment
+        if: ${{ steps.check-result.outputs.changed == 'true' }}
         id: init
         env:
           DEBIAN_FRONTEND: noninteractive
@@ -845,6 +846,7 @@ jobs:
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
       - name: (Env) Load catalog target settings
+        if: ${{ steps.check-result.outputs.changed == 'true' }}
         id: env-app
         run: |
           set -euo pipefail
@@ -863,6 +865,7 @@ jobs:
 
         # ========== General Environment Setup: Start ==========
       - name: (Disk) Expand workspace
+        if: ${{ steps.check-result.outputs.changed == 'true' }}
         id: disk
         uses: Grinch27/github-actions/.github/actions/setup-disk@main
         with:
@@ -871,16 +874,19 @@ jobs:
           mnt_num: 1
 
       - name: (Clean) Docker Images
+        if: ${{ steps.check-result.outputs.changed == 'true' }}
         id: clean-docker
         uses: Grinch27/github-actions/.github/actions/clean-docker_image@main
 
       - name: (Setup) Docker
+        if: ${{ steps.check-result.outputs.changed == 'true' }}
         id:
           setup-docker
           # if: ${{ env.docker_install == 'true' }}
         uses: Grinch27/github-actions/.github/actions/setup-docker@main
 
       - name: (Setup) Docker Data Root
+        if: ${{ steps.check-result.outputs.changed == 'true' }}
         id: setup-docker-root
         env:
           docker_data_root: "${{ env.path_build }}/docker-data"
@@ -918,6 +924,7 @@ jobs:
         # ========== General Environment Setup: End ==========
 
       - name: Setup Docker Buildx
+        if: ${{ steps.check-result.outputs.changed == 'true' }}
         id: buildx
         uses: docker/setup-buildx-action@master
         with:
@@ -925,6 +932,7 @@ jobs:
           driver-opts: network=host
 
       - name: (Service) Local Registry
+        if: ${{ steps.check-result.outputs.changed == 'true' }}
         id: registry
         env:
           DEBIAN_FRONTEND: noninteractive
@@ -939,6 +947,7 @@ jobs:
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
       - name: Build and push to local registry
+        if: ${{ steps.check-result.outputs.changed == 'true' }}
         id: build
         working-directory: "${{ github.workspace }}/${{ env.dir_app }}/build"
         run: |
@@ -947,6 +956,7 @@ jobs:
           echo "status=success" >> "${GITHUB_OUTPUT}"
 
       - name: (Inspect) Layers with skopeo
+        if: ${{ steps.check-result.outputs.changed == 'true' }}
         id:
           inspect
           # if: ${{ 'true' == 'false' }} # disable
@@ -976,6 +986,7 @@ jobs:
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
       - name: (Test) Docker image
+        if: ${{ steps.check-result.outputs.changed == 'true' }}
         id: test
         timeout-minutes: ${{ fromJSON('3') }}
         env:
@@ -1078,6 +1089,7 @@ jobs:
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
       - name: (Output) Save
+        if: ${{ steps.check-result.outputs.changed == 'true' }}
         id: output
         env:
           dir_output: "${{ env.path_build }}/${{ env.dir_app }}/output"
@@ -1215,6 +1227,7 @@ jobs:
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
       - name: (release.md) Generate
+        if: ${{ steps.check-result.outputs.changed == 'true' }}
         id: release-md
         env:
           release_md: "${{ github.workspace }}/${{ env.dir_app }}/release.md"
