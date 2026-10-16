@@ -1,10 +1,96 @@
 # docker-builder
 
-Github Actions for Docker Image Building
+Github Actions for Docker Image Building. / 使用 GitHub Actions 构建、检测与发布 Docker 镜像。
 
-## Application Configuration
+**Source of truth / 唯一配置源：** This README's `app-config` JSON. The application table is a view, **not** an independent configuration file.
 
-This version-controlled JSON block is the application configuration source of truth. Edit it through `scripts/ci/catalog.py` or by a reviewed commit. The generated version sections below are separate run output.
+## Navigation / 目录
+
+- [Applications / 应用清单](#applications--应用清单)
+- [Workflow / 工作流](#workflow--工作流)
+- [Maintenance / 配置维护](#maintenance--配置维护)
+- [Machine-readable configuration / Actions 配置](#machine-readable-configuration--actions-配置)
+- [Container Version Matrix / 版本探测结果](#container-version-matrix)
+
+## Applications / 应用清单
+
+<!-- app-summary:start -->
+**24 applications / 30 build targets** (generated from configuration below).
+
+| Application | Registry repository | Tags | Platforms | Base image | Dockerfiles |
+|---|---|---|---|---|---|
+| [adguardvpn-cli](application/adguardvpn-cli/) | `grinch27/adguardvpn-cli` | `nightly`, `beta`, `release` | `amd64`, `arm64` | `alpine:latest` | `Dockerfile` |
+| [aria2](application/aria2/) | `grinch27/aria2` | `latest` | `amd64`, `arm64` | `alpine:latest` | `Dockerfile` |
+| [baidunetdisk](application/baidunetdisk/) | `grinch27/baidunetdisk` | `dev` | `amd64`, `arm64` | `debian:stable-slim` | `Dockerfile` |
+| [cloudflare-warp](application/cloudflare-warp/) | `grinch27/cloudflare-warp` | `latest` | `amd64`, `arm64` | `ubuntu:devel` | `Dockerfile` |
+| [curl](application/curl/) | `grinch27/curl` | `latest` | `amd64`, `arm64` | `alpine:edge` | `Dockerfile` |
+| [dnscrypt-proxy](application/dnscrypt-proxy/) | `grinch27/dnscrypt-proxy` | `latest` | `amd64`, `arm64` | `alpine:edge` | `Dockerfile` |
+| [doh-nosni](application/doh-nosni/) | `grinch27/doh-nosni` | `latest` | `amd64`, `arm64` | `debian:sid-slim` | `Dockerfile` |
+| [expressvpn](application/expressvpn/) | `grinch27/expressvpn` | `latest` | `amd64`, `arm64`, `386`, `arm/v7` | `debian:stable-slim` | `Dockerfile` |
+| [ffmpeg](application/ffmpeg/) | `grinch27/ffmpeg` | `latest` | `amd64` | `ubuntu:devel` | `Dockerfile` |
+| [nordvpn](application/nordvpn/) | `grinch27/nordvpn` | `latest` | `amd64`, `arm64` | `debian:stable-slim` | `Dockerfile` |
+| [novnc](application/novnc/) | `grinch27/novnc` | `latest` | `amd64`, `arm64` | `debian:stable-slim` | `Dockerfile` |
+| [novnc_alpine](application/novnc_alpine/) | `grinch27/novnc` | `latest` | `amd64`, `arm64` | `alpine:latest` | `Dockerfile` |
+| [openwrt](application/openwrt/) | `grinch27/openwrt` | `main` | `amd64` | `ubuntu:devel` | `Dockerfile` |
+| [privoxy](application/privoxy/) | `grinch27/privoxy` | `latest` | `amd64`, `arm64` | `alpine:latest` | `Dockerfile` |
+| [protonvpn](application/protonvpn/) | `grinch27/protonvpn` | `latest` | `amd64` | `debian:stable-slim` | `Dockerfile` |
+| [runner](application/runner/) | `grinch27/runner` | `dev`, `slim`, `actions`, `actions-slim` | `amd64` | `debian:testing-slim` | `Dockerfile`, `slim.Dockerfile`, `actions.Dockerfile`, `actions-slim.Dockerfile` |
+| [samba](application/samba/) | `grinch27/samba` | `latest`, `alpine` | `amd64`, `arm64` | `debian:testing-slim` + `alpine: alpine:latest` | `Dockerfile`, `alpine.Dockerfile` |
+| [sdnext](application/sdnext/) | `grinch27/sdnext` | `latest` | `amd64` | `rocm/dev-ubuntu-24.04` | `Dockerfile` |
+| [sdnext-dev](application/sdnext-dev/) | `grinch27/sdnext` | `dev` | `amd64` | `ubuntu:24.04` | `Dockerfile` |
+| [squid](application/squid/) | `grinch27/squid` | `latest` | `amd64`, `arm64` | `alpine:latest` | `Dockerfile` |
+| [stable-diffusion-webui-amdgpu](application/stable-diffusion-webui-amdgpu/) | `grinch27/stable-diffusion-webui-amdgpu` | `latest` | `amd64` | `rocm/dev-ubuntu-24.04` | `Dockerfile` |
+| [steamcmd](application/steamcmd/) | `grinch27/steamcmd` | `dev` | `amd64` | `debian:testing-slim` | `Dockerfile` |
+| [ttrss](application/ttrss/) | `grinch27/ttrss` | `latest` | `amd64`, `arm64` | `alpine:latest` | `Dockerfile` |
+| [vlmcsd](application/vlmcsd/) | `grinch27/vlmcsd` | `latest` | `amd64`, `arm64`, `386` | `alpine:latest` | `Dockerfile` |
+<!-- app-summary:end -->
+
+> **Known conflict / 已知冲突：** `novnc` and `novnc_alpine` both use `grinch27/novnc:latest`. The two directories do not own independent output tags. No tags are changed by this documentation update.
+
+## Workflow / 工作流
+
+```mermaid
+flowchart LR
+    R[README app-config] --> C[catalog.py]
+    C --> M[Version/build matrices]
+    M --> W[docker_allinone.yml]
+    W --> K[Check]
+    K --> B[Shared Buildx]
+    B --> T[Application tests]
+    T --> P[Docker Hub / GitHub Release]
+    W --> S[Version monitor]
+    S --> V[README version snapshot]
+```
+
+`docker_allinone.yml` is the intended authoritative production workflow. Legacy entry points remain for compatibility, and their publishing permissions require separate review.
+
+## Maintenance / 配置维护
+
+| Section | Maintainer | Actions behavior |
+|---|---|---|
+| `app-config` JSON | Manual review / `catalog.py set` | **Authoritative** app and target settings |
+| `app-summary` | Derived from `app-config` | Read-only overview; never parsed as configuration |
+| `app-version-table` | Monitor | Displayed upstream version probes; not proof of published images |
+| `app-version-json` | Monitor | Stored state used to compare version changes |
+
+Common commands:
+
+```bash
+python3 scripts/ci/catalog.py validate
+python3 -m unittest discover -s scripts/ci -p 'test_catalog.py' -v
+python3 scripts/ci/catalog.py matrix --kind build
+python3 scripts/ci/catalog.py get --app samba --tag alpine
+python3 scripts/ci/catalog.py set --scope target --app samba --tag alpine --field base_image --value alpine:latest
+```
+
+Documentation: [application layout](application/route.md), [workflow consolidation](docs/workflow-consolidation.md).
+
+## Machine-readable configuration / Actions 配置
+
+<details>
+<summary><strong>Show canonical application JSON / 展开配置 JSON</strong></summary>
+
+**For Actions:** Preserve the `app-config` markers and fenced JSON exactly. / 请勿修改配置标记或 JSON 格式。
 
 <!-- app-config:start -->
 ```json
@@ -400,9 +486,11 @@ This version-controlled JSON block is the application configuration source of tr
 ```
 <!-- app-config:end -->
 
+</details>
+
 ## Container Version Matrix
 
-This section is maintained automatically by GitHub Actions.
+Maintained by GitHub Actions. **This table reports version-detection results, not completed image builds or registry publication.** `unknown` indicates the version was not resolved. / 这里仅展示版本探测，不表示镜像已完成发布。
 
 <!-- markdownlint-disable MD060 -->
 <!-- app-version-table:start -->
@@ -438,6 +526,10 @@ Volatile run metadata is intentionally omitted; this section changes only when s
 <!-- app-version-table:end -->
 <!-- markdownlint-enable MD060 -->
 
+<details>
+<summary><strong>Show generated version JSON / 展开版本监控 JSON</strong></summary>
+
+The monitor writes this snapshot; it is not the build configuration.
 <!-- app-version-json:start -->
 ```json
 [
@@ -684,3 +776,5 @@ Volatile run metadata is intentionally omitted; this section changes only when s
 ]
 ```
 <!-- app-version-json:end -->
+
+</details>
