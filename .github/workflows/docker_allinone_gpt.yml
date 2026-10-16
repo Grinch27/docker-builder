@@ -668,6 +668,7 @@ jobs:
         run: |
           set -euo pipefail
           build_dir="$GITHUB_WORKSPACE/application/vlmcsd/build"
+          python3 "$GITHUB_WORKSPACE/scripts/ci/materialize_test_hooks.py" --app vlmcsd
           test_script="$GITHUB_WORKSPACE/application/vlmcsd/test/test.sh"
           platform="linux/$SMOKE_ARCH"
           image_ref="vlmcsd-smoke:$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$SMOKE_ARCH"
@@ -1998,7 +1999,7 @@ jobs:
           test "$(find application -name vars.env | wc -l)" -eq 0
           test "$(find application -name build.sh | wc -l)" -eq 0
           test "$(find application -name tag_version.sh | wc -l)" -eq 0
-          for app in aria2 curl privoxy squid dnscrypt-proxy; do test ! -e "application/$app/test/test.sh"; done
+          for app in $(python3 -c "import json; from pathlib import Path; import sys; sys.path.insert(0,'scripts/ci'); import catalog; print(' '.join(catalog.catalog_data_from_text(Path('README.md').read_text())['apps']))"); do test ! -e "application/$app/test/test.sh"; done
           cp README.md README.catalog-test.md
           python3 scripts/ci/catalog.py set --readme README.catalog-test.md --app runner --field base_image --value debian:testing-slim
           cp README.catalog-test.md README.catalog-test.first.md
@@ -2119,6 +2120,7 @@ jobs:
           docker pull --platform linux/amd64 "${image_ref}"
           cid=$(docker run --detach --entrypoint /bin/sh "${image_ref}" -c 'sleep 120')
           trap 'docker rm -f "${cid}" >/dev/null 2>&1 || true' EXIT
+          python3 "${GITHUB_WORKSPACE}/scripts/ci/materialize_test_hooks.py" --app "${APP}"
           docker cp ../test/test.sh "${cid}:/tmp/test.sh"
           docker exec "${cid}" /bin/sh /tmp/test.sh
           echo "Local-registry Buildx and application test: PASS (${APP}:${TAG}, amd64)"

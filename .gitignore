@@ -4,10 +4,5 @@ PROJECT_REPORT_FOR_GPT.md
 /tmp
 *.tar.gz
 
-# Materialized by scripts/ci/materialize_test_hooks.py (never commit per-app copies)
-/application/aria2/test/test.sh
-/application/curl/test/test.sh
-/application/privoxy/test/test.sh
-/application/squid/test/test.sh
-/application/dnscrypt-proxy/test/test.sh
-/application/doh-nosni/test/test.sh
+# README.md app-tests is the canonical test source; temporary files belong only to Actions.
+/application/*/test/test.sh
