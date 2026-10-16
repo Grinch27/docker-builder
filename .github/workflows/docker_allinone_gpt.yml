@@ -101,7 +101,7 @@ env:
 
 jobs:
   shared-image-probe-smoke:
-    name: Shared actual-version parity / ${{ matrix.app }}
+    name: Shared actual-version parity / ${{ matrix.app }} / ${{ matrix.arch }}
     if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[probe-smoke]') }}
     runs-on: ubuntu-latest
     strategy:
@@ -109,14 +109,18 @@ jobs:
       max-parallel: 3
       matrix:
         app: [aria2, curl, privoxy, squid, dnscrypt-proxy]
+        arch: [amd64, arm64]
     steps:
       - name: Checkout repository
         uses: actions/checkout@main
+      - name: Enable QEMU for arm64
+        uses: docker/setup-qemu-action@master
       - name: Prepare Buildx
         uses: docker/setup-buildx-action@master
       - name: Build actual application image (local only)
         env:
           APP: ${{ matrix.app }}
+          ARCH: ${{ matrix.arch }}
         shell: bash
         run: |
           set -euo pipefail
@@ -124,12 +128,12 @@ jobs:
           info=$(python3 scripts/ci/catalog.py get --app "$app" --tag latest)
           base=$(jq -r .base_image <<<"$info")
           dockerfile=$(jq -r .dockerfile <<<"$info")
-          image="probe-smoke-$app:$GITHUB_RUN_ID"
-          docker buildx build --platform linux/amd64 \
+          image="probe-smoke-$app:$GITHUB_RUN_ID-$ARCH"
+          docker buildx build --platform "linux/$ARCH" \
             --file "application/$app/build/$dockerfile" \
             --build-arg "base_image=$base" \
             --tag "$image" --load "application/$app/build"
-          cid=$(docker run --detach --entrypoint /bin/sh "$image" -c 'sleep 600')
+          cid=$(docker run --detach --platform "linux/$ARCH" --entrypoint /bin/sh "$image" -c 'sleep 600')
           cleanup() { docker rm -f "$cid" >/dev/null 2>&1 || true; docker image rm "$image" >/dev/null 2>&1 || true; }
           trap cleanup EXIT
           python3 scripts/ci/materialize_test_hooks.py --app "$app"
@@ -140,7 +144,7 @@ jobs:
           v_new=$(awk -F= '/^version=/{sub(/^[^=]*=/,""); v=$0} END{print v}' "$RUNNER_TEMP/shared-version.log")
           v_old=$(awk -F= '/^version=/{sub(/^[^=]*=/,""); v=$0} END{print v}' "$RUNNER_TEMP/legacy-version.log")
           test -n "$v_new" && test "$v_new" = "$v_old"
-          printf 'Shared probe parity PASS app=%s actual_version=%s; no push or release\n' "$app" "$v_new"
+          printf 'Shared probe parity PASS app=%s arch=%s actual_version=%s; no push or release\n' "$app" "$ARCH" "$v_new"
 
   unified-dev-route-smoke:
     name: Production entry -> Dev preflight (no publish)

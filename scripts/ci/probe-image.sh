@@ -29,7 +29,7 @@ if [ -z "$version" ]; then
   exit 1
 fi
 case "$version" in
-  *'\n'*|*'\r'*)
+  *[![:print:]]*)
     echo "Invalid multiline image version: $app" >&2
     exit 1
     ;;

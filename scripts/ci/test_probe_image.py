@@ -38,6 +38,11 @@ class ProbeImageTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("Empty actual image version", result.stderr)
 
+    def test_multiline_version_rejected(self):
+        result = self.run_mock("dnscrypt-proxy", "dnscrypt-proxy", "2.1.18\nunsafe\n")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Invalid multiline", result.stderr)
+
     def test_unknown_app_rejected(self):
         result = subprocess.run(["sh", str(PROBE), "unlisted-app"],
                                 text=True, capture_output=True, check=False)
