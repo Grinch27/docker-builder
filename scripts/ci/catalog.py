@@ -18,6 +18,8 @@ FENCE = chr(96) * 3
 TAG = re.compile(r'^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$')
 NAME = re.compile(r'^[a-z0-9][a-z0-9_.-]*$')
 POLICIES = {'none', 'keep', 'strip_channel', 'strip_channel_and_spaces'}
+APP_KEYS = {'repository', 'base_image', 'platforms', 'tag_policy', 'targets'}
+TARGET_KEYS = {'tag', 'dockerfile', 'build_arg', 'base_image', 'tag_policy'}
 
 def catalog_from_readme(path):
     data = path.read_text(encoding='utf-8')
@@ -33,6 +35,9 @@ def catalog_from_readme(path):
 def validate(c, root):
     if not isinstance(c, dict) or c.get('schema_version') != 1:
         raise ValueError('Unsupported catalog schema')
+    unexpected = set(c) - {'schema_version', 'apps'}
+    if unexpected:
+        raise ValueError('Unknown catalog fields: ' + ', '.join(sorted(unexpected)))
     apps = c.get('apps')
     if not isinstance(apps, dict) or not apps:
         raise ValueError('Empty or invalid apps object')
@@ -43,6 +48,11 @@ def validate(c, root):
         raise ValueError("Unregistered application directories: " + ", ".join(missing_from_catalog))
     refs, seen = {}, set()
     for name, app in apps.items():
+        if not isinstance(app, dict):
+            raise ValueError(name+': app must be object')
+        unexpected = set(app) - APP_KEYS
+        if unexpected:
+            raise ValueError(name+': unknown app fields: '+', '.join(sorted(unexpected)))
         if not NAME.fullmatch(name) or not (root/'application'/name).is_dir():
             raise ValueError('Unknown or unsafe app: '+name)
         repo, platforms, base = app.get('repository'), app.get('platforms'), app.get('base_image')
@@ -61,6 +71,9 @@ def validate(c, root):
             raise ValueError(name+': targets missing')
         for t in ts:
             if not isinstance(t,dict): raise ValueError(name+': target must be object')
+            unexpected = set(t) - TARGET_KEYS
+            if unexpected:
+                raise ValueError(name+': unknown target fields: '+', '.join(sorted(unexpected)))
             tag,df=t.get('tag'),t.get('dockerfile','Dockerfile')
             if not isinstance(tag,str) or not TAG.fullmatch(tag):
                 raise ValueError(name+': invalid tag')

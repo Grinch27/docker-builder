@@ -158,6 +158,28 @@ class CatalogTests(unittest.TestCase):
                                "dockerfile", "Dockerfile",
                                scope="target", tag="unknown")
 
+    def test_reject_unknown_fields_in_every_scope(self):
+        c = copy.deepcopy(self.config)
+        c['build_targtes'] = []
+        with self.assertRaisesRegex(ValueError, 'Unknown catalog fields'):
+            catalog.validate(c, ROOT)
+
+        c = copy.deepcopy(self.config)
+        c['apps']['runner']['platfroms'] = ['linux/amd64']
+        with self.assertRaisesRegex(ValueError, 'unknown app fields'):
+            catalog.validate(c, ROOT)
+
+        c = copy.deepcopy(self.config)
+        c['apps']['runner']['targets'][0]['base_iamge'] = 'alpine:latest'
+        with self.assertRaisesRegex(ValueError, 'unknown target fields'):
+            catalog.validate(c, ROOT)
+
+    def test_reject_nonobject_application(self):
+        c = copy.deepcopy(self.config)
+        c['apps']['runner'] = []
+        with self.assertRaisesRegex(ValueError, 'app must be object'):
+            catalog.validate(c, ROOT)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
