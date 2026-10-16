@@ -815,6 +815,7 @@ jobs:
 
           if [[ "${check_status}" != "success" ]]; then
             echo "::error::Version check failed for ${app_branch}:${tag_repo}"
+            exit 1
           fi
       - name: Checkout ${{ github.repository }}
         uses: actions/checkout@main
@@ -843,32 +844,13 @@ jobs:
 
           echo "status=success" | tee -a ${GITHUB_OUTPUT}
 
-      - name: (Env) Load .env files
+      - name: (Env) Load catalog target settings
         id: env-app
-        working-directory: "${{ github.workspace }}/${{ env.dir_app }}"
         run: |
-          echo "Current working directory: $(pwd)"
-
-          dir_step="env"
-          dir_original=$(pwd)
-          if [ -d "${dir_step}" ]; then
-            cd ./${dir_step}
-            echo "Changed to directory: $(pwd)"
-
-            for env_file in ./*.env; do
-              if [ -f "${env_file}" ]; then
-                echo "Loading env file: ${env_file}"
-                cat "${env_file}" | awk -F= '/^[a-zA-Z_][a-zA-Z0-9_]*=/ {printf "%s=%s\n", $1, $2}' | tee -a $GITHUB_ENV
-              fi
-            done
-
-            cd "${dir_original}"
-            echo "Changed back to original directory: $(pwd)"
-          else
-            echo "No directory found"
-          fi
-
-          echo "status=success" | tee -a ${GITHUB_OUTPUT}
+          set -euo pipefail
+          python3 scripts/ci/catalog.py env \
+            --app "${app_branch}" --tag "${tag_repo}" --output "${GITHUB_ENV}"
+          echo "status=success" >> "${GITHUB_OUTPUT}"
 
       - name: (Env) Load Custom inputs
         id: env-custom

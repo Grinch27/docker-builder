@@ -1932,6 +1932,20 @@ jobs:
           assert a.split(marker, 1)[1] == b.split(marker, 1)[1], "dynamic README state mutated"
           PY
           rm -f README.catalog-test.md README.catalog-test.first.md
+          # Regression: the real production/legacy build jobs must use the README catalog.
+          python3 - <<'PY'
+          from pathlib import Path
+          prod = Path(".github/workflows/docker_allinone.yml").read_text()
+          legacy = Path(".github/workflows/build-docker.yml").read_text()
+          for name, data in (("production", prod), ("legacy", legacy)):
+              job = data.split("\n  build:\n", 1)[1]
+              assert "catalog.py env" in job, f"{name} build job does not load README config"
+              assert 'dir_step="env"' not in job, f"{name} build job still reads deleted env files"
+              assert "scripts/ci/build-image.sh" in job, f"{name} missing common Buildx"
+          loader = prod.split("      - name: Load check result\n", 1)[1].split("      - name: Checkout", 1)[0]
+          assert 'if [[ "${check_status}" != "success" ]]; then' in loader
+          assert "exit 1" in loader, "failed check does not stop build"
+          PY
           echo "Catalog and target environment: PASS"
 
   catalog-build-smoke:
