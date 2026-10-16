@@ -139,7 +139,18 @@ Documentation: [application layout](application/route.md), [workflow consolidati
             "tag": "latest",
             "dockerfile": "Dockerfile"
           }
-        ]
+        ],
+        "image_probe": {
+          "argv": [
+            "aria2c",
+            "--version"
+          ],
+          "extract": {
+            "kind": "prefix_field",
+            "match": "aria2 version ",
+            "field": 3
+          }
+        }
       },
       "baidunetdisk": {
         "repository": "grinch27/baidunetdisk",
@@ -184,7 +195,17 @@ Documentation: [application layout](application/route.md), [workflow consolidati
             "tag": "latest",
             "dockerfile": "Dockerfile"
           }
-        ]
+        ],
+        "image_probe": {
+          "argv": [
+            "curl",
+            "--version"
+          ],
+          "extract": {
+            "kind": "first_field",
+            "field": 2
+          }
+        }
       },
       "dnscrypt-proxy": {
         "repository": "grinch27/dnscrypt-proxy",
@@ -199,7 +220,16 @@ Documentation: [application layout](application/route.md), [workflow consolidati
             "tag": "latest",
             "dockerfile": "Dockerfile"
           }
-        ]
+        ],
+        "image_probe": {
+          "argv": [
+            "dnscrypt-proxy",
+            "-version"
+          ],
+          "extract": {
+            "kind": "first_line"
+          }
+        }
       },
       "doh-nosni": {
         "repository": "grinch27/doh-nosni",
@@ -319,7 +349,18 @@ Documentation: [application layout](application/route.md), [workflow consolidati
             "tag": "latest",
             "dockerfile": "Dockerfile"
           }
-        ]
+        ],
+        "image_probe": {
+          "argv": [
+            "privoxy",
+            "--version"
+          ],
+          "extract": {
+            "kind": "prefix_field",
+            "match": "Privoxy version ",
+            "field": 3
+          }
+        }
       },
       "protonvpn": {
         "repository": "grinch27/protonvpn",
@@ -423,7 +464,18 @@ Documentation: [application layout](application/route.md), [workflow consolidati
             "tag": "latest",
             "dockerfile": "Dockerfile"
           }
-        ]
+        ],
+        "image_probe": {
+          "argv": [
+            "squid",
+            "--version"
+          ],
+          "extract": {
+            "kind": "prefix_field",
+            "match": "Squid Cache: Version",
+            "field": 4
+          }
+        }
       },
       "stable-diffusion-webui-amdgpu": {
         "repository": "grinch27/stable-diffusion-webui-amdgpu",

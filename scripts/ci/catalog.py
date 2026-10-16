@@ -20,7 +20,7 @@ SUMMARY_END = '<!-- app-summary:end -->'
 TAG = re.compile(r'^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$')
 NAME = re.compile(r'^[a-z0-9][a-z0-9_.-]*$')
 POLICIES = {'none', 'keep', 'strip_channel', 'strip_channel_and_spaces'}
-APP_KEYS = {'repository', 'base_image', 'platforms', 'tag_policy', 'targets'}
+APP_KEYS = {'repository', 'base_image', 'platforms', 'tag_policy', 'targets', 'image_probe'}
 TARGET_KEYS = {'tag', 'dockerfile', 'build_arg', 'base_image', 'tag_policy'}
 
 def catalog_document_from_text(text):
@@ -71,6 +71,37 @@ def catalog_from_readme(path):
     validate(catalog, path.parent)
     return catalog
 
+
+def validate_image_probe(name, profile):
+    """Structured version probe only: no shell fragments or dynamic evaluation."""
+    if not isinstance(profile, dict) or set(profile) != {'argv', 'extract'}:
+        raise ValueError(name + ': image_probe requires argv and extract')
+    argv = profile['argv']
+    if not isinstance(argv, list) or not 1 <= len(argv) <= 8:
+        raise ValueError(name + ': invalid image_probe argv')
+    if any(not isinstance(part, str) or not part or len(part) > 128 or
+           any(ord(ch) < 32 or ord(ch) == 127 for ch in part) for part in argv):
+        raise ValueError(name + ': unsafe image_probe argument')
+    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', argv[0]) or argv[0] in ('sh','bash','ash','dash','python','python3','env'):
+        raise ValueError(name + ': image_probe executable must be a direct CLI')
+    extract = profile['extract']
+    if not isinstance(extract, dict):
+        raise ValueError(name + ': invalid image_probe extract')
+    kind = extract.get('kind')
+    expected = ({'first_line': {'kind'}, 'first_field': {'kind','field'},
+                 'prefix_field': {'kind','match','field'}}).get(kind)
+    if expected is None or set(extract) != expected:
+        raise ValueError(name + ': invalid image_probe extraction schema')
+    if kind != 'first_line':
+        field = extract['field']
+        if type(field) is not int or not 1 <= field <= 20:
+            raise ValueError(name + ': invalid image_probe field')
+    if kind == 'prefix_field':
+        match = extract['match']
+        if not isinstance(match, str) or not match or len(match) > 100 or any(ord(ch) < 32 or ord(ch) == 127 for ch in match):
+            raise ValueError(name + ': invalid image_probe prefix')
+    return True
+
 def validate(c, root):
     if not isinstance(c, dict) or c.get('schema_version') != 1:
         raise ValueError('Unsupported catalog schema')
@@ -103,6 +134,8 @@ def validate(c, root):
             raise ValueError(name+': bad platform')
         if not isinstance(base,str) or not base or '\n' in base:
             raise ValueError(name+': invalid base')
+        if 'image_probe' in app:
+            validate_image_probe(name, app['image_probe'])
         if app.get('tag_policy','keep') not in POLICIES:
             raise ValueError(name+': invalid policy')
         ts=app.get('targets')
