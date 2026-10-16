@@ -342,7 +342,18 @@ def write_summary(readme,c):
 
 def check_summary(readme,c):
     text=readme.read_text(encoding='utf-8')
-    if text!=updated_summary(text,c):
+    expected=updated_summary(text,c)
+    if text!=expected:
+        from itertools import zip_longest
+        for number,(actual_line,expected_line) in enumerate(
+                zip_longest(text.splitlines(),expected.splitlines(),fillvalue=''),1):
+            if actual_line!=expected_line:
+                offset=next((i for i,(a,b) in enumerate(zip(actual_line,expected_line))
+                             if a!=b),min(len(actual_line),len(expected_line)))
+                left=actual_line[max(0,offset-60):offset+100]
+                right=expected_line[max(0,offset-60):offset+100]
+                raise ValueError('README app-summary is stale at line {} column {}: actual={!r} expected={!r}; run catalog.py summary --write'.format(
+                    number,offset+1,left,right))
         raise ValueError('README app-summary is stale; run catalog.py summary --write')
     return True
 def update(readme, c, app, field, value, *, scope='app', tag='latest'):
