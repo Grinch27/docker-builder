@@ -852,6 +852,14 @@ jobs:
             exit 1
           fi
 
+          registry_copy_image="quay.io/skopeo/stable:latest"
+          docker pull "${registry_copy_image}"
+          if ! docker run --rm --network host curlimages/curl:8.12.1 -fsS --connect-timeout 2 "${registry_local_probe}" >/dev/null; then
+            echo "::error::Local registry is not reachable at ${registry_local_probe} from helper container"
+            exit 1
+          fi
+          source_ref="docker://${registry_local}/${repo_dockerhub}:${tag_repo}"
+
           IFS=',' read -ra registries <<< "${registry_push}"
           for registry_remote in "${registries[@]}"; do
             for tag_each in "${tag_array[@]}"; do

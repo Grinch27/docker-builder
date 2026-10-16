@@ -1920,3 +1920,38 @@ jobs:
           test "$(find application -name build.sh | wc -l)" -eq 0
           test "$(find application -name tag_version.sh | wc -l)" -eq 0
           echo "Catalog and target environment: PASS"
+
+  catalog-build-smoke:
+    name: Buildx README catalog smoke (local registry only)
+    if: ${{ github.event_name == 'push' && startsWith(github.event.head_commit.message, 'ci: smoke catalog build') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@main
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@master
+        with:
+          driver-opts: network=host
+      - name: Build and test vlmcsd locally, never publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run -d --name catalog-test-registry --network host registry:2
+          for attempt in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:5000/v2/ >/dev/null; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:5000/v2/ >/dev/null
+          cd "${GITHUB_WORKSPACE}"
+          set -a
+          . <(python3 scripts/ci/catalog.py env --app vlmcsd --tag latest)
+          set +a
+          export registry_local=localhost:5000 version=catalog-smoke
+          cd application/vlmcsd/build
+          bash "${GITHUB_WORKSPACE}/scripts/ci/build-image.sh"
+          docker pull --platform linux/amd64 localhost:5000/grinch27/vlmcsd:latest
+          cid=$(docker run --detach --entrypoint /bin/sh localhost:5000/grinch27/vlmcsd:latest -c "sleep 120")
+          trap 'docker rm -f "${cid}" >/dev/null 2>&1 || true' EXIT
+          docker cp ../test/test.sh "${cid}:/tmp/test.sh"
+          docker exec "${cid}" /bin/sh /tmp/test.sh
+          echo "Local-registry Buildx and application test: PASS"
