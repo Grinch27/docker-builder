@@ -102,8 +102,12 @@ def render_readme(text: str, records: list[dict[str, str]], workflow_name: str) 
     json_block = chr(96)*3 + 'json\n' + dump_json(records).rstrip('\n') + '\n' + chr(96)*3
     document=catalog.validate_document(catalog.catalog_document_from_text(text))
     if document.get('schema_version')==2:
-        document['monitor']['records']=records
-        content=catalog.replace_catalog_document(text,document)
+        if document['monitor']['records']==records:
+            content=text
+        else:
+            # Canonicalize only the changed monitoring records. Config remains intact.
+            document['monitor']['records']=[dict(sorted(record.items())) for record in records]
+            content=catalog.replace_catalog_document(text,document)
     else:
         content=replace_or_append(text, START_JSON, END_JSON, json_block)
     return catalog.updated_summary(content, catalog.catalog_data_from_text(content))
