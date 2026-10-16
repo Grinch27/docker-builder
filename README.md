@@ -61,7 +61,7 @@ flowchart LR
     S --> V[README version snapshot]
 ```
 
-[Production workflow](.github/workflows/docker_allinone.yml) is the intended authoritative publishing entry point. [Read-only monitor](.github/workflows/monitor-images.yml) and [GPT non-publishing smoke](.github/workflows/docker_allinone_gpt.yml) are separate. Legacy entry points remain for compatibility, and their publishing permissions require separate review.
+[Production workflow](.github/workflows/docker_allinone.yml) is the authoritative scheduled build/publish entry and now also routes **explicit manual Dev** selections to [reusable Dev execution](.github/workflows/docker_allinone_dev.yml). [Independent monitor](.github/workflows/monitor-images.yml), [non-publishing GPT smoke](.github/workflows/docker_allinone_gpt.yml), and [unified layer/version diagnostics](.github/workflows/diagnostics.yml) remain separate. Experimental Dev promotion retains its existing implementation until a live publishing-parity test is authorized. / 生产定时执行不进入 Dev 路由；诊断不会推送镜像。
 
 ## Maintenance / 配置维护
 

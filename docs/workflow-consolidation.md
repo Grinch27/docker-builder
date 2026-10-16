@@ -121,3 +121,14 @@ Verified on `main` before retirement:
 - `38869062943`: Production All-in-One -> reusable Dev preflight, no monitor/build/publish in Dev route — success.
 
 With those tests successful, retire `baseimage_dev.yml`, `call-fetch_stable.yml`, and `call-fetch_dev.yml`. `callable-fetch-layers.yml` stays as an internal callee. Legacy `repository_dispatch` consumers of the deleted files were not discoverable in the repository; external clients must use `diagnostics.yml` manual dispatch. The old `baseimage_dev.yml` path-scoped pull-request trigger was not carried over automatically. `meta-app_dev.yml` remains until its all-platform probing behavior is reviewed; the canonical version probe currently uses a preferred platform. Legacy Docker/GHCR promotion remains separately implemented in Dev and must not be deleted until real publishing parity is tested.
+
+### Post-retirement live verification / 实际验收
+
+- Three superseded YAML entries removed on `main@ded3cba2`: `baseimage_dev.yml`, `call-fetch_stable.yml`, `call-fetch_dev.yml`. This reduces the workflow **entry count 16 -> 14** after adding `diagnostics.yml`.
+- Version: `diagnostics.yml` delegates to `callable-fetch-app-version.yml` (non-publishing `vlmcsd` run verified).
+- Layers: `diagnostics.yml` delegates to `callable-fetch-layers.yml`, and runs a per-architecture Skopeo compatibility matrix producing the former artifact structures; the new aggregator emits `diagnostics-layer-summary`.
+- Real runs: `38869143288` validated 5 images × 2 architectures; `38869288771` validated aggregation; `38869484554` passed 24 configuration tests, 5 table-lab tests, 2 aggregator tests and a 14-workflow dependency guard.
+- Production/Dev routing: `38869062943` invoked `docker_allinone.yml` as a reusable workflow in Dev preflight mode. Dev ran only read-only checks and all production publishing jobs were skipped.
+- **Not yet proven:** real Dev build/GHCR promotion, end-to-end production publication, legacy meta-app all-platform equivalent behavior. `docker_allinone_dev.yml` and `meta-app_dev.yml` must remain until these are validated.
+
+Removed workflow names must not be silently referenced by external automation. The replacement `diagnostics.yml` exposes a manual profile (`stable` five images / `base` three images), optional single-image override, and version probe inputs.
