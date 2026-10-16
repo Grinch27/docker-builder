@@ -99,7 +99,7 @@ class CatalogTests(unittest.TestCase):
             path = directory / "README.md"
             shutil.copyfile(ROOT / "README.md", path)
             old = path.read_text(encoding="utf-8")
-            marker = "<!-- app-version-table:start -->"
+            marker = "<!-- app-version-json:start -->"
             self.assertIn(marker, old)
             self.assertEqual(catalog.update(path, copy.deepcopy(self.config),
                                             "runner", "base_image", "debian:stable-slim"),
