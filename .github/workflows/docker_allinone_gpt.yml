@@ -1946,7 +1946,7 @@ jobs:
           set -a
           . <(python3 scripts/ci/catalog.py env --app vlmcsd --tag latest)
           set +a
-          export registry_local=localhost:5000 version=catalog-smoke
+          export tag_repo=latest registry_local=localhost:5000 version=catalog-smoke
           cd application/vlmcsd/build
           bash "${GITHUB_WORKSPACE}/scripts/ci/build-image.sh"
           docker pull --platform linux/amd64 localhost:5000/grinch27/vlmcsd:latest
