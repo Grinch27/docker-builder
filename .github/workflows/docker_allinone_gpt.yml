@@ -1923,7 +1923,7 @@ jobs:
 
   catalog-build-smoke:
     name: Buildx README catalog smoke (local registry only)
-    if: ${{ github.event_name == 'push' && startsWith(github.event.head_commit.message, 'ci: smoke catalog build') }}
+    if: "${{ github.event_name == 'push' && startsWith(github.event.head_commit.message, 'ci: smoke catalog build') }}"
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
