@@ -684,22 +684,31 @@ jobs:
         env:
           category_image: "repository"
           category_app: "platforms"
-          platform_prefer: "amd64"
+          platform_prefer: "linux/amd64"
         run: |
-          metadata_app=$(cat ${{ env.metadata_app_path }})
+          set -euo pipefail
+          metadata_app=$(cat "${{ env.metadata_app_path }}")
 
-          # ----- Check if versions are consistent -----
-          if [ "$(jq -r ".${category_app}[] | select(.version != null) | .version" <<< "${metadata_app}" | sort -u | wc -l)" -ne 1 ]; then
-            version=$(jq -r ".${category_app}[] | select(.platform == \"${platform_prefer}\") | .version" <<< "${metadata_app}")
-            consistent=false
-            echo "Versions are not consistent across ${arch_branch}, using ${platform_prefer} version: ${version}"
-          else
-            version=$(jq -r ".${category_app}[].version" <<< "${metadata_app}" | sort -u)
+          # OCI names must match exactly; never derive a publish tag from a blank version.
+          versions=$(jq -r --arg category "${category_app}" \
+            '.[$category][] | select(.version != null and .version != "") | .version' \
+            <<< "${metadata_app}" | sort -u)
+          version_count=$(printf '%s\n' "${versions}" | sed '/^$/d' | wc -l)
+          if [ "${version_count}" -eq 1 ]; then
+            version="${versions}"
             consistent=true
-            echo "Versions are consistent across ${arch_branch}, using unified version: ${version}"
+          else
+            version=$(jq -r --arg category "${category_app}" --arg platform "${platform_prefer}" \
+              '.[$category][] | select(.platform == $platform) | .version // empty' <<< "${metadata_app}")
+            consistent=false
           fi
-          echo "version=${version}" | tee -a ${GITHUB_OUTPUT}
-          echo "consistent=${consistent}" | tee -a ${GITHUB_OUTPUT}
+          if [[ -z "${version}" || "${version}" == "null" || "${version}" == *$'\n'* ]]; then
+            echo "::error::No valid version detected for ${app_branch}:${tag_repo}" >&2
+            exit 1
+          fi
+          echo "Version ${version}; consistent=${consistent}; preferred platform=${platform_prefer}"
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "consistent=${consistent}" >> "${GITHUB_OUTPUT}"
 
           # ----- Check changed -----
           if [ "${{ steps.check-layer.outputs.changed || 'true' }}" != 'true' ] && \
@@ -800,6 +809,18 @@ jobs:
           version=$(jq -r '.version' "${result_file}")
           consistent=$(jq -r '.consistent' "${result_file}")
           check_status=$(jq -r '.check_status' "${result_file}")
+
+          if ! jq -e --arg app "${app_branch}" --arg tag "${tag_repo}" '
+            .app_branch == $app and .tag_repo == $tag
+            and (.changed == "true" or .changed == "false")
+            and (.consistent == "true" or .consistent == "false")
+            and .check_status == "success"
+            and (.version | type == "string" and length > 0 and . != "null"
+                 and (contains("\n") | not))
+          ' "${result_file}" >/dev/null; then
+            echo "::error::Invalid or wrong-target check result for ${app_branch}:${tag_repo}" >&2
+            exit 1
+          fi
 
           {
             echo "changed=${changed}"
