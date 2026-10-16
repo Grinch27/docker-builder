@@ -44,3 +44,61 @@ In particular, `monitor-images.yml` still calls `callable-fetch-app-version.yml`
 - Production failure gates (check status, test outcome, registry push) and cross-registry parity still require follow-up; they were **not** modified by this commit.
 
 Rollback: revert the consolidation commit on `main` to restore the removed YAML entry points and former automatic triggers. Avoid force-pushing branch history.
+
+## Stage 2 — main workflow inventory and retirement gates (2026-10-16)
+
+Baseline: `main@c882d6921ae830bed3cebbb9f6a5aab437210548`. This stage is a read-only YAML audit recorded here, not authorization to delete protected workflows or alter production publication.
+
+- **16** workflow YAML files, **8632** source lines (approximately **334.3 KiB**).
+- The three largest: `docker_allinone_gpt.yml` (2,042 lines), `docker_allinone_dev.yml` (1,446), and `docker_allinone.yml` (1,331). They account for **55.8%** of all workflow lines; reducing count alone will not remove most duplicated logic.
+- README JSON schema v2 remains the single source for 24 applications and 30 targets. Neither Markdown-only lab nor generated application summary is a production configuration source.
+
+### Verified internal reusable-workflow edges
+
+```text
+docker_allinone.yml --------+
+                            +--> callable-fetch-app-version.yml
+monitor-images.yml ---------+
+
+call-build_dev.yml ------------> build-docker_indocker.yml
+image-pipeline.yml ------------> build-docker.yml (dry-run and publish branches)
+call-fetch_dev.yml ------------> callable-fetch-layers.yml
+```
+
+Do not remove a callee while one of these caller edges remains. External `repository_dispatch`, manual automation, and downstream reusable-workflow consumers are not established by an internal source audit.
+
+### Workflows to preserve during incremental migration
+
+| Class | Workflows | Reason |
+|---|---|---|
+| Production | `docker_allinone.yml` | Only intended authoritative build/publish entry; keep its existing triggers and tags |
+| Independent monitor | `monitor-images.yml` | Separate successful monitoring path; its daily schedule overlaps production at 01:00 UTC but must not be retired before tested parity |
+| Test and research | `docker_allinone_gpt.yml`, `docker_allinone_dev.yml` | Retain guarded smoke/comparison and promotion research, particularly non-publishing checks |
+| Compatibility matrix | `call-build_dev.yml` | Current caller of containerized builder; explicitly protected migration anchor |
+| Standalone utilities | `pull_artifact-dev.yml`, `download_artifact.yml` | Independent user workflows; not building-block deletion candidates |
+
+### Nine other workflows and first-pass disposition
+
+| Workflow | Internal caller | Disposition before approval for retirement |
+|---|---|---|
+| `callable-fetch-app-version.yml` | Production and independent monitor | **Keep**; shared metadata probe |
+| `build-docker_indocker.yml` | `call-build_dev.yml` | **Keep** until container-build compatibility migration and smoke validation |
+| `build-docker.yml` | `image-pipeline.yml` | **Keep** until dry-run/publish behavior is absorbed and tested |
+| `callable-fetch-layers.yml` | `call-fetch_dev.yml` | **Keep**; shared OCI layer collector |
+| `call-fetch_dev.yml` | No internal caller (manual entry) | Candidate for merger with other layer diagnostics after artifact schema comparison |
+| `call-fetch_stable.yml` | No internal caller (manual entry) | Candidate for layer-diagnostics consolidation; verify its multi-arch output contract first |
+| `baseimage_dev.yml` | No internal caller (manual and events) | Candidate for consolidated base-image inspection; verify runtime/matrix/outputs first |
+| `meta-app_dev.yml` | No internal caller (manual entry) | Candidate to thin into a wrapper around the existing metadata probe, keeping troubleshooting semantics |
+| `image-pipeline.yml` | No internal caller (manual entry) | Candidate to absorb into `docker_allinone_dev.yml` before retiring its dependent `build-docker.yml` |
+
+### Implementation order and acceptance criteria
+
+1. **No-publication parity:** compare outputs of layer inspectors and metadata probes on fixed immutable image digests; record platform, output JSON, Artifact names, and exit status. Do not delete originals first.
+2. **Thin diagnostic entry points:** consolidate `baseimage_dev.yml`, `call-fetch_stable.yml`, and `meta-app_dev.yml` only when equivalent on-demand functionality has a verified replacement. Retain `call-fetch_dev.yml` and `callable-fetch-layers.yml` until that comparison is complete.
+3. **Experimental build migration:** bring the useful `image-pipeline.yml` dry-run/matrix behavior into `docker_allinone_dev.yml`; ensure publishing remains off by default. Only then consider removing `image-pipeline.yml` and `build-docker.yml`.
+4. **Containerized compatibility:** preserve `call-build_dev.yml` until `build-docker_indocker.yml` behavior has been validated or intentionally superseded; do not silently abandon `workflow_call` clients.
+5. **Production and monitoring:** after full check → build → test → publish validation, evaluate sharing version probe code and daily monitoring runs. Keep the two existing schedules until explicit validation and approval to merge.
+6. **Cleanup gate:** run GitHub Actions YAML validation, scan every internal `uses: ./.github/workflows/...` reference, compare current 24-app/30-target matrix, and inspect non-publishing Actions results before an individual workflow is retired. No forced pushes or registry tag changes.
+
+Stage-2 inventory itself changes **documentation only**; zero workflows removed or modified at this audit checkpoint.
+
