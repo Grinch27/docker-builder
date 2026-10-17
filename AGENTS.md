@@ -39,9 +39,29 @@
 
 本轮修正：Container 元数据恢复脚本改用实际克隆目录 `PATH_self`；平台检查分别核对 OS、架构、可选 Variant；验收 Artifact 名含 run attempt，避免重跑冲突。百度网盘改用同版本、同架构的百度官方直连 CDN，并从 GitHub 发布页跳转解析 noVNC/websockify 归档，避免匿名 API 未返回下载字段。未改平台、镜像标签及正式工作流。
 
-已发现的应用阻断：ExpressVPN 四架构的旧下载页均未提供所需 `.deb` 链接；[官方当前说明](https://www.expressvpn.com/support/vpn-setup/app-for-linux-cli/)使用 `expressvpnctl` 且仅列 64 位系统，迁移涉及现有 CLI / 32 位兼容决策。TT-RSS 两架构缺少 Dockerfile 的 `COPY` 输入（入口脚本及 `src/` 资源）。stable-diffusion-webui-amdgpu 在 Python 3.12 下构建锁定的 scikit-image 0.21.0 时发生 Pythran/C++ 错误。不得删除这些失败项或换用旧包冒充全量通过。
+### 阶段验收标准与应用待办
 
-FFmpeg 首轮失败为 Meson native file 使用双引号；现改为单引号，本地 Meson 1.12.1 实际解析器已确认旧文件拒绝、新文件接受。SD.Next 首轮为 Runner 根盘耗尽，连 Worker 日志也无法写入；其 Job 日志下载因此不可用，根因来自 GitHub Check Run annotation。修复为仅在一次性 GitHub-hosted Runner 的大型镜像 Job 中移除不用的 SDK 和 Docker 缓存，不清理自托管主机；实际效果需定向构建验收。
+用户于 2026-10-17 调整标准：**约八成应用能成功构建即可，不再为个别应用持续追加修复；失败应用记录后留待以后处理。** 本阶段按此标准收尾，保留真实失败状态和现有测试门禁，不要求 52/52 全绿，也不通过删除矩阵项、忽略退出码或弱化 Test 提高成功率。
+
+截至本次记录，完整运行 `faefe3f` 加百度网盘定向重测 `5a7ef20` 的已完成证据如下。应用通过要求该应用全部配置目标及平台均通过；Target 通过要求其全部配置平台均通过。
+
+| 统计口径 | 首轮完整运行 | 加入百度网盘重测后的累计证据 |
+|---|---|---|
+| 应用 | 18/24（75.0%） | 19/24（79.2%，约八成） |
+| Target | 24/30（80.0%） | 25/30（83.3%） |
+| Target/平台组合 | 41/52（78.8%） | 43/52（82.7%） |
+
+累计列跨不同 SHA，**不代表同一提交的全量通过，也不代表应用成功率严格超过 80%**。下面 5 个应用、9 个组合保留为后续待办，不阻塞本阶段工作流整合验收。百度网盘两架构已重测通过，不再列入失败待办。
+
+| 待处理应用（均为 latest） | 首轮失败平台 | 已知原因与后续处理 |
+|---|---|---|
+| expressvpn | amd64、arm64、386、arm/v7 | 旧下载页未提供所需 `.deb` 链接，下载地址为空。后续核对官方包来源、CLI 迁移与 32 位兼容方案；本轮暂缓。 |
+| ffmpeg | amd64 | Meson native file 使用双引号。`62dbd5a` 已改为单引号，本地 Meson 解析验证通过；[39033385954](https://github.com/Grinch27/docker-builder/actions/runs/39033385954) 重测仍在运行，尚未计为通过。 |
+| sdnext | amd64 | Runner 根盘耗尽，Worker 日志也无法写入，根因已从 Check Run annotation 确认。`62dbd5a` 已给大型镜像 Job 增加仅限一次性 GitHub-hosted Runner 的空间清理；[39033385954](https://github.com/Grinch27/docker-builder/actions/runs/39033385954) 重测仍在运行，效果待确认。 |
+| stable-diffusion-webui-amdgpu | amd64 | Python 3.12 构建 scikit-image 0.21.0 时 Pythran/C++ 标准不兼容。`3893ab4` 已对该源码构建设置 C++17 并增加实际导入检查；[39033539487](https://github.com/Grinch27/docker-builder/actions/runs/39033539487) 重测仍在运行，尚未计为通过。 |
+| ttrss | amd64、arm64 | 缺少 Dockerfile 的 COPY 输入：`docker-entrypoint.sh`、`src/wait-for.sh`、`src/ttrss.nginx.conf`、`src/initialize.php`、`src/s6`。后续恢复并审查匹配版本的构建资源；本轮暂缓。 |
+
+已启动的三项重测保留运行；本轮不再因这些应用追加修复或新一轮构建。后续处理时先读取对应 Run 的最终结论及日志，再更新本表，不把已提交修复等同于构建成功。状态是本次记录时的快照，不是自动更新的实时结果。
 
 本地回归为 95 项测试通过，含实际平台门禁、Meson 文件生成及定向多目标筛选；最新已完成 CI 基线 `5a7ef20` 为 94 项通过。actionlint 仅精确忽略前述 queue / false 两类提示，shellcheck / pyflakes 未执行。Dev/Container 实测仅证明代表性 vlmcsd 目标，未验证所有应用、真实 Registry/Release 晋升、VPN 联网、GUI 或 GPU 运行。跨 SHA 的定向通过不得汇总成同一 SHA 的 52/52。
 
@@ -122,7 +142,7 @@ README 改写需比较全部 JSON 配置、监控记录、应用行和 Meta-app 
 
 正式 Dev 仅 `execution_route=dev` + `dev_mode=preflight` 是已验收的非发布预检；`auto` / `build` / `promote-*` 可能创建 Release 或推送 Docker Hub/GHCR，不能当作 dry run。检查、构建、镜像内测试、发布是不同验收等级；报告必须给出 Commit、Run、实际范围、跳过项及限制。
 
-待办顺序：补齐合并候选的全量 52 组合与未选路由验证；单独完成发布及 Dev/Container 等价验收；核对外部调用方、触发器、权限和回滚方案；再切换正式入口、移除已迁移旧文件，并同步两个图检查器。当前生产与独立监控的重复定时触发仍存在。
+待办顺序：按约八成标准收尾非发布阶段，保留上表应用失败待办，优先推进工作流精简与可维护性；核对未选路由、外部调用方、触发器、权限和回滚方案；正式发布、Dev 晋升及旧入口退役仍须在相应授权后推进，再同步两个图检查器。Dev/Container 的代表性非发布验收已通过，不重复列为未完成；全量应用修复留待后续，不再要求先达到 52/52。当前生产与独立监控的重复定时触发仍存在。
 
 已知事项：`novnc` 与 `novnc_alpine` 共享 `grinch27/novnc:latest`，不可静默改标签。历史应用构建失败需重新读取对应 SHA 的最新日志，不沿用旧成功/失败数字。保留 `application/.example/build/` 两份模板及 `application/ffmpeg/build/docker-ffmpeg.dockerfile` 上游参考。
 
