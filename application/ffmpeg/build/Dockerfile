@@ -223,9 +223,10 @@ RUN \
 RUN \
   echo "**** grabbing fontconfig ****" && \
   mkdir -p /tmp/fontconfig && \
-  curl -Lf \
-    https://www.freedesktop.org/software/fontconfig/release/fontconfig-${FONTCONFIG}.tar.gz | \
-    tar -zx --strip-components=1 -C /tmp/fontconfig
+  curl -fL --retry 3 --retry-delay 2 \
+    --output /tmp/fontconfig.tar.xz \
+    https://deb.debian.org/debian/pool/main/f/fontconfig/fontconfig_${FONTCONFIG}.orig.tar.xz && \
+  tar -xJf /tmp/fontconfig.tar.xz --strip-components=1 -C /tmp/fontconfig
 RUN \
   echo "**** compiling fontconfig ****" && \
   cd /tmp/fontconfig && \
