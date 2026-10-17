@@ -25,6 +25,7 @@ RUN set -x \
         gnupg \
         gperf \
         libelf-dev \
+        libicu-dev \
         lz4 \
         libssl-dev \
         libxml2-utils \
