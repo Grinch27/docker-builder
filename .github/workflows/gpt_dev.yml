@@ -14,6 +14,8 @@ run-name: GPT Dev - ${{ github.event_name }} - ${{ inputs.execution_route || 've
     - scripts/ci/gpt_workflow_graph.py
     - scripts/ci/test_workflow_plan.py
     - scripts/ci/test_workflow_contracts.py
+    - scripts/ci/verify_image_archive.py
+    - scripts/ci/test_verify_image_archive.py
   workflow_dispatch:
     inputs:
       execution_route:
@@ -430,8 +432,8 @@ jobs:
     env:
       app_branch: ${{ matrix.app_branch }}
       tag_repo: ${{ matrix.tag_repo || 'latest' }}
-      force_push: ${{ matrix.force_push || needs.plan.outputs.force_build || 'false' }}
-      publish: 'true'
+      force_push: ${{ (matrix.force_push == 'true' || needs.plan.outputs.force_build == 'true') && 'true' || 'false' }}
+      publish: 'false'
       registry_push: docker.io
       dir_app: application/${{ matrix.app_branch }}
       compress: 'true'
@@ -440,6 +442,16 @@ jobs:
       metadata_image_path: ${{ github.workspace }}/application/${{ matrix.app_branch }}/metadata_image.json
       metadata_app_path: ${{ github.workspace }}/application/${{ matrix.app_branch }}/metadata_app.json
     steps:
+    - name: Assert force-build propagation
+      env:
+        PLAN_FORCE: ${{ needs.plan.outputs.force_build }}
+      run: |
+        set -euo pipefail
+        if [[ "$PLAN_FORCE" == true && "$force_push" != true ]]; then
+          echo "::error::Forced build selection was lost before check"
+          exit 1
+        fi
+        printf 'Force propagation: plan=%s check=%s\n' "$PLAN_FORCE" "$force_push"
     - name: Checkout ${{ github.repository }}
       uses: actions/checkout@main
     - name: Initialize environment
@@ -814,7 +826,7 @@ jobs:
     env:
       app_branch: ${{ matrix.app_branch }}
       tag_repo: ${{ matrix.tag_repo || 'latest' }}
-      force_push: ${{ matrix.force_push || needs.plan.outputs.force_build || 'false' }}
+      force_push: ${{ (matrix.force_push == 'true' || needs.plan.outputs.force_build == 'true') && 'true' || 'false' }}
       publish: 'false'
       registry_push: docker.io
       dir_app: application/${{ matrix.app_branch }}
@@ -867,6 +879,17 @@ jobs:
           echo "::error::Version check failed for ${app_branch}:${tag_repo}"
           exit 1
         fi
+    - name: Assert forced target enters build
+      env:
+        PLAN_FORCE: ${{ needs.plan.outputs.force_build }}
+        CHECK_CHANGED: ${{ steps.check-result.outputs.changed }}
+      run: |
+        set -euo pipefail
+        if [[ "$PLAN_FORCE" == true && "$CHECK_CHANGED" != true ]]; then
+          echo "::error::Forced target was incorrectly marked unchanged"
+          exit 1
+        fi
+        printf 'Build gate: forced=%s changed=%s publish=%s\n' "$PLAN_FORCE" "$CHECK_CHANGED" "$publish"
     - name: Checkout ${{ github.repository }}
       uses: actions/checkout@main
     - name: Initialize environment
@@ -1135,7 +1158,8 @@ jobs:
 
           docker pull --platform ${platform} ${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}
           docker tag ${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }} ${{ env.repo_dockerhub }}:${{ env.tag_repo }}
-          docker save --output ${{ env.dir_output }}/${target_file} ${{ env.repo_dockerhub }}:${{ env.tag_repo }}
+          docker image save --platform "$platform" --output "${{ env.dir_output }}/${target_file}" "${{ env.repo_dockerhub }}:${{ env.tag_repo }}"
+          python3 "$GITHUB_WORKSPACE/scripts/ci/verify_image_archive.py" "${{ env.dir_output }}/${target_file}" "$platform"
 
           echo "Exported ${platform} image to ${target_file}"
         done
@@ -4195,7 +4219,8 @@ jobs:
 
           docker pull --platform "${platform}" "${registry_local}/${repo_dockerhub}:${tag_repo}"
           docker tag "${registry_local}/${repo_dockerhub}:${tag_repo}" "${repo_dockerhub}:${tag_repo}"
-          docker save --output "${PATH_output}/${target_file}" "${repo_dockerhub}:${tag_repo}"
+          docker image save --platform "$platform" --output "${PATH_output}/${target_file}" "${repo_dockerhub}:${tag_repo}"
+          python3 "${PATH_self}/scripts/ci/verify_image_archive.py" "${PATH_output}/${target_file}" "$platform"
 
           echo "Exported ${platform} image to ${target_file}"
         done
