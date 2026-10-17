@@ -409,8 +409,8 @@ class CatalogTests(unittest.TestCase):
         source=(ROOT/'application'/'ffmpeg'/'build'/'Dockerfile').read_text(encoding='utf-8')
         self.assertNotIn('automake --print-ac-dir',source)
         self.assertEqual(source.count('dpkg -L automake'),4)
-        self.assertEqual(source.count('config.guess'),2)
-        self.assertEqual(source.count('config.sub'),2)
+        self.assertEqual(source.count('config.guess'),4)
+        self.assertEqual(source.count('config.sub'),4)
 
     def test_shared_buildx_registry_and_load_contracts(self):
         builder=ROOT/'scripts/ci/build-image.sh'
