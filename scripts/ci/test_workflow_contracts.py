@@ -77,6 +77,9 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertNotEqual(self.check_result(None).returncode, 0)
 
     def test_container_testing_is_strict(self):
+        metadata = script_for("container-build", "(MetaData) ${{ env.app_branch }} in Container")
+        self.assertIn('${PATH_self}/scripts/ci/materialize_test_hooks.py', metadata)
+        self.assertNotIn('GITHUB_WORKSPACE', graph.job_blocks(TEXT)['container-build'])
         script = script_for("container-build", "(Test) Docker image")
         self.assertNotIn("set +e", script)
         self.assertTrue(script.startswith("set -euo pipefail\n"))
@@ -102,6 +105,33 @@ class WorkflowContractTests(unittest.TestCase):
                                     capture_output=True, text=True)
             self.assertNotEqual(result.returncode, 0)
             self.assertFalse((root / "output").exists(), "Failed test emitted success")
+
+    def test_real_image_platform_gate_handles_variants_and_mismatches(self):
+        source = script_for("test-images", "Build image, execute README Test, and inspect result")
+        gate = source.split('phase=platform\n', 1)[1].split('python3 scripts/ci/materialize', 1)[0]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            bin_dir = root / 'bin'
+            bin_dir.mkdir()
+            docker = bin_dir / 'docker'
+            docker.write_text('#!/bin/sh\ncat "$FIXTURE"\n', encoding='utf-8')
+            docker.chmod(0o755)
+            fixture = root / 'fixture.json'
+            cases = [('linux/amd64', 'linux', 'amd64', '', True),
+                     ('linux/arm64', 'linux', 'arm64', 'v8', True),
+                     ('linux/386', 'linux', '386', '', True),
+                     ('linux/arm/v7', 'linux', 'arm', 'v7', True),
+                     ('linux/arm/v7', 'linux', 'arm', 'v6', False),
+                     ('linux/arm64', 'linux', 'amd64', '', False),
+                     ('linux/amd64', 'windows', 'amd64', '', False)]
+            for platform, os_name, arch, variant, accepted in cases:
+                with self.subTest(platform=platform, actual=(os_name, arch, variant)):
+                    fixture.write_text(json.dumps([dict(Os=os_name, Architecture=arch, Variant=variant)]))
+                    env = dict(os.environ, PATH=str(bin_dir) + ':' + os.environ['PATH'],
+                               FIXTURE=str(fixture), TARGET_PLATFORM=platform, evidence=directory, image_ref='test')
+                    result = subprocess.run(['bash', '-e', '-u', '-o', 'pipefail'], input=gate,
+                                            env=env, capture_output=True, text=True)
+                    self.assertEqual(result.returncode == 0, accepted, result.stderr)
 
     def test_staging_publication_is_hard_disabled(self):
         jobs = graph.job_blocks(TEXT)

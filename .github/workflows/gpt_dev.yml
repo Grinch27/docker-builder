@@ -3,7 +3,7 @@
 # Optimization: share catalog routing and runner selection; test representative architectures and artifacts.
 # Risks/verification: full/Dev/Container acceptance is local-only; publication and README pushes stay hard-disabled.
 name: GPT Dev - Unified Jobs (Nonpublishing)
-run-name: GPT Dev - ${{ github.event_name }} - ${{ inputs.execution_route || 'verification' }}
+run-name: GPT Dev - ${{ github.event_name }} - ${{ inputs.execution_route || github.event.head_commit.message || 'verification' }}
 'on':
   push:
     branches:
@@ -2599,7 +2599,7 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: dev-acceptance-${{ matrix.target_id }}
+        name: dev-acceptance-${{ matrix.target_id }}-a${{ github.run_attempt }}
         path: ${{ runner.temp }}/docker-pipeline/${{ matrix.target_id }}
         if-no-files-found: error
         retention-days: 5
@@ -3037,7 +3037,10 @@ jobs:
         ) 2>&1 | tee "$evidence/build.log"
         phase=platform
         docker image inspect "$image_ref" > "$evidence/image.json"
-        jq -e --arg arch "${TARGET_PLATFORM#linux/}" '.[0].Os == "linux" and .[0].Architecture == $arch' "$evidence/image.json"
+        IFS=/ read -r expected_os expected_arch expected_variant <<< "$TARGET_PLATFORM"
+        jq -e --arg os "$expected_os" --arg arch "$expected_arch" --arg variant "$expected_variant" \
+          '.[0].Os == $os and .[0].Architecture == $arch and ($variant == "" or .[0].Variant == $variant)' \
+          "$evidence/image.json"
         python3 scripts/ci/materialize_test_hooks.py --app "$APP"
         phase=test
         cid="$(docker run --detach --platform "$TARGET_PLATFORM" --entrypoint /bin/sh "$image_ref" -c 'sleep 600')"
@@ -3058,7 +3061,7 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: full-test-${{ matrix.app }}-${{ matrix.tag }}-${{ strategy.job-index }}
+        name: full-test-${{ matrix.app }}-${{ matrix.tag }}-${{ strategy.job-index }}-a${{ github.run_attempt }}
         path: ${{ runner.temp }}/full-test
         if-no-files-found: error
         retention-days: 5
@@ -3881,7 +3884,7 @@ jobs:
           log_container=$(mktemp)
           docker exec -u 0 "${container_name}" mkdir -p "${dir_container}"
 
-          python3 "${GITHUB_WORKSPACE}/scripts/ci/materialize_test_hooks.py" --app "$(basename "$PWD")" --kind meta
+          python3 "${PATH_self}/scripts/ci/materialize_test_hooks.py" --app "${app_branch}" --kind meta
           dir_step="meta-app"
           if [[ -d "${dir_step}" ]]; then
             shopt -s nullglob
@@ -4406,7 +4409,7 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: container-acceptance-${{ matrix.app_branch }}-${{ matrix.tag_repo }}
+        name: container-acceptance-${{ matrix.app_branch }}-${{ matrix.tag_repo }}-a${{ github.run_attempt }}
         path: |
           /builder/output
           /builder/metadata
