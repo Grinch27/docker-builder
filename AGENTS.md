@@ -257,3 +257,16 @@ P4 退休通用生产规划器和 fenced README 兼容读取。`workflow_plan.pl
 - 相对 `0f1ce52` 的 115 项单元测试，退休 codec/probe 各 5 项专属测试，新增 6 项对实际 README Shell、依赖图、单快照和非发布约束的验证，最终 111 项。现行路由仍全部接受相同的目标筛选及错误边界；注册表固定 Smoke 的退役作为并行基线变更保留。
 - [39079099089](https://github.com/Grinch27/docker-builder/actions/runs/39079099089) 对 `9b28b16` 执行代表性 verification；启动时尚未完成，不计为通过。该路线包含 8 个 Build/Test 组合、vlmcsd 本地 Registry 构建/测试/归档及诊断，Dev/Container 使用独立定向验收。
 - 本地 actionlint、Shell 语法、目录与引用检查通过；继续精确忽略 queue、常量 false 和独立手动工具原有的两个未使用 anchor 提示。未运行 shellcheck/pyflakes，不增加依赖或宣称 CI 时间提升。
+
+### 旧接口迁移
+
+| 退休入口 | 当前入口与边界 |
+|---|---|
+| prepare_image_pipeline.py | 由现行 workflow_plan.plan() 按 README 配置生成矩阵；不接受任意新 Target |
+| gpt_workflow_graph.py / test-workflow-graph.py | 运行 tests/ci 中的完整 unittest 门禁；图检查已归入 test_workflow_contracts.py |
+| table_catalog_lab.py | 使用 catalog.py 的 set / summary；不再维护实验表格编码格式 |
+| probe-image.sh | 使用 README Test，经 materialize_test_hooks.py 恢复；DNS 版本保持首行解析语义 |
+| staging_plan() / --workflow-name | Python 调用使用 plan()；删除失效 CLI 参数，不提供兼容回退 |
+| app-config / app-version-json fenced 存储 | 先迁移为现行 Applications 表格的 JSON 列；旧标记会直接失败 |
+
+测试移动后的脚本路径必须从仓库根目录定位 scripts/ci，不能再假定测试和业务脚本同目录。普通 Push 仍只运行轻量校验；代表性 verification、Dev 和 Container 构建需显式标记。当前仅验证本地 Registry，不恢复 Docker Hub/GHCR/Release 发布；不要用已退休的 registry-smoke Route 调用代替现行 build Route。
