@@ -108,8 +108,7 @@ python3 scripts/ci/materialize_test_hooks.py --app APP --kind test
 | `scripts/ci/build-image.sh` | 共用 Buildx 命令，生产默认 `registry`，Dev/GPT 使用 `load` |
 | `scripts/ci/workflow_plan.py` | 路由和矩阵选择；候选必须经过 `staging_plan` 的非发布限制 |
 | `scripts/ci/monitor_state.py` | 监控状态、变更矩阵及稳定 README 展示 |
-| `scripts/ci/gpt_workflow_graph.py` | 候选普通 Jobs 的依赖、循环、嵌套调用检查 |
-| `scripts/ci/test-workflow-graph.py` | 严格保护 gpt_dev.yml 与 download_artifact.yml 两文件布局及调用引用 |
+| `scripts/ci/test_workflow_contracts.py` | 在单元测试中统一检查两工作流布局、依赖图、调用引用和非发布门禁 |
 | `scripts/ci/verify_image_archive.py` | 不解压、不执行归档；验证唯一 manifest、平台配置和层文件 |
 | `scripts/ci/compare_image_snapshot.py` | Dev/smoke 共用的纯 JSON 比较器；保留 UNKNOWN、缺失/不可观察及版本/配置差异语义，不访问 Registry、不执行发布 |
 
@@ -129,8 +128,6 @@ python3 scripts/ci/catalog.py summary --check
 python3 scripts/ci/catalog.py matrix --kind version
 python3 scripts/ci/catalog.py matrix --kind build
 python3 -m unittest discover -s scripts/ci -p 'test_*.py' -v
-python3 scripts/ci/test-workflow-graph.py
-python3 scripts/ci/gpt_workflow_graph.py
 ```
 
 配置变更优先使用 `catalog.py set`；手改对应 JSON.config 后运行 `python3 scripts/ci/catalog.py summary --write`，然后重新检查。示例：
@@ -239,3 +236,7 @@ Catalog 严格解析与全部执行路径已更新，普通 Push 仍只轻量校
 ## 历史资料
 
 先前五份研究/迁移文档、历史 Run、已删除文件及其恢复链接统一保存在 [精简前 AGENTS 固定快照](https://github.com/Grinch27/docker-builder/blob/95bb3fac6a42409192c15f942d5212c5369943f1/AGENTS.md)。通过该提交读取或恢复原文；不再在现行规范中重复过时阶段描述。历史记录仅用于追溯，不构成当前发布或删除授权。回退用普通 revert，不强推分支历史。
+
+## CI 精简 P1–P4（2026-10-18）
+
+用户已明确批准 P1–P4 的实现、清理、提交及非发布验证；冻结应用不追加修复。基线为 `cfe8dfc`，已包含核验后的 Action 默认分支引用。P1 退休旧 image-pipeline 入口和表格实验编解码器，将两份依赖图检查合并进契约测试，移除未使用的 workflow-name 参数。旧入口仅从当前树退休，Git 历史保留；不再提供旧 CLI 兼容。后续阶段的最终结果与验收证据在本节更新。

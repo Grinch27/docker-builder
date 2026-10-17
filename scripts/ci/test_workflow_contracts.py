@@ -2,10 +2,9 @@
 # Requirements: fail closed on failed check evidence and prohibit publication during acceptance.
 # Unknowns/research: GitHub-hosted execution and registry publication remain unverified locally.
 # Risks/verification: execute real check-result shell with fixtures; parse anchored Bash and reject missing validation.
-# Optimization: use standard-library extraction; actionlint validates the full YAML separately.
+# Optimization: one standard-library graph/contract gate; actionlint validates YAML separately.
 """Verify failure boundaries and executable shell in the single core workflow."""
 
-import importlib.util
 import json
 import os
 from pathlib import Path
@@ -18,13 +17,68 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 TEXT = (ROOT / ".github/workflows/gpt_dev.yml").read_text(encoding="utf-8")
-spec = importlib.util.spec_from_file_location("workflow_graph", ROOT / "scripts/ci/gpt_workflow_graph.py")
-graph = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(graph)
+def job_blocks(text):
+    body = text.split("\njobs:\n", 1)[1]
+    matches = list(re.finditer(r"^  ([a-zA-Z0-9_-]+):\s*$", body, re.MULTILINE))
+    return {m[1]: body[m.end():matches[i + 1].start() if i + 1 < len(matches) else len(body)]
+            for i, m in enumerate(matches)}
+
+
+def dependencies(block):
+    single = re.search(r"^    needs: ([a-zA-Z0-9_-]+)$", block, re.MULTILINE)
+    if single:
+        return {single[1]}
+    multiple = re.search(r"^    needs:\n((?:    - [a-zA-Z0-9_-]+\n)+)", block, re.MULTILINE)
+    return set(re.findall(r"    - ([a-zA-Z0-9_-]+)", multiple[1])) if multiple else set()
+
+
+def validate_workflow(root):
+    flow = root / ".github/workflows"
+    files = {p.name for p in flow.glob("*.y*ml")}
+    expected = {"gpt_dev.yml", "download_artifact.yml"}
+    assert files == expected, f"Expected exactly two workflows, got {sorted(files)}"
+    for path in flow.glob("*.y*ml"):
+        for ref in re.findall(r"uses:\s+\./\.github/workflows/([a-zA-Z0-9_.-]+\.yml)", path.read_text(encoding="utf-8")):
+            assert ref in expected, f"Dangling reusable workflow reference: {path.name} -> {ref}"
+    assert "  pull-image:" in (flow / "download_artifact.yml").read_text(encoding="utf-8"), "Manual Docker pull route missing"
+    text = (flow / "gpt_dev.yml").read_text(encoding="utf-8")
+    blocks = job_blocks(text)
+    required = {"runner-image", "plan", "fetch-versions", "monitor", "check", "build",
+                "dev-inspect", "dev-build", "smoke", "test-images",
+                "diagnostic-layers", "diagnostic-platforms", "diagnostic-collect",
+                "diagnostic-meta-platforms", "diagnostic-validate", "container-build"}
+    assert required <= blocks.keys(), "Core capability Job missing"
+    planning = blocks["plan"]
+    gate = planning.find("python3 -m unittest discover")
+    command = planning.find("python3 scripts/ci/workflow_plan.py")
+    assert 0 <= gate < command, "Validation must run before planning"
+    assert "continue-on-error:" not in planning, "Planning validation must fail closed"
+    edges = {key: dependencies(block) for key, block in blocks.items()}
+    for key, block in blocks.items():
+        assert not re.search(r"^    uses:", block, re.MULTILINE), "Nested workflow remains: " + key
+        assert edges[key] <= blocks.keys(), "Dangling needs for " + key
+        references = set(re.findall(r"needs\.([a-zA-Z0-9_-]+)\.", block))
+        assert references <= edges[key], "Undeclared needs for " + key + ": " + str(references - edges[key])
+    visiting, visited = set(), set()
+
+    def visit(key):
+        assert key not in visiting, "Job dependency cycle: " + key
+        if key in visited:
+            return
+        visiting.add(key)
+        for parent in edges[key]:
+            visit(parent)
+        visiting.remove(key)
+        visited.add(key)
+
+    for key in blocks:
+        visit(key)
+    print(f"Unified Job graph: PASS ({len(blocks)} Jobs, 2 workflows total)")
+
 
 
 def script_for(job, name):
-    block = graph.job_blocks(TEXT)[job]
+    block = job_blocks(TEXT)[job]
     step = block.split("    - name: " + name + "\n", 1)[1].split("    - name:", 1)[0]
     match = re.search(r"^      run: (?:&[\w-]+ )?\|[-+]?\n((?:        [^\n]*\n|\n)*)", step, re.MULTILINE)
     if not match:
@@ -33,8 +87,19 @@ def script_for(job, name):
 
 
 class WorkflowContractTests(unittest.TestCase):
+    def test_manual_workflow_rejects_dangling_reusable_reference(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            flow = root / '.github/workflows'
+            flow.mkdir(parents=True)
+            (flow / 'gpt_dev.yml').write_text(TEXT, encoding='utf-8')
+            (flow / 'download_artifact.yml').write_text(
+                'jobs:\n  pull-image:\n    uses: ./.github/workflows/retired.yml\n', encoding='utf-8')
+            with self.assertRaisesRegex(AssertionError, 'Dangling reusable'):
+                validate_workflow(root)
+
     def test_job_graph_has_no_dangling_or_nested_calls(self):
-        graph.validate(ROOT)
+        validate_workflow(ROOT)
 
     def test_planning_rejects_missing_or_ignored_validation(self):
         for source in [TEXT.replace("python3 -m unittest discover", "echo skipped tests"),
@@ -46,7 +111,7 @@ class WorkflowContractTests(unittest.TestCase):
                 (workflows / "gpt_dev.yml").write_text(source, encoding="utf-8")
                 (workflows / "download_artifact.yml").write_text("jobs:\n  pull-image:\n", encoding="utf-8")
                 with self.assertRaises(AssertionError):
-                    graph.validate(root)
+                    validate_workflow(root)
 
     def test_all_inline_shell_parses(self):
         scripts = re.findall(r"^      run: (?:&[\w-]+ )?\|[-+]?\n((?:        [^\n]*\n|\n)*)", TEXT, re.MULTILINE)
@@ -91,7 +156,7 @@ class WorkflowContractTests(unittest.TestCase):
     def test_container_testing_is_strict(self):
         metadata = script_for("container-build", "(MetaData) ${{ env.app_branch }} in Container")
         self.assertIn('${PATH_self}/scripts/ci/materialize_test_hooks.py', metadata)
-        self.assertNotIn('GITHUB_WORKSPACE', graph.job_blocks(TEXT)['container-build'])
+        self.assertNotIn('GITHUB_WORKSPACE', job_blocks(TEXT)['container-build'])
         script = script_for("container-build", "(Test) Docker image")
         self.assertNotIn("set +e", script)
         self.assertTrue(script.startswith("set -euo pipefail\n"))
@@ -156,7 +221,7 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertNotIn("gh release ", manual)
 
     def test_single_target_build_replaces_registry_smoke_job(self):
-        jobs = graph.job_blocks(TEXT)
+        jobs = job_blocks(TEXT)
         self.assertNotIn("registry-smoke", TEXT)
         self.assertNotIn("registry-smoke", jobs)
         self.assertIn("registry_local: localhost:5000", jobs["build"])
@@ -166,7 +231,7 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("materialize_test_hooks.py", jobs["build"])
 
     def test_staging_publication_is_hard_disabled(self):
-        jobs = graph.job_blocks(TEXT)
+        jobs = job_blocks(TEXT)
         self.assertIn("WORKFLOW_READ_ONLY: 'true'", jobs["plan"])
         self.assertIn("publish: 'false'", jobs["build"])
         for job, names in {

@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# Requirements: preserve config, scripts and semantic monitor outputs.
+# Unknowns/research: external users of retired --workflow-name must migrate.
+# Optimization: remove unused link-rendering parameters and duplicate work.
+# Risks/verification: unchanged output fixtures, monitor-only edits and idempotence.
 """Build stable monitor outputs and README version sections."""
 
 from __future__ import annotations
@@ -32,8 +36,6 @@ TARGET_FIELDS = [
 
 START_JSON = "<!-- app-version-json:start -->"
 END_JSON = "<!-- app-version-json:end -->"
-START_TABLE = "<!-- app-version-table:start -->"
-END_TABLE = "<!-- app-version-table:end -->"
 
 
 def load_json_text(raw: str, fallback: Any) -> Any:
@@ -93,11 +95,8 @@ def replace_or_append(text: str, start: str, end: str, content: str) -> str:
     return prefix + "\n" + block + "\n"
 
 
-def markdown_cell(value: str) -> str:
-    return value.replace("\n", " ").replace("|", "\\|")
 
-
-def render_readme(text: str, records: list[dict[str, str]], workflow_name: str) -> str:
+def render_readme(text: str, records: list[dict[str, str]]) -> str:
     # Build one merged readable table from canonical config and latest probes.
     json_block = chr(96)*3 + 'json\n' + dump_json(records).rstrip('\n') + '\n' + chr(96)*3
     document=catalog.validate_document(catalog.catalog_document_from_text(text))
@@ -195,7 +194,6 @@ def main() -> int:
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--build-targets-json", required=True)
     parser.add_argument("--force-build", default="false")
-    parser.add_argument("--workflow-name", default=".github/workflows/monitor-images.yml")
     args = parser.parse_args()
 
     readme_path = Path(args.readme_path)
@@ -212,7 +210,7 @@ def main() -> int:
     build_targets_selected = select_build_targets(build_targets, changed_apps, force_build)
     build_matrix = {"include": build_targets_selected}
 
-    rendered_readme = render_readme(original_readme, new_records, args.workflow_name)
+    rendered_readme = render_readme(original_readme, new_records)
     readme_changed = rendered_readme != original_readme
     if readme_changed:
         readme_path.write_text(rendered_readme, encoding="utf-8")

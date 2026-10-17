@@ -53,7 +53,7 @@ class CatalogTests(unittest.TestCase):
         versions=catalog.snapshot_from_readme(text)
         changed=[dict(x) for x in versions]
         changed[0]['version']='simulated-version-change'
-        refreshed=monitor_state.render_readme(text,changed,'monitor-images.yml')
+        refreshed=monitor_state.render_readme(text,changed)
         self.assertEqual(catalog.embedded_tests_from_text(refreshed),source)
         self.assertEqual(refreshed.count('<!-- app-test:'),48)
         self.assertEqual(catalog.updated_summary(refreshed,self.config),refreshed)
@@ -315,7 +315,7 @@ class CatalogTests(unittest.TestCase):
         entries=catalog.embedded_json_from_text(source)
         changed=[dict(r) for r in monitor_state.parse_readme_versions(source)]
         changed[0]['version']='simulated-shadow-probe'
-        refreshed=monitor_state.render_readme(source,changed,'monitor-images.yml')
+        refreshed=monitor_state.render_readme(source,changed)
         refreshed_entries=catalog.embedded_json_from_text(refreshed)
         for name in entries:
             self.assertEqual(refreshed_entries[name]['config'],entries[name]['config'])
@@ -403,11 +403,10 @@ class CatalogTests(unittest.TestCase):
         versions=monitor_state.parse_readme_versions(source)
         updated=[dict(x) for x in versions]
         updated[0]['version']='new-version-test'
-        rendered=monitor_state.render_readme(source,updated,'.github/workflows/docker_allinone.yml')
+        rendered=monitor_state.render_readme(source,updated)
         self.assertEqual(catalog.catalog_data_from_text(rendered),self.config)
         self.assertEqual(monitor_state.parse_readme_versions(rendered),updated)
-        self.assertEqual(monitor_state.render_readme(rendered,updated,
-            '.github/workflows/docker_allinone.yml'),rendered)
+        self.assertEqual(monitor_state.render_readme(rendered,updated),rendered)
 
     def test_v2_invalid_monitor_is_rejected(self):
         source=(ROOT/'README.md').read_text(encoding='utf-8')
@@ -439,8 +438,7 @@ class CatalogTests(unittest.TestCase):
         records=monitor_state.parse_readme_versions(original)
         self.assertEqual(len(records),24)
         self.assertEqual(len(records[0]),len(monitor_state.README_FIELDS))
-        regenerated=monitor_state.render_readme(original,records,
-            '.github/workflows/monitor-images.yml')
+        regenerated=monitor_state.render_readme(original,records)
         self.assertEqual(regenerated,original)
         self.assertEqual(monitor_state.semantic_changed_apps(records,records),[])
         self.assertEqual(catalog.catalog_from_readme(ROOT/'README.md'),self.config)
@@ -451,8 +449,7 @@ class CatalogTests(unittest.TestCase):
         versions=monitor_state.parse_readme_versions(original)
         changed=[dict(r) for r in versions]
         changed[0]['version']='test-version-value'
-        updated=monitor_state.render_readme(original,changed,
-            '.github/workflows/docker_allinone.yml')
+        updated=monitor_state.render_readme(original,changed)
         self.assertEqual(catalog.catalog_data_from_text(original),
                          catalog.catalog_data_from_text(updated))
         self.assertNotEqual(catalog.snapshot_from_readme(original),

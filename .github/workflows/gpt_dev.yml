@@ -144,7 +144,6 @@ jobs:
         python3 scripts/ci/catalog.py validate
         python3 scripts/ci/catalog.py summary --check
         python3 -m unittest discover -s scripts/ci -p 'test_*.py' -v
-        python3 scripts/ci/gpt_workflow_graph.py
     - name: Plan without network or publication
       id: plan
       env:
@@ -339,8 +338,7 @@ jobs:
           --readme-path README.md \
           --output-dir "${MONITOR_OUTPUT}" \
           --build-targets-json "${BUILD_TARGETS}" \
-          --force-build "${FORCE_BUILD}" \
-          --workflow-name ".github/workflows/docker_allinone.yml"
+          --force-build "${FORCE_BUILD}"
 
         changed_count=$(jq '.include | length' "${MONITOR_OUTPUT}/build-matrix.json")
         changed_apps=$(jq -c . "${MONITOR_OUTPUT}/changed-apps.json")
@@ -405,8 +403,7 @@ jobs:
             --readme-path README.md \
             --output-dir "/tmp/monitor-output-retry-${attempt}" \
             --build-targets-json "${BUILD_TARGETS}" \
-            --force-build "${FORCE_BUILD}" \
-            --workflow-name ".github/workflows/docker_allinone.yml"
+            --force-build "${FORCE_BUILD}"
         done
     if: ${{ contains(fromJSON('["production","monitor","build","verification"]'), needs.plan.outputs.route) }}
   check:
