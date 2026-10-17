@@ -445,7 +445,7 @@ RUN \
   echo "**** compiling mesa ****" && \
   cd /tmp/mesa && \
   test -x /usr/bin/llvm-config-18 && \
-  printf '[binaries]\\nllvm-config = "/usr/bin/llvm-config-18"\\n' > /tmp/mesa-llvm.ini && \
+  printf '[binaries]\nllvm-config = "/usr/bin/llvm-config-18"\n' > /tmp/mesa-llvm.ini && \
   meson setup \
     --native-file /tmp/mesa-llvm.ini \
     -Dprefix="/usr/local" \
