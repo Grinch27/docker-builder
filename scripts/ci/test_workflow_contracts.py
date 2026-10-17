@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Requirements: fail closed on failed check evidence and prohibit publication during acceptance.
 # Unknowns/research: GitHub-hosted execution and registry publication remain unverified locally.
-# Risks/verification: execute real check-result shell with fixtures; check all inline Bash syntax.
+# Risks/verification: execute real check-result shell with fixtures; parse anchored Bash and reject missing validation.
 # Optimization: use standard-library extraction; actionlint validates the full YAML separately.
 """Verify failure boundaries and executable shell in the single core workflow."""
 
@@ -26,7 +26,7 @@ spec.loader.exec_module(graph)
 def script_for(job, name):
     block = graph.job_blocks(TEXT)[job]
     step = block.split("    - name: " + name + "\n", 1)[1].split("    - name:", 1)[0]
-    match = re.search(r"^      run: \|[-+]?\n((?:        [^\n]*\n|\n)*)", step, re.MULTILINE)
+    match = re.search(r"^      run: (?:&[\w-]+ )?\|[-+]?\n((?:        [^\n]*\n|\n)*)", step, re.MULTILINE)
     if not match:
         raise ValueError("Missing literal shell for " + name)
     return textwrap.dedent(match[1])
@@ -36,8 +36,21 @@ class WorkflowContractTests(unittest.TestCase):
     def test_job_graph_has_no_dangling_or_nested_calls(self):
         graph.validate(ROOT)
 
+    def test_planning_rejects_missing_or_ignored_validation(self):
+        for source in [TEXT.replace("python3 -m unittest discover", "echo skipped tests"),
+                       TEXT.replace("  plan:\n", "  plan:\n    continue-on-error: true\n", 1)]:
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                workflows = root / ".github/workflows"
+                workflows.mkdir(parents=True)
+                (workflows / "gpt_dev.yml").write_text(source, encoding="utf-8")
+                for utility in ["pull_artifact-dev.yml", "download_artifact.yml"]:
+                    (workflows / utility).touch()
+                with self.assertRaises(AssertionError):
+                    graph.validate(root)
+
     def test_all_inline_shell_parses(self):
-        scripts = re.findall(r"^      run: \|[-+]?\n((?:        [^\n]*\n|\n)*)", TEXT, re.MULTILINE)
+        scripts = re.findall(r"^      run: (?:&[\w-]+ )?\|[-+]?\n((?:        [^\n]*\n|\n)*)", TEXT, re.MULTILINE)
         self.assertGreater(len(scripts), 30)
         for index, script in enumerate(scripts):
             # GitHub expands contexts before invoking Bash; use a harmless token for syntax checks.

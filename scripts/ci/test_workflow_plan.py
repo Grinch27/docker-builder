@@ -165,7 +165,8 @@ class WorkflowPlanTests(unittest.TestCase):
                 workflow_plan.staging_plan(self.config, event_name, {}, {}, "runner")
 
     def test_staging_verifies_real_representative_paths(self):
-        result = workflow_plan.staging_plan(self.config, "push", {}, {}, "runner")
+        result = workflow_plan.staging_plan(self.config, "push", {"head_commit": {
+            "message": "workflow regression [gpt-verification]"}}, {}, "runner")
         self.assertEqual(result["route"], "verification")
         self.assertEqual(result["publish"], "false")
         self.assertEqual(result["may_publish"], "false")
@@ -173,6 +174,35 @@ class WorkflowPlanTests(unittest.TestCase):
         self.assertEqual({t["app_branch"] for t in result["build_targets"]["include"]}, {"vlmcsd"})
         self.assertEqual({t["app"] for t in result["test_matrix"]["include"]}, {"aria2", "samba", "vlmcsd", "runner"})
         self.assertEqual(result["images"], ["alpine:latest"])
+
+    def test_ordinary_staging_push_only_validates(self):
+        for message in ["ordinary update", "[full-build]", "[gpt-validate]"]:
+            with self.subTest(message=message):
+                result = workflow_plan.staging_plan(self.config, "push", {"head_commit": {
+                    "message": message}}, {"execution_route": "acceptance"}, "runner")
+                self.assertEqual(result["route"], "validate")
+                self.assertEqual(result["fetch_versions"], "false")
+                self.assertEqual(result["publish"], "false")
+                self.assertEqual(result["may_publish"], "false")
+
+    def test_dispatch_keeps_explicit_verification_and_full_coverage(self):
+        for inputs in [{}, {"execution_route": "verification"}]:
+            result = workflow_plan.staging_plan(self.config, "workflow_dispatch", {}, inputs, "runner")
+            self.assertEqual(result["route"], "verification")
+            self.assertEqual(len(result["test_matrix"]["include"]), 8)
+        result = workflow_plan.staging_plan(self.config, "push", {"head_commit": {
+            "message": "[gpt-acceptance]"}}, {}, "runner")
+        self.assertEqual(result["route"], "acceptance")
+        self.assertEqual(len(result["test_matrix"]["include"]), 52)
+
+    def test_staging_unknown_malformed_and_multiple_selectors_fail(self):
+        for message in ["[gpt-verification] [gpt-retest:aria2:latest]", "[gpt-verification:aria2]",
+                        "[gpt-acceptance:aria2]", "[gpt-dev:bad]", "[gpt-unknown]",
+                        "[gpt-retest:aria2:latest", "[gpt-validate] [gpt-",
+                        "[gpt-verification] [gpt-verification]"]:
+            with self.subTest(message=message), self.assertRaises(ValueError):
+                workflow_plan.staging_plan(self.config, "push", {"head_commit": {
+                    "message": message}}, {}, "runner")
 
     def test_staging_target_build_is_forced_and_nonpublishing(self):
         result = workflow_plan.staging_plan(self.config, "push",

@@ -1,7 +1,7 @@
 # Requirements: isolated candidate for the single-core-workflow migration; keep production files unchanged.
-# Unknowns/research: full application matrix and live publication equivalence need separate acceptance.
-# Optimization: share catalog routing and runner selection; test representative architectures and artifacts.
-# Risks/verification: publication stays disabled; large-image disk cleanup is restricted to disposable GitHub-hosted runners.
+# Unknowns/research: deferred application failures and live publication equivalence remain separate work.
+# Optimization: validate before planning in one Job; ordinary pushes are validation-only; reuse identical scripts.
+# Risks/verification: explicit selectors retain full tests; publication stays disabled; candidate locks stay isolated.
 name: GPT Dev - Unified Jobs (Nonpublishing)
 run-name: GPT Dev - ${{ github.event_name }} - ${{ inputs.execution_route || github.event.head_commit.message || 'verification' }}
 'on':
@@ -10,12 +10,8 @@ run-name: GPT Dev - ${{ github.event_name }} - ${{ inputs.execution_route || git
     - main
     paths:
     - .github/workflows/gpt_dev.yml
-    - scripts/ci/workflow_plan.py
-    - scripts/ci/gpt_workflow_graph.py
-    - scripts/ci/test_workflow_plan.py
-    - scripts/ci/test_workflow_contracts.py
-    - scripts/ci/verify_image_archive.py
-    - scripts/ci/test_verify_image_archive.py
+    - README.md
+    - scripts/ci/**
     - application/**/build/**
   workflow_dispatch:
     inputs:
@@ -113,26 +109,9 @@ jobs:
     - name: Resolve runner-image
       id: resolve-runner-image
       uses: Grinch27/github-actions/.github/actions/resolve-runner-image@main
-  validate:
-    name: Validate catalog and workflow contracts
-    needs: runner-image
-    runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
-    permissions:
-      contents: read
-    steps:
-    - uses: actions/checkout@v4
-    - name: Check catalog, unit tests and Job dependencies
-      run: |
-        set -euo pipefail
-        python3 scripts/ci/catalog.py validate
-        python3 scripts/ci/catalog.py summary --check
-        python3 -m unittest discover -s scripts/ci -p 'test_*.py' -v
-        python3 scripts/ci/gpt_workflow_graph.py
   plan:
-    name: Select isolated Job route and catalog matrices
-    needs:
-    - runner-image
-    - validate
+    name: Validate contracts and plan isolated Jobs
+    needs: runner-image
     runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
     permissions:
       contents: read
@@ -157,6 +136,13 @@ jobs:
       image_platforms: ${{ steps.plan.outputs.image_platforms }}
     steps:
     - uses: actions/checkout@v4
+    - name: Check catalog, unit tests and Job dependencies
+      run: |
+        set -euo pipefail
+        python3 scripts/ci/catalog.py validate
+        python3 scripts/ci/catalog.py summary --check
+        python3 -m unittest discover -s scripts/ci -p 'test_*.py' -v
+        python3 scripts/ci/gpt_workflow_graph.py
     - name: Plan without network or publication
       id: plan
       env:
@@ -511,7 +497,7 @@ jobs:
       env:
         docker_data_root: ${{ env.path_build }}/docker-data
       working-directory: /
-      run: |
+      run: &setup_docker_root |
         echo "Current working directory: $(pwd)"
 
         sudo mkdir -p "${docker_data_root}"
@@ -958,29 +944,7 @@ jobs:
       env:
         docker_data_root: ${{ env.path_build }}/docker-data
       working-directory: /
-      run: |
-        echo "Current working directory: $(pwd)"
-
-        sudo mkdir -p "${docker_data_root}"
-
-        daemon_file="/etc/docker/daemon.json"
-        temp_file=$(mktemp)
-        if sudo test -s "${daemon_file}"; then
-          sudo cat "${daemon_file}" | jq --arg root "${docker_data_root}" '. + {"data-root": $root}' > "${temp_file}"
-        else
-          jq -n --arg root "${docker_data_root}" '{"data-root": $root}' > "${temp_file}"
-        fi
-        sudo cp "${temp_file}" "${daemon_file}"
-
-        if command -v systemctl >/dev/null 2>&1; then
-          sudo systemctl daemon-reload || true
-          sudo systemctl restart docker
-        else
-          sudo service docker restart
-        fi
-
-        docker info --format 'DockerRootDir={{ .DockerRootDir }}'
-        echo "status=success" | tee -a ${GITHUB_OUTPUT}
+      run: *setup_docker_root
     - name: (Setup) QEMU
       id: setup-qemu
       if: ${{ steps.check-result.outputs.changed == 'true' && (env.arch_branch != 'linux/amd64') }}
@@ -1183,7 +1147,7 @@ jobs:
       id: optimize-disk
       if: ${{ steps.check-result.outputs.changed == 'true' && (steps.output.outputs.status == 'success' && (env.app_branch == 'stable-diffusion-webui-amdgpu' || env.app_branch == 'sdnext')) }}
       working-directory: /
-      run: |
+      run: &free_disk_before_compress |
         echo "Current working directory: $(pwd)"
         docker system df || true
         docker image prune --all --force || true
@@ -1743,7 +1707,7 @@ jobs:
       contents: read
     runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
     concurrency:
-      group: docker-allinone-dev-${{ matrix.app_branch }}
+      group: gpt-dev-${{ github.ref }}-${{ matrix.app_branch }}
       cancel-in-progress: false
       queue: max
     strategy:
@@ -2614,7 +2578,7 @@ jobs:
     runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
     timeout-minutes: 75
     concurrency:
-      group: docker-gpt-smoke-${{ matrix.target_id }}
+      group: gpt-smoke-${{ github.ref }}-${{ matrix.target_id }}
       cancel-in-progress: false
     strategy:
       fail-fast: false
@@ -4284,13 +4248,7 @@ jobs:
       id: optimize-disk
       if: ${{ steps.output.outputs.status == 'success' && steps.env-validate.outputs.compress == 'true' && (env.app_branch == 'stable-diffusion-webui-amdgpu' || env.app_branch == 'sdnext') }}
       working-directory: /
-      run: |
-        echo "Current working directory: $(pwd)"
-        docker system df || true
-        docker image prune --all --force || true
-        docker builder prune --all --force || true
-        docker system df || true
-        df -hT
+      run: *free_disk_before_compress
     - name: (Output) Compress
       id: output-compress
       if: steps.output.outputs.status == 'success' && steps.env-validate.outputs.compress == 'true' && !cancelled()

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # Requirements/ambiguities: legacy external callers must migrate to docker_allinone.yml.
-# Research/optimization: preserve Dev default exclusions until live promotion parity exists.
+# Research/optimization: ordinary staging pushes validate only; explicit verification keeps representative coverage.
 # Risks: production/container/Dev may publish; staging acceptance must force publication off.
-# Verification: full catalog coverage, isolated Dev/Container selection, invalid inputs and event isolation.
+# Verification: explicit selector parsing, full catalog coverage, Dev/Container selection and event isolation.
 """Plan the single workflow without executing builds, probes, or external writes."""
 
 from __future__ import annotations
@@ -192,15 +192,18 @@ def staging_plan(config: dict, event_name: str, event: dict, inputs: dict, runne
     selected = dict(inputs)
     route = selected.get("execution_route") or "verification"
     if event_name == "push":
-        route = "verification"
+        route = "validate"
         message = event.get("head_commit", {}).get("message", "")
-        selectors = re.findall(r"\[gpt-(?:acceptance|retest|dev|container|build|monitor|smoke)[^\]]*\]", message)
+        selectors = re.findall(r"\[gpt-[^\]]*\]", message)
+        if message.count("[gpt-") != len(selectors):
+            raise ValueError("Unterminated staging selector")
         if len(selectors) > 1:
             raise ValueError("Use exactly one staging selector per push")
-        if "[gpt-acceptance]" in message:
-            route = "acceptance"
-        if "[gpt-retest:" in message:
-            match = re.search(r"\[gpt-retest:([^\]]+)\]", message)
+        selector = selectors[0] if selectors else ""
+        if selector in {"[gpt-verification]", "[gpt-validate]", "[gpt-acceptance]"}:
+            route = selector[len("[gpt-"):-1]
+        elif selector.startswith("[gpt-retest:"):
+            match = re.fullmatch(r"\[gpt-retest:([^\]]+)\]", selector)
             pairs = match.group(1).split(",") if match else []
             if not pairs or any(not re.fullmatch(r"[a-z0-9_.-]+:[a-z0-9_.-]+", pair) for pair in pairs):
                 raise ValueError("Malformed staging retest selector")
@@ -213,7 +216,7 @@ def staging_plan(config: dict, event_name: str, event: dict, inputs: dict, runne
                     (r"\[gpt-monitor:([a-z0-9_.-]+):([a-z0-9_.-]+)\]", "monitor"),
                     (r"\[gpt-smoke:([a-zA-Z0-9_.-]+)\]", "smoke")]
         for pattern, candidate in patterns:
-            match = re.search(pattern, message)
+            match = re.fullmatch(pattern, selector)
             if match:
                 route = candidate
                 if route == "smoke":
@@ -221,6 +224,8 @@ def staging_plan(config: dict, event_name: str, event: dict, inputs: dict, runne
                 else:
                     selected["app_branch"], selected["tag_repo"] = match.groups()
                 break
+        if selector and route == "validate" and selector != "[gpt-validate]":
+            raise ValueError("Unknown or malformed staging selector")
     elif event_name != "workflow_dispatch":
         raise ValueError("Staging accepts push/workflow_dispatch only")
     if route not in {"verification", "acceptance", "dev-verify", "container-verify",

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-# Requirements: core capabilities belong to ordinary Jobs in docker_allinone.yml.
+# Requirements: candidate capabilities belong to ordinary Jobs in gpt_dev.yml; validate before planning.
 # Unknowns/research: external callers of retired paths need migration, not silent redirects.
-# Risks/verification: missing needs, dependency cycles and nested workflow references.
+# Risks/verification: validation bypass, missing needs, dependency cycles and nested workflow references.
 # Optimization: standard-library guard; actionlint separately validates the full YAML schema.
 """Check the core workflow Job graph without adding a CI dependency."""
 import re
@@ -30,11 +30,16 @@ def validate(root):
     assert "gpt_dev.yml" in files, "Staging workflow missing"
     text = (flow / "gpt_dev.yml").read_text(encoding="utf-8")
     blocks = job_blocks(text)
-    required = {"runner-image", "validate", "plan", "fetch-versions", "monitor", "check", "build",
+    required = {"runner-image", "plan", "fetch-versions", "monitor", "check", "build",
                 "dev-inspect", "dev-build", "smoke", "test-images", "registry-smoke",
                 "diagnostic-layers", "diagnostic-platforms", "diagnostic-collect",
                 "diagnostic-meta-platforms", "diagnostic-validate", "container-build"}
     assert required <= blocks.keys(), "Core capability Job missing"
+    planning = blocks["plan"]
+    gate = planning.find("python3 -m unittest discover")
+    command = planning.find("python3 scripts/ci/workflow_plan.py")
+    assert 0 <= gate < command, "Validation must run before planning"
+    assert "continue-on-error:" not in planning, "Planning validation must fail closed"
     edges = {key: dependencies(block) for key, block in blocks.items()}
     for key, block in blocks.items():
         assert not re.search(r"^    uses:", block, re.MULTILINE), "Nested workflow remains: " + key
