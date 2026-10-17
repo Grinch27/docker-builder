@@ -405,95 +405,12 @@ class CatalogTests(unittest.TestCase):
                 self.assertNotIn('--push',expected)
                 self.assertEqual(expected.count('# target: '),len(app['targets']))
 
-    def test_ffmpeg_automake_auxiliary_files_use_installed_package(self):
-        dockerfile=(ROOT/'application'/'ffmpeg'/'build'/'Dockerfile').read_text(encoding='utf-8')
-        self.assertNotIn('automake --print-ac-dir',dockerfile)
-        self.assertEqual(dockerfile.count("$(dpkg -L automake | grep -m1 '/config.guess        builder=ROOT/'scripts/ci/build-image.sh'
-        with tempfile.TemporaryDirectory() as dirname:
-            root=Path(dirname)
-            (root/'Dockerfile').write_text('FROM scratch\n',encoding='utf-8')
-            bindir=root/'bin'
-            bindir.mkdir()
-            docker=bindir/'docker'
-            docker.write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$BUILD_ARGV_LOG"\n',encoding='utf-8')
-            docker.chmod(0o755)
-            log=root/'argv.log'
-            env={**os.environ, 'PATH':str(bindir)+os.pathsep+os.environ.get('PATH',''),
-                 'BUILD_ARGV_LOG':str(log),'arch_branch':'linux/amd64',
-                 'base_image':'alpine:latest','dockerfile':'Dockerfile',
-                 'build_arg':'update_channel=nightly'}
-            registry={**env,'repo_dockerhub':'grinch27/example','tag_repo':'nightly',
-                      'registry_local':'127.0.0.1:5000','version':'1.2.3'}
-            registry.pop('build_output',None)
-            subprocess.run(['bash',str(builder)],cwd=root,env=registry,check=True)
-            args=log.read_text(encoding='utf-8').splitlines()
-            self.assertEqual(args[:2],['buildx','build'])
-            self.assertIn('127.0.0.1:5000/grinch27/example:nightly',args)
-            self.assertIn('version=1.2.3',args)
-            self.assertIn('type=registry,registry.insecure=true',args)
-            self.assertNotIn('--load',args)
-            load={**env,'build_output':'load','image_ref':'example:test'}
-            subprocess.run(['bash',str(builder)],cwd=root,env=load,check=True)
-            args=log.read_text(encoding='utf-8').splitlines()
-            self.assertIn('example:test',args)
-            self.assertIn('--load',args)
-            self.assertNotIn('--label',args)
-            self.assertNotIn('--output',args)
-            log.unlink()
-            invalid={**env,'build_output':'load'}
-            invalid.pop('image_ref',None)
-            result=subprocess.run(['bash',str(builder)],cwd=root,env=invalid,
-                                  capture_output=True,text=True)
-            self.assertNotEqual(result.returncode,0)
-            self.assertFalse(log.exists())
-
-
-if __name__ == "__main__":
-    unittest.main(verbosity=2)
-)"),2)
-        self.assertEqual(dockerfile.count("$(dpkg -L automake | grep -m1 '/config.sub        builder=ROOT/'scripts/ci/build-image.sh'
-        with tempfile.TemporaryDirectory() as dirname:
-            root=Path(dirname)
-            (root/'Dockerfile').write_text('FROM scratch\n',encoding='utf-8')
-            bindir=root/'bin'
-            bindir.mkdir()
-            docker=bindir/'docker'
-            docker.write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$BUILD_ARGV_LOG"\n',encoding='utf-8')
-            docker.chmod(0o755)
-            log=root/'argv.log'
-            env={**os.environ, 'PATH':str(bindir)+os.pathsep+os.environ.get('PATH',''),
-                 'BUILD_ARGV_LOG':str(log),'arch_branch':'linux/amd64',
-                 'base_image':'alpine:latest','dockerfile':'Dockerfile',
-                 'build_arg':'update_channel=nightly'}
-            registry={**env,'repo_dockerhub':'grinch27/example','tag_repo':'nightly',
-                      'registry_local':'127.0.0.1:5000','version':'1.2.3'}
-            registry.pop('build_output',None)
-            subprocess.run(['bash',str(builder)],cwd=root,env=registry,check=True)
-            args=log.read_text(encoding='utf-8').splitlines()
-            self.assertEqual(args[:2],['buildx','build'])
-            self.assertIn('127.0.0.1:5000/grinch27/example:nightly',args)
-            self.assertIn('version=1.2.3',args)
-            self.assertIn('type=registry,registry.insecure=true',args)
-            self.assertNotIn('--load',args)
-            load={**env,'build_output':'load','image_ref':'example:test'}
-            subprocess.run(['bash',str(builder)],cwd=root,env=load,check=True)
-            args=log.read_text(encoding='utf-8').splitlines()
-            self.assertIn('example:test',args)
-            self.assertIn('--load',args)
-            self.assertNotIn('--label',args)
-            self.assertNotIn('--output',args)
-            log.unlink()
-            invalid={**env,'build_output':'load'}
-            invalid.pop('image_ref',None)
-            result=subprocess.run(['bash',str(builder)],cwd=root,env=invalid,
-                                  capture_output=True,text=True)
-            self.assertNotEqual(result.returncode,0)
-            self.assertFalse(log.exists())
-
-
-if __name__ == "__main__":
-    unittest.main(verbosity=2)
-)"),2)
+    def test_ffmpeg_automake_lookup_uses_installed_package(self):
+        source=(ROOT/'application'/'ffmpeg'/'build'/'Dockerfile').read_text(encoding='utf-8')
+        self.assertNotIn('automake --print-ac-dir',source)
+        self.assertEqual(source.count('dpkg -L automake'),4)
+        self.assertEqual(source.count('config.guess'),2)
+        self.assertEqual(source.count('config.sub'),2)
 
     def test_shared_buildx_registry_and_load_contracts(self):
         builder=ROOT/'scripts/ci/build-image.sh'
