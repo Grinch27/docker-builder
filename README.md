@@ -1,29 +1,10 @@
 # docker-builder
 
-GitHub Actions 构建、检测与发布 Docker 镜像。 / Build, test and publish Docker images.
+基于 GitHub Actions 构建、测试和发布多架构 Docker 镜像。
 
-文末 Applications 表格仅包含 `Application / JSON / Build / Meta-app / Test` 五列。其中 `JSON` 单元格是构建配置和监控记录的唯一来源；Meta-app 与 Test 两列保存各自 Shell 脚本的唯一源码。Build 列由 JSON 自动生成非发布 Buildx 示例（`--output type=cacheonly`），实际生产构建仍由共享执行器控制。
+[正式工作流](.github/workflows/docker_allinone.yml) · [合并候选（非发布）](.github/workflows/gpt_dev.yml) · [维护规范与进展](AGENTS.md)
 
-## Workflow / 工作流
-
-- [Production](.github/workflows/docker_allinone.yml)：定时构建与发布；手动 Dev 路由调用 [Dev](.github/workflows/docker_allinone_dev.yml)。
-- [Monitor](.github/workflows/monitor-images.yml)：版本监控；[GPT Smoke](.github/workflows/docker_allinone_gpt.yml)：非发布测试；[Diagnostics](.github/workflows/diagnostics.yml)：诊断。
-
-## Maintenance / 维护
-
-人工维护表格 `JSON.config`，自动化仅更新对应 `JSON.monitor`。修改配置后执行 `summary --write` 更新展示列；必须保留 `app-summary`、`app-json`、`app-meta`、`app-test` 标记。
-
-```bash
-python3 scripts/ci/catalog.py validate
-python3 scripts/ci/catalog.py summary --write
-python3 scripts/ci/catalog.py summary --check
-python3 -m unittest discover -s scripts/ci -p 'test_catalog.py' -v
-python3 -m unittest discover -s scripts/ci -p 'test_materialize_test_hooks.py' -v
-```
-
-**注意：** `novnc` 与 `novnc_alpine` 共享 `grinch27/novnc:latest`。版本探针成功不代表镜像已经发布。
-
-参考：[仓库维护规范、应用目录与历史记录](AGENTS.md)。
+下表保存应用配置及脚本源码；Build 列仅提供非发布构建示例。
 
 ## Applications / 应用清单
 

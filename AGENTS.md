@@ -1,61 +1,76 @@
 # AGENTS.md — docker-builder
 
-本文件适用于仓库根目录及所有子目录。以下“当前维护规范”用于实际变更；后面的四份历史文档仅为追溯原始设计与验证过程，**不是当前代码、工作流状态或生产授权的权威来源**。发生差异时，先读取 `main` 当前源码并执行验证。
+适用于仓库根目录及所有子目录。先核对当前源码、GitHub Run 和用户最新要求，再修改；历史描述与当前源码冲突时以实测为准。
 
-## 当前维护规范 / Active guidance
+## 当前状态
 
-### 配置和脚本唯一来源
+截至 2026-10-17，已验收的代码提交为 [`95bb3fa`](https://github.com/Grinch27/docker-builder/commit/95bb3fac6a42409192c15f942d5212c5369943f1)。当前有 **15 个工作流文件：原 14 个 + `gpt_dev.yml` 合并候选**。核心能力已并入候选的 18 个普通 Jobs，无嵌套工作流调用；正式入口尚未替换，因此文件数量精简尚未落地。目标是一个核心工作流，另保留两个独立 Artifact 工具。
 
-- `README.md` 文末 Applications 表格每行的 `app-json:<app>` 单元格是应用构建配置与监控记录的唯一权威数据源；不再使用独立 `app-config` JSON 块。人工维护 `JSON.config`，自动化仅更新 `JSON.monitor`，其他展示列由生成器同步。
-- `README.md` 的 **Applications / 应用清单** 位于文末，固定为 `Application / JSON / Build / Meta-app / Test` 五列；`app-summary` 标记内的展示字段由配置和监控记录生成。**Meta-app / Test 两列例外：其中每个应用的完整 Shell 代码是脚本的唯一维护源。** `JSON` 列承载应用配置和监控记录，CI 直接从该列解析。`Build` 列由 JSON 为全部 30 个 Target 生成非发布 Buildx 验证命令，不是第三份可手工维护的脚本来源。 保留 `app-json:<app>`、`app-meta:<app>`、`app-test:<app>`、`app-summary` 及所有结束标记；勿手工批量重排、转义或删改源码。
-- `scripts/ci/materialize_test_hooks.py --app APP --kind meta` 在 Actions checkout 中恢复 `application/APP/meta-app/meta-app.sh`；`--kind test`（默认）恢复 `application/APP/test/test.sh`。工作流必须先生成文件，再枚举/读取/执行对应路径。生成器不能覆盖不同内容或符号链接，不会在宿主上执行 Shell。当前基线：24 个应用、30 个 Target、23 份 Meta-app、24 份 Test；`ffmpeg` 不存在有效的 Meta-app 脚本，不应无依据制造版本探针。
-- 每个应用的 `application/APP/build/` 保留 Dockerfile 及其 `COPY`、`ADD`、构建步骤依赖。清理每应用文件之前要检查构建上下文、工作流与跨仓库引用；不要从文件名或重复 SHA 直接推定可以删除。具体目录及命令见本文件下方「应用目录与命令」章节。
+| 入口 | 当前职责 |
+|---|---|
+| `.github/workflows/gpt_dev.yml` | 合并候选，push / 手动非发布验收，默认 `verification` |
+| `.github/workflows/docker_allinone.yml` | 正式定时检查、构建、发布；手动 Dev 路由 |
+| `.github/workflows/docker_allinone_dev.yml` | Dev 预检、构建、晋升；部分模式会发布 |
+| `.github/workflows/docker_allinone_gpt.yml` | 原非发布回归入口 |
+| `.github/workflows/monitor-images.yml` | 独立版本监控 |
+| `.github/workflows/diagnostics.yml` | 版本、OCI 层及平台诊断 |
+| `.github/workflows/pull_artifact-dev.yml`、`download_artifact.yml` | 保留独立的镜像导出、Artifact 下载与处理用途 |
 
-### 应用目录与命令 / Application layout
+其余 7 个共享或兼容入口仍在使用：`build-docker.yml`、`build-docker_indocker.yml`、`call-build_dev.yml`、`callable-fetch-app-version.yml`、`callable-fetch-layers.yml`、`image-pipeline.yml`、`meta-app_dev.yml`。删除前必须检查内部调用与外部消费者；仓库内没有调用者不能证明没有外部 `workflow_call` / `repository_dispatch` 使用方。
 
-新增应用以 `application/<app>/build/` 为最小构建目录，保留 Dockerfile 和所有 `COPY`、`ADD` 及构建阶段使用的静态文件。可以存在多个 Dockerfile；每个 Target 应在 README Applications 表格相应应用行的 `JSON.config` 中声明 Dockerfile、平台、基础镜像和标签策略。
+### 已完成的实际验收
 
-元数据与镜像内测试的 **源码只维护在 README Applications 表格**。工作流运行时按需生成 `application/<app>/meta-app/meta-app.sh`（`--kind meta`）和 `application/<app>/test/test.sh`（默认 `--kind test`），而不是重新向仓库加入两份重复的持久化脚本。`ffmpeg` 的 Meta-app 缺失状态要保留，除非另有经验证的探针实施决策。
+- 第一轮：[`39026138786`](https://github.com/Grinch27/docker-builder/actions/runs/39026138786)，提交 `d913873`，成功。读取成功日志仍发现强制构建标志丢失、不同架构导出包含相同平台集合两个问题，随后修正。
+- 修正轮：[`39026725070`](https://github.com/Grinch27/docker-builder/actions/runs/39026725070)，提交 `95bb3fa`，**23 个 Jobs 成功、5 个跳过**。18 个 Jobs 经矩阵展开共 28 个实例。
+- 90 项单元测试；8 个应用/平台构建与镜像内测试组合；3 个本地 Registry 往返测试均通过。`vlmcsd` 的 amd64 / arm64 / 386 检查、强制构建、镜像测试、导出及 xz 压缩通过；版本、层诊断和 Artifact 校验通过。
+- 日志确认 `plan=true check=true`、`forced=true changed=true publish=false`。逐平台导出验证为 `linux/amd64`、`linux/arm64`、`linux/386`，三个归档 SHA256 不同。
+- Registry 登录、外部镜像推送、GitHub Release 发布均跳过。候选写入步骤禁用，原正式工作流和应用构建源码在上述迁移提交中未改动。
 
-常用只读命令（仓库根目录运行）：
+以上证明代表性非发布路径通过，**不证明全部 52 个 Target/平台组合、正式发布、Dev 晋升或容器构建路径通过**。`verification` 的 8 个组合为 aria2:latest × amd64/arm64、samba:alpine × amd64/arm64、vlmcsd:latest × amd64/arm64/386、runner:actions-slim × amd64；本地 Registry 测试为 aria2、samba、vlmcsd 的 amd64。
+
+## 配置、脚本与目录
+
+`README.md` 文末 Applications 表格是唯一维护源，固定保留 **Application / JSON / Build / Meta-app / Test** 五列：
+
+- JSON：每个 `app-json:<app>` 单元格保存 `app`、`config`、`monitor`。人工维护 `config`；自动化只更新 `monitor`。解析后对应文档的 `monitor.records`，不是独立 `app-config` 块。
+- Meta-app / Test：完整 Shell 源码，分别用于上游版本探针、镜像内测试。保留 HTML 实体编码及全部起止标记，不能用摘要、占位符或预期版本标签代替实际测试。
+- Build：由 JSON 为全部 30 个 Target 生成 `--output type=cacheonly` 示例；保留此列，使用生成器更新，不手工维护重复脚本。
+
+当前基线：**24 个应用、30 个 Target、52 个 Target/平台组合、23 份 Meta-app、24 份 Test**。`ffmpeg` 没有有效的 Meta-app 探针，保留缺失语义。`app-summary`、`app-json`、`app-build`、`app-meta`、`app-test` 标记及表格位于文件末尾的约定必须保留。精简 README 说明时，不删除其中可执行配置和源码。
+
+新增应用保留 `application/<app>/build/` 中的 Dockerfile、`COPY` / `ADD` 文件及构建阶段依赖；每个 Target 在对应 JSON.config 中声明 Dockerfile、平台、基础镜像和标签策略。清理文件前检查构建上下文及跨仓库引用，不能只凭文件名或相同 SHA 判断可删除。
+
+运行时恢复脚本，再扫描或执行对应目录：
 
 ```bash
-python3 scripts/ci/catalog.py validate
-python3 scripts/ci/catalog.py matrix --kind build
-python3 scripts/ci/catalog.py get --app runner --tag actions
-python3 scripts/ci/catalog.py env --app runner --tag actions
-python3 scripts/ci/catalog.py tags --app runner --tag actions --version 1.0 --consistent true
+python3 scripts/ci/materialize_test_hooks.py --app APP --kind meta
+python3 scripts/ci/materialize_test_hooks.py --app APP --kind test
 ```
 
-经明确授权的配置维护示例（更新 Applications 表格 JSON.config 和展示列，不发布镜像）：
+生成路径为 `application/APP/meta-app/meta-app.sh`、`application/APP/test/test.sh`，仅用于 Actions 工作区，不重新提交重复副本。生成器不执行 Shell，拒绝覆盖不同内容或符号链接。
 
-```bash
-python3 scripts/ci/catalog.py set --app runner --field base_image --value debian:testing-slim
-python3 scripts/ci/catalog.py set --scope target --app samba --tag alpine --field base_image --value alpine:latest
-python3 scripts/ci/catalog.py set --scope target --app runner --tag actions --field dockerfile --value actions.Dockerfile
-python3 scripts/ci/catalog.py set --scope app --app vlmcsd --field platforms --value linux/amd64,linux/arm64,linux/386
-python3 scripts/ci/catalog.py summary --check
-```
+## 共享实现与变更约束
 
-不要将旧 `app-version-table`、`app-version-json` 或旧版 `image_probe` 的配置方式视为当前生产结构；这些是下面历史文档记录的先前阶段。`novnc` 与 `novnc_alpine` 的同一发布标签冲突未自动修复；生产、Dev 和兼容工作流的发布路径需要各自验证。
+| 文件 | 职责与约束 |
+|---|---|
+| `scripts/ci/catalog.py` | 读取表格 JSON、生成矩阵和展示列、维护配置与标签策略 |
+| `scripts/ci/materialize_test_hooks.py` | 从表格恢复 Meta-app / Test 的完整源码 |
+| `scripts/ci/build-image.sh` | 共用 Buildx 命令，生产默认 `registry`，Dev/GPT 使用 `load` |
+| `scripts/ci/workflow_plan.py` | 路由和矩阵选择；候选必须经过 `staging_plan` 的非发布限制 |
+| `scripts/ci/monitor_state.py` | 监控状态、变更矩阵及稳定 README 展示 |
+| `scripts/ci/gpt_workflow_graph.py` | 候选普通 Jobs 的依赖、循环、嵌套调用检查 |
+| `scripts/ci/test-workflow-graph.py` | 原 14 个工作流依赖保护；仅排除候选，不可据此宣称仅有 14 个文件 |
+| `scripts/ci/verify_image_archive.py` | 不解压、不执行归档；验证唯一 manifest、平台配置和层文件 |
 
-### 工作流及发布边界
+强制构建用显式布尔比较合并 matrix 与 plan 值，避免字符串 `"false"` 被 `||` 视为真值而覆盖强制请求。运行时门禁必须确认强制标志没有丢失。
 
-- 正式定时构建与发布入口为 `.github/workflows/docker_allinone.yml`；独立监控是 `monitor-images.yml`；`docker_allinone_gpt.yml` 承担非发布回归；`docker_allinone_dev.yml` 提供实验与 Dev 入口；`diagnostics.yml` 提供诊断。检查真实触发条件、权限和依赖，不要根据旧文档判断某 YAML 是否仍存在。
-- 保留 `pull_artifact-dev.yml`、`download_artifact.yml` 的独立用途。对于其余共享/兼容工作流，先搜索 `uses: ./.github/workflows/...`、`workflow_call`、手动和外部 `repository_dispatch` 使用方，再考虑合并/删除；仓库内部未找到调用者不代表没有外部消费者。
-- **`execution_route=dev` 且 `dev_mode=preflight`** 是已知的非发布预检路径；Dev `auto`/`build` 或 `promote-*` 有可能创建 Release 或向 Docker Hub/GHCR 发布。不要将这些模式当成 dry run。未获单独授权，禁止更改正式 Registry/Tag/Release、上传镜像、删除历史镜像或操作密钥。
-- `scripts/ci/build-image.sh` 统一生产 `registry`（默认）与 Dev/GPT `load` 构建命令；切换模式时不得改变 Registry 的标签、版本 Label、输出目的地。`Build` 表格示例使用 `type=cacheonly`，不会发布镜像，也不能替代生产验收。
-- 检查、构建、应用测试、发布是不同的验证等级。只通过版本探针、配置校验或跳过了发布的 Actions Job，不能据此声称全链路发布等价。镜像平台、Base image、标签策略、Artifact 命名、监控语义及独立工具应保持兼容，变动要有对应实测证据。
+逐平台归档使用 `docker image save --platform "$platform"`，随后运行归档验证器。默认 save 会包含本地所有平台变体，不能用于冒充逐架构导出。该选项需要 Docker API 1.48+，见 [Docker 官方说明](https://docs.docker.com/reference/cli/docker/image/save/)。
 
-### 修改后必检项
+保持平台、基础镜像、Registry、Tag、版本 Label、Artifact 名称与格式、监控语义兼容。新增或改动脚本时，在文件头记录需求、未知项、风险和验证方式。修复依据实际日志；不得用跳过失败、弱化测试或篡改版本值换取绿色状态。
 
-#### gpt_dev.yml 隔离验收
+## 验证命令
 
-`gpt_dev.yml` 是单工作流合并候选；旧正式工作流在验收阶段保留。用户本轮已明确授权推送该候选、非发布测试、读取日志与迭代修正，未授权 Registry/Release 发布或替换正式入口。
-
-候选仅接受 push/手动运行，默认 `verification` 覆盖代表性多架构 Buildx/Test、本地 Registry、vlmcsd 完整非发布检查/构建/归档，以及版本/层诊断。`WORKFLOW_READ_ONLY=true` 拒绝生产、容器发布及 Dev 晋升路由；发布步骤、README 推送、Dev/Container 发布 Jobs 另有硬禁用。候选图检查使用 `gpt_workflow_graph.py`；原依赖检查只排除这个并行验收文件，原正式能力要求不变。
-
-候选成功不代表 52 个应用平台组合或生产发布已通过。记录实际 Commit、Run、Job 和失败日志；只修复有证据的阻断，不用跳过失败换取成功。模板中的 `if: false` 为隔离发布边界，不能因 lint 常量条件提示而启用。
+在仓库根目录运行：
 
 ```bash
 python3 scripts/ci/catalog.py validate
@@ -64,410 +79,32 @@ python3 scripts/ci/catalog.py matrix --kind version
 python3 scripts/ci/catalog.py matrix --kind build
 python3 -m unittest discover -s scripts/ci -p 'test_*.py' -v
 python3 scripts/ci/test-workflow-graph.py
+python3 scripts/ci/gpt_workflow_graph.py
 ```
 
-- 修改 `config` 时使用 `catalog.py set`，或修改对应应用行 JSON.config 后运行 `catalog.py summary --write`；不得用 `summary --write` 掩盖 Meta-app/Test 源码丢失或错误引用。
-- 比较 README 重写前后的 `config`、`monitor.records`、24 个应用行及全部 Meta-app/Test 脚本源码；验证无损 HTML 编解码、幂等、不覆盖非生成文件、`ffmpeg` 缺失语义、文件末尾表格位置。工作流变更时再检查 YAML 语法和内部调用关系；非发布 Actions 的成功不能替代生产发布验收。
-
-### 清理记录与可恢复资料 / Archived unused files
-
-以下文件在 `main@0673902af205` 核验时不属于 README 配置指定的构建目标，也未在仓库当前的工作流、CI 脚本中发现按路径引用。为减少应用目录的冗余文件，移出当前工作树；**原文件全文仍可通过固定 Git Commit 查看与恢复**。这不代表不存在外部独立使用这些历史路径的消费者。
-
-| 原路径（历史快照） | 清理原因 |
-|---|---|
-| [`application/.example/meta-app/meta-app.sh`](https://github.com/Grinch27/docker-builder/blob/0673902af205e47b1b9b6727c1155f8a6b4267fc/application/.example/meta-app/meta-app.sh) | 旧版元数据示例；当前已改为 README 内嵌 |
-| [`application/.example/test/test.sh`](https://github.com/Grinch27/docker-builder/blob/0673902af205e47b1b9b6727c1155f8a6b4267fc/application/.example/test/test.sh) | 旧版镜像测试示例；当前已改为 README 内嵌 |
-| [`application/ffmpeg/build/Testing.dockerfile`](https://github.com/Grinch27/docker-builder/blob/0673902af205e47b1b9b6727c1155f8a6b4267fc/application/ffmpeg/build/Testing.dockerfile) | 与 `docker-ffmpeg.dockerfile` 完全同一 Git Blob 的冗余副本 |
-| [`application/aria2/build/command.md`](https://github.com/Grinch27/docker-builder/blob/0673902af205e47b1b9b6727c1155f8a6b4267fc/application/aria2/build/command.md) | aria2c 命令选项参考及旧帮助输出 |
-| [`application/privoxy/build/config.md`](https://github.com/Grinch27/docker-builder/blob/0673902af205e47b1b9b6727c1155f8a6b4267fc/application/privoxy/build/config.md) | Privoxy 配置选项参考 |
-| [`application/cloudflare-warp/test/warp-cli-discovered.md`](https://github.com/Grinch27/docker-builder/blob/0673902af205e47b1b9b6727c1155f8a6b4267fc/application/cloudflare-warp/test/warp-cli-discovered.md) | 2026-06-07 warp-cli 递归命令发现快照 |
-| [`application/cloudflare-warp/test/warp-cli-full.md`](https://github.com/Grinch27/docker-builder/blob/0673902af205e47b1b9b6727c1155f8a6b4267fc/application/cloudflare-warp/test/warp-cli-full.md) | 2026-06-07 warp-cli 完整帮助快照 |
-
-保留 `application/.example/build/` 的两份 Dockerfile 模板，保留 `application/ffmpeg/build/docker-ffmpeg.dockerfile` 作为上游版本的单一参考副本，并保持 `application/ffmpeg/build/Dockerfile`、`Dev.dockerfile` 不变。只有经独立回归证实后才考虑进一步变动工作流和构建资源。
-
-## 历史研究与迁移记录 / Historical archive
-
-以下内容逐份保留原 `docs/` 文档的叙述、历史 SHA、决策及测试证据。由于这些文档涵盖了不同阶段，部分“现有”“保持不变”“后续候选”等表述只适用于对应历史时间点；**不得据此直接实施删除、发布或调整触发条件**。历史信息与本文件前部“当前维护规范”冲突时，以当前仓库实际内容、实时测试和用户最新授权为准。
-
-### 历史文件 A — Application file simplification
-
-> 来源：`docs/application-simplification.md`（本次删除）；原 Blob：`b213d9f61525b201a5524185af942d1a775acbba`。以下为**历史记录**，非当前操作指令。
-
-#### Application file simplification — phase 1
-
-Baseline: `main@91103299b7ad2d65f9d2389ff56d3461386b2b71` contained 24 canonical applications and 91 tracked files below their directories (not counting `application/.example` or `application/route.md`): 23 upstream `meta-app.sh` and 24 built-image `test.sh`.
-
-Phase 1 removes five committed `test/test.sh` files from `aria2`, `curl`, `privoxy`, `squid`, and `dnscrypt-proxy`; a shared POSIX probe (`scripts/ci/probe-image.sh`) now determines the actual installed version from inside each built image.
-
-The legacy production, Dev, GPT and compatibility workflow code continues to search `application/<app>/test/*.sh`. It first runs `scripts/ci/materialize_test_hooks.py --app APP`, which creates **an untracked, ephemeral** `test.sh` with identical invocation behavior for the five supported apps; other applications retain their committed tests. `.gitignore` excludes only the five generated hook paths.
-
-The shared probe output contract remains `version=<actual-installed-version>`; the upstream `meta-app` scripts are unchanged. Neither build context / Dockerfile nor Registry / Tag / Release logic is modified.
-
-##### Evidence and scope
-
-- First parity commit `ce61fe73` ran a real `linux/amd64` Buildx five-image comparison, and all five generated shared parser values matched the independently committed legacy `test.sh` values.
-- Second commit `f6251b2` removed the five scripts and regenerated them at runtime; the subsequent real five-image AMD64 parity jobs passed.
-- Third commit `3fa6449b` adds a 5×2 platform `linux/amd64` / `linux/arm64` nonpublishing parity matrix (requires final live Actions completion evidence).
-- `scripts/ci/test_probe_image.py` tests POSIX parsing, invalid profiles, empty version and multiline rejection.
-- `scripts/ci/test_materialize_test_hooks.py` tests five profile generation, idempotence, refusal to overwrite independent scripts, and identical wrapper output.
-- All existing 24 apps, 30 build targets, base images, repositories and tag policies remain in README Schema v2.
-
-##### Next migration candidates
-
-1. Move additional simple `test.sh` rules to `probe-image.sh` after per-image live parity, keeping more complex SD.Next/ROCm and OpenWrt/runner tests unchanged until separate experiments.
-2. Introduce a declarative upstream version strategy in README catalog before deleting `meta-app.sh`; never replace upstream probes by expected Docker labels.
-3. Investigate `ttrss` metadata probe/test currently mirroring `vlmcsd` despite having a TTRSS Dockerfile, and its Dockerfile resource references, without unsafe deletion or rewriting.
-4. Check FFmpeg's extra Dockerfile variants and SD.Next startup files for build-context dependencies before touching them.
-
-Release/build parity is **not** proven by five isolated image-version checks. Production check → build → test → publish has not been executed by this migration.
-
-Phase 2: README `config.apps.<app>.image_probe` became the canonical command and extractor for the original five; commit `9c0234f` passed 5×2 real architecture smoke and read-only unit tests. `doh-nosni` is a sixth declarative profile using `dnscrypt-proxy -version` with first-line extraction. Its previously tracked `test.sh` is removed in the next incremental commit, with a separate multi-stage Dockerfile smoke requirement. Other non-declarative applications retain their scripts.
-
-Phase 4: all 24 complete test scripts are embedded in one expandable README HTML table, with deterministic HTML entity encoding for special characters. The legacy 18 `test.sh` files are copied byte-for-byte; six previously shared image probes use equivalent shell routines. The new materializer reads README by stable per-app markers, validates names and encoding, and recreates the original test path in the Actions workspace. Existing 18 scripts remain as independent test oracles until the smoke and byte-equivalence gates pass.
-
-Phase 5 — duplicate-file retirement: after GitHub Actions validated 24/24 README embedded source snippets and compared all 18 still-existing shell sources byte-for-byte, the 18 tracked test/test.sh copies are removed. `docker_allinone_gpt.yml`'s two remaining hardcoded test paths (vlmcsd per-arch and local-registry matrix) now call the shared materializer explicitly before accessing the test file. The 24 apps' build inputs and all upstream meta-app probes remain unchanged. Fully representative production releases are outside this migration's test coverage.
-
-README consolidation: the separate application-test table has been merged into the `Applications / 应用清单` main table, placing the complete test code behind per-row expandable Test controls. The `app-summary` markers now wrap both display fields and canonical test scripts; catalog/monitor regeneration preserves exact encoded tests and rejects missing or swapped script rows.
-
-### 历史文件 B — CI pipeline phase 1
-
-> 来源：`docs/ci-pipeline-phase1.md`（本次删除）；原 Blob：`666d562c3c913271c3fda3a835b1e80203c21055`。以下为**历史记录**，非当前操作指令。
-
-#### CI Pipeline Phase 1 (Historical)
-
-> Historical design note. Starting 2026-10-15, `version-compare-build.yml` was removed during workflow consolidation. The details below describe the former layout, not necessarily current workflow availability. See [Workflow Consolidation](#历史文件-d-workflow-consolidation) for current decisions.
-
-This note documents the phase 1 split of monitor/build/publish responsibilities.
-
-##### What Changed
-
-- `monitor-images.yml` is the new daily monitor workflow.
-  - It collects app versions.
-  - It writes stable monitor artifacts:
-    - `build-matrix.json`
-    - `monitor-state.json`
-    - `monitor-report.md`
-    - `versions.json`
-  - It updates `README.md` only when semantic image state changes.
-  - It does not require Docker Hub write secrets.
-
-- `version-compare-build.yml` is kept as a compatibility workflow.
-  - Manual dispatch and repository dispatch remain available.
-  - It uses the same stable README renderer.
-  - It can still conditionally call `build-docker.yml`.
-  - Its daily schedule moved to `monitor-images.yml`.
-
-- `image-pipeline.yml` is the explicit build/publish pipeline.
-  - It accepts either a JSON matrix or a single app input.
-  - It defaults to `publish=false` for dry runs.
-  - It only passes Docker Hub secrets when `publish=true`.
-
-- `build-docker.yml` now has a `publish` input.
-  - Default is `true` for compatibility with existing callers.
-  - `publish=false` builds, tests, saves, and compresses without Docker Hub push or GitHub Release upload.
-  - Docker Hub login moved to the publish step.
-  - Image tests now fail the job by default, so publish steps do not run after test failure.
-
-##### Stable README Rules
-
-The generated README section no longer contains volatile run metadata:
-
-- No refresh timestamp.
-- No per-app `updated_at`.
-- No run id, duration, or runner host.
-
-The README version JSON keeps stable keys sorted by `json.dumps(sort_keys=True)`.
-
-##### Compatibility
-
-Existing manual build inputs are preserved:
-
-- `app_branch`
-- `tag_repo`
-- `force_push`
-- `custom_env`
-- `runner_image`
-
-`build-docker.yml` added `publish`; old callers that omit it keep the previous publish behavior.
-
-Behavior change:
-
-- The old scheduled `version-compare-build.yml` path no longer runs daily.
-- Daily monitoring is now `monitor-images.yml`.
-- Tests are now a default publish gate.
-
-##### Recommended Usage
-
-Daily monitor:
-
-1. Run `monitor-images.yml`.
-2. Download `monitor-output`.
-3. If `build-matrix.json` has targets, pass it to `image-pipeline.yml`.
-
-Dry run one app:
-
-1. Dispatch `image-pipeline.yml`.
-2. Set `app_branch`.
-3. Keep `publish=false`.
-
-Publish one app or matrix:
-
-1. Dispatch `image-pipeline.yml`.
-2. Provide single app inputs or `build_matrix`.
-3. Set `publish=true`.
-4. Confirm Docker Hub secrets are configured.
-
-##### Follow-Up Decisions
-
-- Decide whether `version-compare-build.yml` should eventually be removed.
-- Decide whether `build-docker_indocker.yml` remains supported.
-- Decide whether README should be updated only after successful publish rather than after monitor.
-- Decide whether publish failures should remain `continue-on-error` or become blocking.
-
-### 历史文件 C — Markdown-only catalog lab
-
-> 来源：`docs/markdown-table-lab.md`（本次删除）；原 Blob：`f089df593a661f7051053011cfa38a1d311ff5e3`。以下为**历史记录**，非当前操作指令。
-
-#### Markdown-only catalog feasibility lab
-
-**Non-production / 仅研究** — no `docker_allinone.yml`, `monitor_state.py`, or `catalog.py` write path reads this prototype.
-
-Run `python3 -m unittest discover -s scripts/ci -p 'test_table_catalog_lab.py' -v`.
-
-The lab renders a strict **18-column, 30-row Markdown table** from the current schema-v2
-README JSON, then parses it back and compares all 24 application definitions, 30
-build targets, and 24 historical monitor observations for lossless equivalence.
-
-One row per target means monitoring observations are duplicated for multi-target
-applications (runner, samba, adguardvpn-cli). The parser rejects inconsistent
-repeated monitor data, duplicate targets, missing columns and invalid escapes.
-
-**Trade-off:** Complete removal of JSON is possible, but a 18-column table is harder
-to maintain than the 8-column visible table and combined structured JSON. This
-prototype is intentionally isolated; a cutover requires safe atomic writes, escaping
-rules, conflict handling, backward compatibility, and full check/build/publish tests.
-
-Schema-v2 `image_probe` is preserved losslessly in the `Image probe JSON` column; this is a research-only codec, not a new production data source.
-
-### 历史文件 D — Workflow consolidation
-
-> 来源：`docs/workflow-consolidation.md`（本次删除）；原 Blob：`27a623fec6ae5bf7bc59a20fa426742a4c22997a`。以下为**历史记录**，非当前操作指令。
-
-#### Docker workflow consolidation — stage 1 (2026-10-15)
-
-##### Scope and intent
-
-Use recently exercised GitHub Actions workflows as migration anchors, preserving independent artifact utilities. This stage removes three superseded entry points and stops repeated automatic execution of transitional build workflows. Production build, tag, publish, archive, application and platform logic is intentionally unchanged.
-
-##### Protected migration anchors (seven)
-
-| Workflow | Role | Stage-1 behavior |
-| --- | --- | --- |
-| `docker_allinone.yml` | Production version monitor, check, build and publish | Keep daily schedule; comment-only edit |
-| `monitor-images.yml` | Independently successful version monitor | Keep daily schedule, manual trigger and artifact format until separate merge validation |
-| `docker_allinone_gpt.yml` | Non-publishing smoke tests | Keep unchanged; its build/promotion job remains gated off |
-| `docker_allinone_dev.yml` | Experimental compare and promotion logic | Keep manual and repository dispatch; remove schedule and file-specific push trigger |
-| `call-build_dev.yml` | Legacy containerized matrix builder | Keep manual and repository dispatch for migration; remove schedule |
-| `pull_artifact-dev.yml` | Pull and export images | Keep as independent utility |
-| `download_artifact.yml` | Download, compress and split artifacts | Keep as independent utility |
-
-The two artifact utility workflow files are explicitly protected from retirement or automatic integration into the production builder.
-
-##### Retired workflows
-
-| File | Reason and replacement |
-| --- | --- |
-| `call-build.yml` | Obsolete manually dispatched matrix calling `build-docker.yml`. The production `docker_allinone.yml` contains all 24 explicit app/tag combinations, including the dynamically discovered `curl:latest`; `call-build_dev.yml` remains as a compatibility/testing reference. |
-| `matrix.yml` | Separate base-image layer matrix plus build/push pipeline. Its daily/automatic role is superseded by the production All in One prepare/check/build path; it has no internal workflow callers. |
-| `version-compare-build.yml` | Duplicate version monitor, README renderer and conditional build coordinator. The production All in One already invokes `scripts/ci/monitor_state.py` and conditionally builds changed targets. |
-
-Removed workflows were not directly referenced by other workflow files at this baseline. External `repository_dispatch` clients are **not** provably absent; any such integrations must migrate to an active entry point.
-
-##### Remaining legacy workflows (not deleted)
-
-`baseimage_dev.yml`, `build-docker.yml`, `build-docker_indocker.yml`, `call-fetch_dev.yml`, `call-fetch_stable.yml`, `callable-fetch-app-version.yml`, `callable-fetch-layers.yml`, `image-pipeline.yml` and `meta-app_dev.yml`.
-
-In particular, `monitor-images.yml` still calls `callable-fetch-app-version.yml`, `call-build_dev.yml` still calls `build-docker_indocker.yml`, `image-pipeline.yml` still calls `build-docker.yml`, and `call-fetch_dev.yml` still calls `callable-fetch-layers.yml`. Do not remove those callees before callers are migrated.
-
-##### Required behavior and verification
-
-- No change to `application/*`, `vars.env`, Dockerfiles, build/test scripts, base images, platform lists, Docker Hub/GHCR tags or GitHub Release asset format.
-- No direct secret changes, image publication or explicit Actions dispatch in this stage.
-- Source checks: all seven protected workflow files remain present; both transitional workflows retain `workflow_dispatch` and `repository_dispatch`, but have no `schedule`; production and monitor schedules remain.
-- Validate future production and monitor scheduled jobs separately. A successful monitoring run or a production run that skips build jobs does **not** prove the publish path.
-- Future integration: migrate the useful dry-run/matrix selection from `image-pipeline.yml`, comparison and promotion decisions from Dev, and isolated smoke/artifact evidence from GPT. Verify production equivalence before retiring their old sources.
-- Production failure gates (check status, test outcome, registry push) and cross-registry parity still require follow-up; they were **not** modified by this commit.
-
-Rollback: revert the consolidation commit on `main` to restore the removed YAML entry points and former automatic triggers. Avoid force-pushing branch history.
-
-##### Stage 2 — main workflow inventory and retirement gates (2026-10-16)
-
-Baseline: `main@c882d6921ae830bed3cebbb9f6a5aab437210548`. This stage is a read-only YAML audit recorded here, not authorization to delete protected workflows or alter production publication.
-
-- **16** workflow YAML files, **8632** source lines (approximately **334.3 KiB**).
-- The three largest: `docker_allinone_gpt.yml` (2,042 lines), `docker_allinone_dev.yml` (1,446), and `docker_allinone.yml` (1,331). They account for **55.8%** of all workflow lines; reducing count alone will not remove most duplicated logic.
-- README JSON schema v2 remains the single source for 24 applications and 30 targets. Neither Markdown-only lab nor generated application summary is a production configuration source.
-
-###### Verified internal reusable-workflow edges
-
-```text
-docker_allinone.yml --------+
-                            +--> callable-fetch-app-version.yml
-monitor-images.yml ---------+
-
-call-build_dev.yml ------------> build-docker_indocker.yml
-image-pipeline.yml ------------> build-docker.yml (dry-run and publish branches)
-call-fetch_dev.yml ------------> callable-fetch-layers.yml
+配置变更优先使用 `catalog.py set`；手改对应 JSON.config 后运行 `python3 scripts/ci/catalog.py summary --write`，然后重新检查。示例：
+
+```bash
+python3 scripts/ci/catalog.py set --scope target --app samba --tag alpine --field base_image --value alpine:latest
+python3 scripts/ci/catalog.py set --scope app --app vlmcsd --field platforms --value linux/amd64,linux/arm64,linux/386
 ```
 
-Do not remove a callee while one of these caller edges remains. External `repository_dispatch`, manual automation, and downstream reusable-workflow consumers are not established by an internal source audit.
+README 改写需比较全部 JSON 配置、监控记录、应用行和 Meta-app / Test 源码，检查生成幂等及末尾标记；不得用 `summary --write` 掩盖源码丢失。工作流变更再运行 YAML / Actions 表达式检查、调用关系检查，并读取实际 Actions 日志和产物。
 
-###### Workflows to preserve during incremental migration
+验收环境使用 actionlint v1.7.12。它不识别 `concurrency.queue`，且对候选隔离用的 `if: false` 报常量提示；仅可精确忽略这两类已知提示。缺少 shellcheck / pyflakes 时应明确说明相应检查未执行，不把它们计为通过。不能为消除提示启用禁用的发布步骤。
 
-| Class | Workflows | Reason |
-|---|---|---|
-| Production | `docker_allinone.yml` | Only intended authoritative build/publish entry; keep its existing triggers and tags |
-| Independent monitor | `monitor-images.yml` | Separate successful monitoring path; its daily schedule overlaps production at 01:00 UTC but must not be retired before tested parity |
-| Test and research | `docker_allinone_gpt.yml`, `docker_allinone_dev.yml` | Retain guarded smoke/comparison and promotion research, particularly non-publishing checks |
-| Compatibility matrix | `call-build_dev.yml` | Current caller of containerized builder; explicitly protected migration anchor |
-| Standalone utilities | `pull_artifact-dev.yml`, `download_artifact.yml` | Independent user workflows; not building-block deletion candidates |
+## 发布边界与下一步
 
-###### Nine other workflows and first-pass disposition
+用户已授权候选推送、非发布测试、读取日志和迭代修正；本次文档整理不扩大为正式发布、密钥操作或旧入口退役。
 
-| Workflow | Internal caller | Disposition before approval for retirement |
-|---|---|---|
-| `callable-fetch-app-version.yml` | Production and independent monitor | **Keep**; shared metadata probe |
-| `build-docker_indocker.yml` | `call-build_dev.yml` | **Keep** until container-build compatibility migration and smoke validation |
-| `build-docker.yml` | `image-pipeline.yml` | **Keep** until dry-run/publish behavior is absorbed and tested |
-| `callable-fetch-layers.yml` | `call-fetch_dev.yml` | **Keep**; shared OCI layer collector |
-| `call-fetch_dev.yml` | No internal caller (manual entry) | Candidate for merger with other layer diagnostics after artifact schema comparison |
-| `call-fetch_stable.yml` | No internal caller (manual entry) | Candidate for layer-diagnostics consolidation; verify its multi-arch output contract first |
-| `baseimage_dev.yml` | No internal caller (manual and events) | Candidate for consolidated base-image inspection; verify runtime/matrix/outputs first |
-| `meta-app_dev.yml` | No internal caller (manual entry) | Candidate to thin into a wrapper around the existing metadata probe, keeping troubleshooting semantics |
-| `image-pipeline.yml` | No internal caller (manual entry) | Candidate to absorb into `docker_allinone_dev.yml` before retiring its dependent `build-docker.yml` |
+候选 `WORKFLOW_READ_ONLY=true` 拒绝生产、容器发布和 Dev 晋升路由；发布步骤、README 推送、Dev/Container 发布 Jobs 另有硬禁用。这里描述的是执行门禁，候选 YAML 的 token 权限仍为 `write-all`。验证权限收窄的可行性属于后续工作。
 
-###### Implementation order and acceptance criteria
+正式 Dev 仅 `execution_route=dev` + `dev_mode=preflight` 是已验收的非发布预检；`auto` / `build` / `promote-*` 可能创建 Release 或推送 Docker Hub/GHCR，不能当作 dry run。检查、构建、镜像内测试、发布是不同验收等级；报告必须给出 Commit、Run、实际范围、跳过项及限制。
 
-1. **No-publication parity:** compare outputs of layer inspectors and metadata probes on fixed immutable image digests; record platform, output JSON, Artifact names, and exit status. Do not delete originals first.
-2. **Thin diagnostic entry points:** consolidate `baseimage_dev.yml`, `call-fetch_stable.yml`, and `meta-app_dev.yml` only when equivalent on-demand functionality has a verified replacement. Retain `call-fetch_dev.yml` and `callable-fetch-layers.yml` until that comparison is complete.
-3. **Experimental build migration:** bring the useful `image-pipeline.yml` dry-run/matrix behavior into `docker_allinone_dev.yml`; ensure publishing remains off by default. Only then consider removing `image-pipeline.yml` and `build-docker.yml`.
-4. **Containerized compatibility:** preserve `call-build_dev.yml` until `build-docker_indocker.yml` behavior has been validated or intentionally superseded; do not silently abandon `workflow_call` clients.
-5. **Production and monitoring:** after full check → build → test → publish validation, evaluate sharing version probe code and daily monitoring runs. Keep the two existing schedules until explicit validation and approval to merge.
-6. **Cleanup gate:** run GitHub Actions YAML validation, scan every internal `uses: ./.github/workflows/...` reference, compare current 24-app/30-target matrix, and inspect non-publishing Actions results before an individual workflow is retired. No forced pushes or registry tag changes.
+待办顺序：补齐合并候选的全量 52 组合与未选路由验证；单独完成发布及 Dev/Container 等价验收；核对外部调用方、触发器、权限和回滚方案；再切换正式入口、移除已迁移旧文件，并同步两个图检查器。当前生产与独立监控的重复定时触发仍存在。
 
-Stage-2 inventory itself changes **documentation only**; zero workflows removed or modified at this audit checkpoint.
+已知事项：`novnc` 与 `novnc_alpine` 共享 `grinch27/novnc:latest`，不可静默改标签。历史应用构建失败需重新读取对应 SHA 的最新日志，不沿用旧成功/失败数字。保留 `application/.example/build/` 两份模板及 `application/ffmpeg/build/docker-ffmpeg.dockerfile` 上游参考。
 
+## 历史资料
 
-
-###### Stage 2 integration checkpoint — shared production dispatcher
-
-`docker_allinone.yml` now presents `execution_route: production|dev` on manual dispatch. `production` is the unchanged default for cron/repository dispatch, and the existing `prepare` job is skipped on Dev-only manual invocations. `dev` calls `.github/workflows/docker_allinone_dev.yml` through `workflow_call`, preserving `auto`, `build`, and dedicated promotion modes, including optional `target_id` and promotion version/revision inputs. The Dev YAML remains independently manually dispatchable until this wrapper path is actually tested. No production image publishing was initiated by this change; GitHub Actions syntax validation and static routing tests do not prove a live Dev promotion.
-
-
-##### Stage 2 completed non-production layer consolidation (2026-10-16)
-
-The new `diagnostics.yml` is the single manual diagnostics entry for app-version probes and OCI layer inspection. Internally it reuses `callable-fetch-app-version.yml` and `callable-fetch-layers.yml`. The `platform-details` matrix preserves the historical `layers-<image>-<arch>/layers.json` and `layer-info-<image>-<arch>/image_*.json` artifact schemas. A new `collect` job uploads `diagnostics-layer-summary` containing `base_layers.json` and `aggregated_layers.json`.
-
-Verified on `main` before retirement:
-- `38868334453`: version + per-image layer artifacts, including explicit contract check — success.
-- `38868702585`, `38868775865`: per-arch raw inspect and layers compatibility artifacts — success.
-- `38869143288`: all five selected images × amd64/arm64 detailed probes; 26 Artifacts, full compatibility validation — success.
-- `38869288771`: layer aggregation and final artifact contract — success.
-- `38869062943`: Production All-in-One -> reusable Dev preflight, no monitor/build/publish in Dev route — success.
-
-With those tests successful, retire `baseimage_dev.yml`, `call-fetch_stable.yml`, and `call-fetch_dev.yml`. `callable-fetch-layers.yml` stays as an internal callee. Legacy `repository_dispatch` consumers of the deleted files were not discoverable in the repository; external clients must use `diagnostics.yml` manual dispatch. The old `baseimage_dev.yml` path-scoped pull-request trigger was not carried over automatically. `meta-app_dev.yml` remains until its all-platform probing behavior is reviewed; the canonical version probe currently uses a preferred platform. Legacy Docker/GHCR promotion remains separately implemented in Dev and must not be deleted until real publishing parity is tested.
-
-###### Post-retirement live verification / 实际验收
-
-- Three superseded YAML entries removed on `main@ded3cba2`: `baseimage_dev.yml`, `call-fetch_stable.yml`, `call-fetch_dev.yml`. This reduces the workflow **entry count 16 -> 14** after adding `diagnostics.yml`.
-- Version: `diagnostics.yml` delegates to `callable-fetch-app-version.yml` (non-publishing `vlmcsd` run verified).
-- Layers: `diagnostics.yml` delegates to `callable-fetch-layers.yml`, and runs a per-architecture Skopeo compatibility matrix producing the former artifact structures; the new aggregator emits `diagnostics-layer-summary`.
-- Real runs: `38869143288` validated 5 images × 2 architectures; `38869288771` validated aggregation; `38869484554` passed 24 configuration tests, 5 table-lab tests, 2 aggregator tests and a 14-workflow dependency guard.
-- Production/Dev routing: `38869062943` invoked `docker_allinone.yml` as a reusable workflow in Dev preflight mode. Dev ran only read-only checks and all production publishing jobs were skipped.
-- **Not yet proven:** real Dev build/GHCR promotion, end-to-end production publication, legacy meta-app all-platform equivalent behavior. `docker_allinone_dev.yml` and `meta-app_dev.yml` must remain until these are validated.
-
-Removed workflow names must not be silently referenced by external automation. The replacement `diagnostics.yml` exposes a manual profile (`stable` five images / `base` three images), optional single-image override, and version probe inputs.
-
-**Safe Dev default correction.** `execution_route=dev` now defaults to `dev_mode=preflight`; users must explicitly select `auto`, `build`, or a `promote-*` mode. Code review confirms Dev `auto`/`build` can create GitHub Releases and push Docker Hub/GHCR tags when a candidate needs promotion. Neither is a dry-run mode. Do not use these modes for nonpublishing integration tests. The existing GPT nested `preflight` test remains the only verified production-to-Dev execution route.
-
-### 历史文件 E — Application layout / route.md
-
-> 来源：`application/route.md`（本次删除）；原 Blob：`aaa0a664aee9fc4f98ad811b76f6eb0e7e7430c9`。以下为**历史记录**，保留旧阶段配置及文件布局描述供追溯，不能覆盖前部现行规范。
-
-#### docker-builder application layout
-
-The canonical app and target configuration is the JSON block in
-[README.md](README.md) between the app-config markers. It replaces
-per-app env/vars.env, build/build.sh and push/tag_version.sh.
-
-Use this directory structure for a new app:
-
-    application/<app>/
-    ├── build/
-    │   ├── Dockerfile
-    │   └── any files used by COPY, ADD or Dockerfile build steps
-    ├── meta-app/
-    │   └── meta-app.sh
-    └── test/
-        └── test.sh
-
-Multiple Dockerfiles, build support scripts and configuration assets remain
-inside build/; each target names its Dockerfile in the root README catalog.
-
-To manage configs from the repository root:
-
-    python3 scripts/ci/catalog.py validate
-    python3 scripts/ci/catalog.py matrix --kind build
-    python3 scripts/ci/catalog.py get --app runner --tag actions
-    python3 scripts/ci/catalog.py env --app runner --tag actions
-    python3 scripts/ci/catalog.py tags --app runner --tag actions --version 1.0 --consistent true
-
-Supported simple write (only affects app-config):
-
-    python3 scripts/ci/catalog.py set --app runner --field base_image --value debian:testing-slim
-
-For target additions or changes to platforms, edit the single JSON block,
-run validate and the non-publishing GPT Actions smoke before relying on
-the production workflow. The app-version-table and app-version-json sections
-are generated runtime state, not configuration inputs.
-
-Existing compatibility notes:
-- Both novnc and novnc_alpine currently target grinch27/novnc:latest.
-  The parser reports this pre-existing ownership conflict; it does not
-  change published tags without an explicit decision.
-- samba:alpine now uses alpine.Dockerfile with alpine:latest base image.
-- Legacy manual/Dev workflows consume the shared catalog and generic
-  build executor; their full publishing paths need separate regression.
-
-Target-specific update example (preserves all other README sections):
-
-    python3 scripts/ci/catalog.py set --scope target --app samba --tag alpine --field base_image --value alpine:latest
-    python3 scripts/ci/catalog.py set --scope target --app runner --tag actions --field dockerfile --value actions.Dockerfile
-
-Application platform update:
-
-    python3 scripts/ci/catalog.py set --scope app --app vlmcsd --field platforms --value linux/amd64,linux/arm64,linux/386
-
-README's human-readable `app-summary` is derived from the canonical `app-config` JSON. The `catalog.py set` operation updates both atomically; after manually editing the JSON run `python3 scripts/ci/catalog.py summary --write` followed by `summary --check`. Collapsible JSON containers are presentation only and do not affect Actions.
-
-Unified README data schema v2: a single `app-config` fenced JSON document contains `config` (reviewed static settings) and `monitor.records` (Actions-owned historical observations). The visible table combines both. The legacy separate version JSON is removed; the parser retains read-only compatibility for historical v1 documents. Do not edit `monitor.records` manually unless restoring an audited snapshot.
-
-Shared actual-image probe migration: `scripts/ci/probe-image.sh` supports `aria2`, `curl`, `privoxy`, `squid`, and `dnscrypt-proxy` via `sh probe-image.sh APP` executed inside the built image. Do not remove application test scripts until the non-publishing `[probe-smoke]` parity matrix and every caller migration pass. Expected upstream version and actual installed version remain separate.
-
-P1 runtime migration: five simple image version hooks are now **generated only in the Actions workspace** by `python3 scripts/ci/materialize_test_hooks.py --app APP`. The generator embeds the shared POSIX `probe-image.sh` logic into the legacy `application/APP/test/test.sh` execution path, allowing existing production, Dev, GPT and compatibility build jobs to run unchanged tests while no longer committing five redundant per-app scripts. Calls must occur before scanning `test/*.sh` or checking whether the `test/` directory exists. Do not use generated files as permanent repository sources.
-
-Declarative image tests (Phase 2): `README.md` Schema v2 `config.apps.<app>.image_probe` contains an `argv` array and an `extract` descriptor (`first_line`, `first_field` or `prefix_field`). `scripts/ci/materialize_test_hooks.py` validates these fields and creates a short `test.sh` in the Actions checkout only. It does not evaluate arbitrary shell snippets from README. The old `scripts/ci/probe-image.sh` is a temporary test oracle for the first five profiles and not the production configuration source.
-
-The same declarative `first_line` extractor now covers `doh-nosni` (installed `dnscrypt-proxy -version`). Its custom multi-stage Dockerfile is unchanged; both architectures remain gated by non-publishing Buildx parity.
-
-All 24 built-image tests are now stored **in an expandable HTML table in root README.md** (24 rows, one per application), enclosed by `app-tests` and per-app `app-test` markers. Scripts retain exact POSIX shell source; HTML escape codes preserve newline and pipe within table cells. `scripts/ci/materialize_test_hooks.py` generates the legacy `application/<app>/test/test.sh` only in the Actions checkout. The 18 original files are retained during byte-for-byte parity validation and are to be retired only after test success. The six previously declarative `image_probe` values are now replaced by scripts in that table; the production JSON still solely controls build settings and monitored state.
-
-The `Applications / 应用清单` Markdown table includes a ninth **Test** column, with one expandable `<details><pre><code>` shell script per application. The former standalone `Application test scripts` section has been removed. Test markers stay inside `app-summary`; catalog and monitor regeneration parse the existing scripts first, preserving all 24 script bodies. Scripts only execute inside the built container.
-
-
-###### README-embedded meta-app scripts
-
-The Applications table now contains 23 expandable upstream metadata scripts;
-ffmpeg deliberately has no metadata probe. Run `python3 scripts/ci/materialize_test_hooks.py --app APP --kind meta` before scanning `application/APP/meta-app/*.sh`.
-The generator preserves original shell source and does not execute it on the host.
-`--kind test` remains the default for built-image testing.
+先前五份研究/迁移文档、历史 Run、已删除文件及其恢复链接统一保存在 [精简前 AGENTS 固定快照](https://github.com/Grinch27/docker-builder/blob/95bb3fac6a42409192c15f942d5212c5369943f1/AGENTS.md)。通过该提交读取或恢复原文；不再在现行规范中重复过时阶段描述。历史记录仅用于追溯，不构成当前发布或删除授权。回退用普通 revert，不强推分支历史。
