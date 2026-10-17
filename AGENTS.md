@@ -8,6 +8,8 @@
 此前 13 个工作流已从 main 树中移除，Git 历史保留其源码，非 Workflow 执行脚本继续保留。
 新核心使用 16 个普通 Jobs，不再引用旧的可复用 Workflow；独立工具提供 URL 下载以及指定平台 Docker 镜像拉取、校验、压缩和 Artifact 上传两种手动模式。
 
+**当前 CI 结构验收（2026-10-18）：** P1–P4 已完成；`scripts/ci` 保留 9 个业务脚本，`tests/ci` 集中 8 个测试文件。111 项测试、8/8 代表性构建组合、vlmcsd 三架构 Dev 与 Container 非发布全链路均通过，具体 Commit/Run/Artifact 见文末 CI 精简记录。没有重跑全量 52 组合，不替换历史应用统计。
+
 **发布边界：** 当前 `gpt_dev.yml` 仍是非发布实现。普通 Push 只作轻量验证；
 每日 01:00 UTC 的 schedule 只进行版本监控，不执行生产 Docker Hub/GHCR/Release 发布。
 手动验证允许 Buildx/Test/Archive，但 Registry/Release 推送、Dev 晋升均保留硬禁用。
@@ -105,7 +107,7 @@ python3 scripts/ci/materialize_test_hooks.py --app APP --kind test
 |---|---|
 | `scripts/ci/catalog.py` | 读取表格 JSON、生成矩阵和展示列、维护配置与标签策略 |
 | `scripts/ci/materialize_test_hooks.py` | 从表格恢复 Meta-app / Test 的完整源码 |
-| `scripts/ci/build-image.sh` | 共用 Buildx 命令，生产默认 `registry`，Dev/GPT 使用 `load` |
+| `scripts/ci/build-image.sh` | 共用 Buildx 命令，Registry 验收仅推送本地 Registry，Dev/GPT 使用 `load` |
 | `scripts/ci/workflow_plan.py` | 唯一非发布 `plan()` 负责路由与矩阵选择；不存在生产规划分支 |
 | `scripts/ci/monitor_state.py` | 监控状态、变更矩阵及稳定 README 展示 |
 | `tests/ci/test_workflow_contracts.py` | 在单元测试中统一检查两工作流布局、依赖图、调用引用和非发布门禁 |
@@ -161,9 +163,9 @@ README 改写需比较全部 JSON 配置、监控记录、应用行和 Meta-app 
 
 当前 `execution_route=dev` 仅接受 `dev_mode=preflight`；外部 `auto` / `build` / `promote-*` 全部拒绝。`dev-verify` / `container-verify` 是独立的非发布验收入口。旧发布实现仅在 Git 历史和 YAML 硬禁用步骤中追溯，不能当作 dry run。检查、构建、镜像内测试、发布是不同验收等级；报告必须给出 Commit、Run、实际范围、跳过项及限制。
 
-待办顺序：完成本次 Tag 目录迁移的同 SHA 非发布验收并按约八成标准收尾，历史失败只记录；继续核对外部调用方和未选路由。旧工作流已退役，不恢复重复定时任务。正式发布和 Dev 晋升须未来另行实现并验收；既有代表性 Dev/Container 成功不能代替新目录版本的实测。
+待办顺序：Tag 目录迁移与本次 CI 精简已按授权范围收尾，历史失败只记录；后续按需核对外部调用方和未选路由。旧工作流已退役，不恢复重复定时任务。正式发布和 Dev 晋升须未来另行实现并验收；既有代表性 Dev/Container 成功不能代替新目录版本的实测。
 
-已知事项：`novnc` 与 `novnc_alpine` 共享 `grinch27/novnc:latest`，不可静默改标签。历史应用构建失败需重新读取对应 SHA 的最新日志，不沿用旧成功/失败数字。两份模板改为 `application/.example/latest.Dockerfile`、`alpine.Dockerfile`；FFmpeg 非 Target 参考文件保留在 `application/ffmpeg/reference/`，不自动登记为 Tag。
+已知事项：`novnc` 与 `novnc_alpine` 共享 `grinch27/novnc:latest`，不可静默改标签。历史应用失败保留已读取的证据；未重新指定前不重测或追加修复，不沿用旧数字冒充新结果。两份模板改为 `application/.example/latest.Dockerfile`、`alpine.Dockerfile`；FFmpeg 非 Target 参考文件保留在 `application/ffmpeg/reference/`，不自动登记为 Tag。
 
 ## Tag 目录迁移（2026-10-17）
 
@@ -255,8 +257,12 @@ P4 退休通用生产规划器和 fenced README 兼容读取。`workflow_plan.pl
 
 - P1 `41319f6`、P2 `5b5eb4a`、P3 `17fb23a`、P4 `9b28b16` 已推送 main；远端每个树对象与本地已测试树完全一致。实现后的 `scripts/ci` 为 9 个业务脚本、`tests/ci` 为 8 个测试文件，总计 17 个文件；相对 `0f1ce52` 的 24 个文件，两个目录合计 3,426 → 3,044 行，净减少 382 行。移动的测试代码不计作删除。
 - 相对 `0f1ce52` 的 115 项单元测试，退休 codec/probe 各 5 项专属测试，新增 6 项对实际 README Shell、依赖图、单快照和非发布约束的验证，最终 111 项。现行路由仍全部接受相同的目标筛选及错误边界；注册表固定 Smoke 的退役作为并行基线变更保留。
-- [39079099089](https://github.com/Grinch27/docker-builder/actions/runs/39079099089) 对 `9b28b16` 执行代表性 verification；启动时尚未完成，不计为通过。该路线包含 8 个 Build/Test 组合、vlmcsd 本地 Registry 构建/测试/归档及诊断，Dev/Container 使用独立定向验收。
+- [39079099089](https://github.com/Grinch27/docker-builder/actions/runs/39079099089) 对 `9b28b16` 执行代表性 verification；Run success：19 个 Job 成功、5 个跳过，111 项测试、8/8 Build/Test 组合、vlmcsd 本地 Registry 检查/构建/三平台 Test/归档及诊断全部通过。Dev/Container 使用独立定向验收。
 - 本地 actionlint、Shell 语法、目录与引用检查通过；继续精确忽略 queue、常量 false 和独立手动工具原有的两个未使用 anchor 提示。未运行 shellcheck/pyflakes，不增加依赖或宣称 CI 时间提升。
+
+- Dev 定向验收：[39079220995](https://github.com/Grinch27/docker-builder/actions/runs/39079220995)，`046df23`，Run success，4 个 Job 成功、12 个跳过；Job `117532670282` 的 vlmcsd amd64/arm64/386 实际构建、README Test、比较及逐平台归档全部成功。日志明确三份归档对应 linux/amd64、linux/arm64、linux/386；Artifact `12118640556` 为 dev-acceptance-vlmcsd-a1（11,787,887 字节）。
+- Container 定向验收：[39079222968](https://github.com/Grinch27/docker-builder/actions/runs/39079222968)，`dc9ff58`，Run success，3 个 Job 成功、13 个跳过；Job `117532624736` 完成元数据、构建、本地 Registry、amd64/arm64/386 README Test、逐平台归档、xz、分卷及校验。日志确认三个归档的实际平台正确，并输出 `Container acceptance: build/test/export/compress/metadata PASS; external publication=0`。登录 Docker Hub、推送 docker.io、上传 Release 全部 skipped，最终完整性门禁 success；Artifact `12118516413` 为 container-acceptance-vlmcsd-latest-a1（11,762,632 字节）。
+- 三轮验收的 Commit 不同；Dev/Container 触发提交仅补充工作流注释，相对 `9b28b16` 的 YAML 解析结构、业务脚本、测试及应用源码完全相同。只修改 AGENTS.md 的提交不命中 push 路径过滤，不计为新 CI；最终收尾提交仅更新本记录，不混算为新 SHA 的全量应用通过。
 
 ### 旧接口迁移
 
