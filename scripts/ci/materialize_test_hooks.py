@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Materialize canonical README test and meta-app shell scripts.
 
-Unknowns: future applications may legitimately lack a metadata probe.
+Requirements: recover canonical scripts from one README snapshot; missing meta probes remain valid.
+Unknowns/research: future applications may legitimately lack a metadata probe.
+Optimization: reuse the caller snapshot without persistent caches.
 Risks: prevent foreign-file overwrites, symlink following and host execution.
 Verification: byte parity, explicit absence, idempotence and workflow behavior.
 """
@@ -11,8 +13,9 @@ import catalog
 
 ROOT=Path(__file__).resolve().parents[2]
 
-def scripts(root,kind='test'):
-    text=(root/'README.md').read_text(encoding='utf-8')
+def scripts(root,kind='test', *, text=None):
+    if text is None:
+        text=(root/'README.md').read_text(encoding='utf-8')
     if kind=='test':
         return catalog.embedded_tests_from_text(text)
     if kind=='meta':
@@ -23,7 +26,7 @@ def materialize(root,app,kind='test'):
     text=(root/'README.md').read_text(encoding='utf-8')
     if app not in catalog.catalog_data_from_text(text)['apps']:
         raise ValueError('No embedded README script for '+app)
-    script=scripts(root,kind).get(app)
+    script=scripts(root,kind,text=text).get(app)
     directory,filename=('meta-app','meta-app.sh') if kind=='meta' else ('test','test.sh')
     target=root/'application'/app/directory/filename
     # Reject symlinked ancestors before any path read or write.

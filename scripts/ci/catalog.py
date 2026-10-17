@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Requirement: Tag alone selects application/<app>/<tag>.Dockerfile; missing Tag means latest.
 # Unknown/research: external consumers of old build paths require migration.
-# Optimization: derive filenames and contexts instead of storing duplicate configuration.
+# Optimization: read one README snapshot per load; reuse decoded script coverage without global caches.
 # Risk: explicit empty/invalid Tags, symlinks, shared fallbacks and expanded contexts.
 # Verify: strict resolution, unchanged 24/30/52 configuration, scripts and monitor records.
 """Read or update the application catalog embedded in README.md.
@@ -85,9 +85,7 @@ def validate_document(document):
         keys.add(key)
     return document
 
-def catalog_data_from_text(text):
-    document=validate_document(catalog_document_from_text(text))
-    config = document['config'] if document.get('schema_version')==2 else document
+def _normalize_config(config):
     if isinstance(config, dict) and isinstance(config.get('apps'), dict):
         for app in config['apps'].values():
             if isinstance(app, dict) and isinstance(app.get('targets'), list):
@@ -95,6 +93,11 @@ def catalog_data_from_text(text):
                     if isinstance(target, dict):
                         target.setdefault('tag', 'latest')
     return config
+
+
+def catalog_data_from_text(text):
+    document=validate_document(catalog_document_from_text(text))
+    return _normalize_config(document['config'] if document.get('schema_version')==2 else document)
 
 def replace_catalog_document(text,document):
     """Rewrite per-row JSON without touching canonical Shell source cells."""
@@ -117,12 +120,14 @@ def replace_catalog_document(text,document):
     left,rest=text.split(SUMMARY_START,1)
     middle,right=rest.split(SUMMARY_END,1)
     if SUMMARY_END in middle: raise ValueError('Out-of-order summary markers')
-    content=render_summary(document['config'],document['monitor']['records'],
-                           embedded_tests_from_text(text),embedded_meta_from_text(text))
+    tests=embedded_tests_from_text(text)
+    content=render_summary(_normalize_config(document['config']),document['monitor']['records'],
+                           tests,embedded_meta_from_text(text, tests=tests))
     return left+SUMMARY_START+'\n'+content+'\n'+SUMMARY_END+right
 def catalog_from_readme(path):
-    catalog=catalog_data_from_text(path.read_text(encoding='utf-8'))
-    validate(catalog, path.parent)
+    text=path.read_text(encoding='utf-8')
+    catalog=catalog_data_from_text(text)
+    validate(catalog, path.parent, text=text)
     return catalog
 
 
@@ -200,7 +205,7 @@ def embedded_json_from_text(text):
     return entries
 
 
-def embedded_meta_from_text(text):
+def embedded_meta_from_text(text, *, tests=None):
     """Read original metadata scripts with explicit missing-probe validation."""
     if text.count(SUMMARY_START)!=1 or text.count(SUMMARY_END)!=1:
         raise ValueError('Expected exactly one app-summary table')
@@ -231,11 +236,11 @@ def embedded_meta_from_text(text):
         raise ValueError('Malformed meta-app cell markers')
     if region.count(' | <!-- app-meta:')!=len(scripts)+len(missing):
         raise ValueError('Missing or duplicated meta-app table column')
-    if set(scripts)|missing!=set(embedded_tests_from_text(text)):
+    if set(scripts)|missing!=set(embedded_tests_from_text(text) if tests is None else tests):
         raise ValueError('Meta-app cells do not cover application table')
     return scripts
 
-def validate(c, root):
+def validate(c, root, *, text=None):
     if not isinstance(c, dict) or c.get('schema_version') != 1:
         raise ValueError('Unsupported catalog schema')
     unexpected = set(c) - {'schema_version', 'apps'}
@@ -249,10 +254,12 @@ def validate(c, root):
     missing_from_catalog = sorted(existing - set(apps))
     if missing_from_catalog:
         raise ValueError("Unregistered application directories: " + ", ".join(missing_from_catalog))
-    embedded_tests=embedded_tests_from_text((root/'README.md').read_text(encoding='utf-8'))
+    if text is None:
+        text=(root/'README.md').read_text(encoding='utf-8')
+    embedded_tests=embedded_tests_from_text(text)
     if set(embedded_tests)!=set(apps):
         raise ValueError('README embedded tests do not match app catalog')
-    embedded_meta=embedded_meta_from_text((root/'README.md').read_text(encoding='utf-8'))
+    embedded_meta=embedded_meta_from_text(text, tests=embedded_tests)
     if not set(embedded_meta).issubset(apps):
         raise ValueError('README meta-app scripts do not match catalog')
     refs, seen = {}, set()
@@ -392,7 +399,8 @@ def updated_summary(text,c):
     left,rest=text.split(SUMMARY_START,1)
     middle,right=rest.split(SUMMARY_END,1)
     if SUMMARY_END in middle: raise ValueError('Out-of-order summary markers')
-    return left+SUMMARY_START+'\n'+render_summary(c,snapshot_from_readme(text),embedded_tests_from_text(text),embedded_meta_from_text(text))+'\n'+SUMMARY_END+right
+    tests=embedded_tests_from_text(text)
+    return left+SUMMARY_START+'\n'+render_summary(c,snapshot_from_readme(text),tests,embedded_meta_from_text(text, tests=tests))+'\n'+SUMMARY_END+right
 
 def atomic_write(path,old,new):
     if new==old: return 'unchanged'
@@ -406,12 +414,13 @@ def atomic_write(path,old,new):
         if os.path.exists(name): os.unlink(name)
     return 'updated'
 
-def write_summary(readme,c):
-    old=readme.read_text(encoding='utf-8')
+def write_summary(readme,c, *, text=None):
+    old=readme.read_text(encoding='utf-8') if text is None else text
     return atomic_write(readme,old,updated_summary(old,c))
 
-def check_summary(readme,c):
-    text=readme.read_text(encoding='utf-8')
+def check_summary(readme,c, *, text=None):
+    if text is None:
+        text=readme.read_text(encoding='utf-8')
     expected=updated_summary(text,c)
     if text!=expected:
         from itertools import zip_longest
@@ -477,19 +486,21 @@ def main():
     args=p.parse_args()
     try:
         readme=Path(args.readme).resolve()
-        c=catalog_from_readme(readme)
+        source=readme.read_text(encoding='utf-8')
+        c=catalog_data_from_text(source)
+        stats=validate(c,readme.parent,text=source)
         if args.command=='validate':
-            print(json.dumps(validate(c,readme.parent),sort_keys=True))
+            print(json.dumps(stats,sort_keys=True))
         elif args.command=='summary':
             if args.check and args.write: raise ValueError('check and write conflict')
             if args.check:
-                check_summary(readme,c)
+                check_summary(readme,c,text=source)
                 print('app-summary: current')
-            elif args.write: print(write_summary(readme,c))
+            elif args.write: print(write_summary(readme,c,text=source))
             else:
-                source=readme.read_text(encoding='utf-8')
+                tests=embedded_tests_from_text(source)
                 print(render_summary(c,snapshot_from_readme(source),
-                                     embedded_tests_from_text(source),embedded_meta_from_text(source)))
+                                     tests,embedded_meta_from_text(source, tests=tests)))
         elif args.command=='matrix':
             print(json.dumps(matrix(c,args.kind,args.runner),separators=(',',':')))
         elif args.command in ('get','env','tags'):

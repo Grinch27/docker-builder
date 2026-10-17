@@ -40,6 +40,29 @@ class CatalogTests(unittest.TestCase):
     def setUpClass(cls):
         cls.config = catalog.catalog_from_readme(ROOT / "README.md")
 
+    def test_catalog_load_uses_one_readme_snapshot(self):
+        from unittest import mock
+        original = Path.read_text
+        reads = []
+        def read(path, *args, **kwargs):
+            if path.name == 'README.md':
+                reads.append(path)
+            return original(path, *args, **kwargs)
+        with mock.patch.object(Path, 'read_text', read):
+            loaded = catalog.catalog_from_readme(ROOT / 'README.md')
+        self.assertEqual(loaded, self.config)
+        self.assertEqual(len(reads), 1)
+
+    def test_validate_cli_does_not_repeat_validation(self):
+        from unittest import mock
+        import contextlib
+        import io
+        with mock.patch.object(sys, 'argv', ['catalog.py', 'validate']), \
+                mock.patch.object(catalog, 'validate', wraps=catalog.validate) as validate, \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(catalog.main(), 0)
+        self.assertEqual(validate.call_count, 1)
+
     def test_24_canonical_test_scripts_in_readme_table(self):
         tests=catalog.embedded_tests_from_text((ROOT/'README.md').read_text(encoding='utf-8'))
         self.assertEqual(len(tests),24)
