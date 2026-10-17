@@ -170,7 +170,7 @@ jobs:
         uses: Grinch27/github-actions/.github/actions/resolve-runner-image@main
 
   inspect:
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.mode == 'smoke-vlmcsd') && !(github.event_name == 'push' && contains(github.event.head_commit.message, '[smoke-vlmcsd]')) }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.mode == 'smoke-vlmcsd') && !(github.event_name == 'push' && (contains(github.event.head_commit.message, '[smoke-vlmcsd]') || contains(github.event.head_commit.message, '[full-build]') || contains(github.event.head_commit.message, '[full-retest:'))) }}
     name: ${{ needs.runner-image.outputs.RUNNER_IMAGE }} - inspect
     needs: runner-image
     runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
