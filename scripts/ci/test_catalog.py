@@ -274,10 +274,45 @@ class CatalogTests(unittest.TestCase):
         self.assertTrue(text.endswith(catalog.SUMMARY_END+'\n'))
         self.assertEqual(text.count('## Applications / 应用清单'), 1)
 
+    def test_readonly_json_shadows_match_canonical_apps(self):
+        source=(ROOT/'README.md').read_text(encoding='utf-8')
+        entries=catalog.embedded_json_from_text(source)
+        self.assertEqual(set(entries),set(self.config['apps']))
+        self.assertEqual(len(entries),24)
+        for name,app in self.config['apps'].items():
+            self.assertEqual(entries[name],{'app':name,'config':app})
+        self.assertEqual(source.count('<details><summary>JSON</summary>'),24)
+        with self.assertRaisesRegex(ValueError,'Malformed'):
+            catalog.embedded_json_from_text(source.replace('<!-- app-json:aria2:start -->','<!-- bad -->',1))
+        with self.assertRaisesRegex(ValueError,'Noncanonical'):
+            catalog.embedded_json_from_text(source.replace('<!-- app-json:aria2:start --><details><summary>JSON</summary><pre><code>',
+                '<!-- app-json:aria2:start --><details><summary>JSON</summary><pre><code> ',1))
+
+    def test_json_shadows_regenerate_but_shell_sources_are_unchanged(self):
+        import monitor_state
+        source=(ROOT/'README.md').read_text(encoding='utf-8')
+        entries=catalog.embedded_json_from_text(source)
+        changed=[dict(r) for r in monitor_state.parse_readme_versions(source)]
+        changed[0]['version']='simulated-shadow-probe'
+        refreshed=monitor_state.render_readme(source,changed,'monitor-images.yml')
+        self.assertEqual(catalog.embedded_json_from_text(refreshed),entries)
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            (root/'application').symlink_to(ROOT/'application',target_is_directory=True)
+            path=root/'README.md'
+            path.write_text(source,encoding='utf-8')
+            catalog.update(path,copy.deepcopy(self.config),'aria2','base_image','alpine:3.22')
+            new=path.read_text(encoding='utf-8')
+            self.assertEqual(catalog.embedded_json_from_text(new)['aria2']['config']['base_image'],'alpine:3.22')
+            self.assertEqual(catalog.embedded_tests_from_text(source),catalog.embedded_tests_from_text(new))
+            self.assertEqual(catalog.embedded_meta_from_text(source),catalog.embedded_meta_from_text(new))
+            self.assertTrue(catalog.check_summary(path,catalog.catalog_from_readme(path)))
+
     def test_single_visible_table_contains_app_and_probe_data(self):
         text=(ROOT/'README.md').read_text(encoding='utf-8')
         self.assertEqual(text.count('| Application |'),1)
         self.assertNotIn('## Application test scripts',text)
+        self.assertEqual(text.count('<details><summary>JSON</summary>'),24)
         self.assertEqual(text.count('<details><summary>Test</summary>'),24)
         self.assertEqual(text.count('<details><summary>Meta-app</summary>'),23)
         self.assertIn('<!-- app-meta:ffmpeg:missing -->—',text)

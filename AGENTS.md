@@ -7,7 +7,7 @@
 ### 配置和脚本唯一来源
 
 - `README.md` 中 `app-config` 标记内的 schema-v2 JSON 是应用/构建 Target 配置与 `monitor.records` 的权威记录；`config` 经人工审核，监控工作流只在真实状态变化时更新 `monitor.records`。不要把 Markdown 应用清单当成 JSON 配置来源。
-- `README.md` 的 **Applications / 应用清单** 位于文末，`app-summary` 标记内的展示字段由配置和监控记录生成。**Meta-app / Test 两列例外：其中每个应用的完整 Shell 代码是脚本的唯一维护源。** `Build` 列由 JSON 为全部 30 个 Target 生成非发布 Buildx 验证命令，不是第三份可手工维护的脚本来源。 保留 `app-meta:<app>`、`app-test:<app>`、`app-summary`、`app-config` 及所有结束标记；勿手工批量重排、转义或删改源码。
+- `README.md` 的 **Applications / 应用清单** 位于文末，`app-summary` 标记内的展示字段由配置和监控记录生成。**Meta-app / Test 两列例外：其中每个应用的完整 Shell 代码是脚本的唯一维护源。** `JSON` 列是从配置生成的只读影子视图，不参与 CI 或构建输入。`Build` 列由 JSON 为全部 30 个 Target 生成非发布 Buildx 验证命令，不是第三份可手工维护的脚本来源。 保留 `app-json:<app>`、`app-meta:<app>`、`app-test:<app>`、`app-summary`、`app-config` 及所有结束标记；勿手工批量重排、转义或删改源码。
 - `scripts/ci/materialize_test_hooks.py --app APP --kind meta` 在 Actions checkout 中恢复 `application/APP/meta-app/meta-app.sh`；`--kind test`（默认）恢复 `application/APP/test/test.sh`。工作流必须先生成文件，再枚举/读取/执行对应路径。生成器不能覆盖不同内容或符号链接，不会在宿主上执行 Shell。当前基线：24 个应用、30 个 Target、23 份 Meta-app、24 份 Test；`ffmpeg` 不存在有效的 Meta-app 脚本，不应无依据制造版本探针。
 - 每个应用的 `application/APP/build/` 保留 Dockerfile 及其 `COPY`、`ADD`、构建步骤依赖。清理每应用文件之前要检查构建上下文、工作流与跨仓库引用；不要从文件名或重复 SHA 直接推定可以删除。具体目录及命令见本文件下方「应用目录与命令」章节。
 

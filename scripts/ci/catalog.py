@@ -114,6 +114,38 @@ META_CELL = re.compile(
     r'<pre><code>(.*?)</code></pre></details><!-- app-meta:\1:end -->')
 META_MISSING = re.compile(r'<!-- app-meta:([a-z0-9_.-]+):missing -->—')
 
+# Generated, read-only JSON shadows. Never use these as build inputs.
+JSON_CELL = re.compile(
+    r'<!-- app-json:([a-z0-9_.-]+):start --><details><summary>JSON</summary>' +
+    r'<pre><code>(.*?)</code></pre></details><!-- app-json:\1:end -->')
+
+def embedded_json_from_text(text):
+    """Decode canonical app shadows for parity checks, not configuration loading."""
+    if text.count(SUMMARY_START)!=1 or text.count(SUMMARY_END)!=1:
+        raise ValueError('Expected exactly one app-summary table')
+    region=text.split(SUMMARY_START,1)[1].split(SUMMARY_END,1)[0]
+    entries={}
+    for match in JSON_CELL.finditer(region):
+        name,encoded=match.groups()
+        if name in entries:
+            raise ValueError('Duplicate embedded JSON: '+name)
+        prefix=region[region.rfind('\n',0,match.start())+1:match.start()]
+        if not prefix.startswith('| ['+name+'](application/'+name+'/) |'):
+            raise ValueError('JSON attached to wrong application: '+name)
+        value=json.loads(html.unescape(encoded))
+        if not isinstance(value,dict) or set(value)!={'app','config'} or value['app']!=name or not isinstance(value['config'],dict):
+            raise ValueError('Invalid embedded JSON: '+name)
+        canonical=json.dumps(value,ensure_ascii=False,sort_keys=True,separators=(',',':'))
+        if encode_embedded_test(canonical)!=encoded:
+            raise ValueError('Noncanonical embedded JSON: '+name)
+        entries[name]=value
+    if not entries or region.count('<!-- app-json:')!=2*len(entries):
+        raise ValueError('Malformed or missing JSON shadow markers')
+    if region.count(' | <!-- app-json:')!=len(entries):
+        raise ValueError('Missing or duplicate JSON shadow column')
+    return entries
+
+
 def embedded_meta_from_text(text):
     """Read original metadata scripts with explicit missing-probe validation."""
     if text.count(SUMMARY_START)!=1 or text.count(SUMMARY_END)!=1:
@@ -282,7 +314,7 @@ def render_summary(c, records=None, scripts=None, meta_scripts=None):
     observed={r['app_branch']:r for r in (records or [])}
     n=sum(len(a['targets']) for a in c['apps'].values())
     rows=[f'**{len(c["apps"])} applications / {n} build targets** (generated from configuration above).',
-          '', '| Application | Registry repository | Tags | Platforms | Base image | Dockerfiles | Detected version | Probe status | Build | Meta-app | Test |',
+          '', '| Application | Registry repository | Tags | Platforms | Base image | Dockerfiles | Detected version | Probe status | JSON | Build | Meta-app | Test |',
           '|---|---|---|---|---|---|---|---|---|---|---|']
     if scripts is None or set(scripts)!=set(c['apps']):
         raise ValueError('Application test scripts must cover configured apps')
@@ -302,6 +334,9 @@ def render_summary(c, records=None, scripts=None, meta_scripts=None):
                  if record else '—')
         status=(bt+str(record.get('status') or 'unknown').replace('|','\\|')+bt
                 if record else '—')
+        json_cell=('<!-- app-json:'+name+':start --><details><summary>JSON</summary><pre><code>'+
+                   encode_embedded_test(json.dumps({'app':name,'config':a},ensure_ascii=False,sort_keys=True,separators=(',',':')))+
+                   '</code></pre></details><!-- app-json:'+name+':end -->')
         build_cell=('<!-- app-build:'+name+':start --><details><summary>Build</summary><pre><code>'+
                     encode_embedded_test(render_build_preview(name,a))+
                     '</code></pre></details><!-- app-build:'+name+':end -->')
@@ -310,7 +345,7 @@ def render_summary(c, records=None, scripts=None, meta_scripts=None):
                    '</code></pre></details><!-- app-meta:'+name+':end -->'
                    if name in meta_scripts else '<!-- app-meta:'+name+':missing -->—')
         rows.append('| ['+name+'](application/'+name+'/) | '+bt+a['repository']+bt+' | '+
-                    tags+' | '+platforms+' | '+base+' | '+files+' | '+version+' | '+status+' | '+build_cell+' | '+meta_cell+' | '+
+                    tags+' | '+platforms+' | '+base+' | '+files+' | '+version+' | '+status+' | '+json_cell+' | '+build_cell+' | '+meta_cell+' | '+
                     '<!-- app-test:'+name+':start --><details><summary>Test</summary><pre><code>'+ 
                     encode_embedded_test(scripts[name])+
                     '</code></pre></details><!-- app-test:'+name+':end --> |')
