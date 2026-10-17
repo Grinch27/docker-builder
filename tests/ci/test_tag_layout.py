@@ -53,7 +53,7 @@ class TagLayoutTests(unittest.TestCase):
         self.assertEqual(catalog.get(config, 'runner')['dockerfile'], 'latest.Dockerfile')
 
     def test_builder_fails_before_docker_for_missing_case_mismatch_and_override(self):
-        builder = Path(__file__).with_name('build-image.sh').resolve()
+        builder = Path(__file__).resolve().parents[2] / 'scripts/ci/build-image.sh'
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / 'bin').mkdir()

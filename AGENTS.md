@@ -108,7 +108,7 @@ python3 scripts/ci/materialize_test_hooks.py --app APP --kind test
 | `scripts/ci/build-image.sh` | 共用 Buildx 命令，生产默认 `registry`，Dev/GPT 使用 `load` |
 | `scripts/ci/workflow_plan.py` | 路由和矩阵选择；候选必须经过 `staging_plan` 的非发布限制 |
 | `scripts/ci/monitor_state.py` | 监控状态、变更矩阵及稳定 README 展示 |
-| `scripts/ci/test_workflow_contracts.py` | 在单元测试中统一检查两工作流布局、依赖图、调用引用和非发布门禁 |
+| `tests/ci/test_workflow_contracts.py` | 在单元测试中统一检查两工作流布局、依赖图、调用引用和非发布门禁 |
 | `scripts/ci/verify_image_archive.py` | 不解压、不执行归档；验证唯一 manifest、平台配置和层文件 |
 | `scripts/ci/compare_image_snapshot.py` | Dev/smoke 共用的纯 JSON 比较器；保留 UNKNOWN、缺失/不可观察及版本/配置差异语义，不访问 Registry、不执行发布 |
 
@@ -127,7 +127,7 @@ python3 scripts/ci/catalog.py validate
 python3 scripts/ci/catalog.py summary --check
 python3 scripts/ci/catalog.py matrix --kind version
 python3 scripts/ci/catalog.py matrix --kind build
-python3 -m unittest discover -s scripts/ci -p 'test_*.py' -v
+PYTHONPATH="$PWD/scripts/ci" python3 -m unittest discover -s tests/ci -p 'test_*.py' -v
 ```
 
 配置变更优先使用 `catalog.py set`；手改对应 JSON.config 后运行 `python3 scripts/ci/catalog.py summary --write`，然后重新检查。示例：
@@ -240,3 +240,5 @@ Catalog 严格解析与全部执行路径已更新，普通 Push 仍只轻量校
 ## CI 精简 P1–P4（2026-10-18）
 
 用户已明确批准 P1–P4 的实现、清理、提交及非发布验证；冻结应用不追加修复。基线为 `cfe8dfc`，已包含核验后的 Action 默认分支引用。P1 退休旧 image-pipeline 入口和表格实验编解码器，将两份依赖图检查合并进契约测试，移除未使用的 workflow-name 参数。旧入口仅从当前树退休，Git 历史保留；不再提供旧 CLI 兼容。后续阶段的最终结果与验收证据在本节更新。
+
+P2 将行为测试集中到 `tests/ci/`；运行脚本固定保留 9 个。旧 probe 对照分支在统一入口不可达，已退休；正常版本、空值、非法控制字符及 DNS 首行解析语义改由 README Test 的真实 Shell 夹具验证。新增测试触发路径；测试必须从仓库根目录使用上面的显式 PYTHONPATH 命令执行。目录迁移不计作运行时间收益。

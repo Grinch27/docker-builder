@@ -14,7 +14,7 @@ import tempfile
 import unittest
 
 
-SCRIPT = Path(__file__).with_name("compare_image_snapshot.py")
+SCRIPT = Path(__file__).resolve().parents[2] / "scripts/ci/compare_image_snapshot.py"
 PLATFORM = "linux/amd64"
 
 

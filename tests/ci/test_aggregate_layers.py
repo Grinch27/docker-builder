@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# Requirements: retain CI behavior coverage independently of runtime script location.
+# Unknowns/research: external execution is covered by nonpublishing Actions acceptance.
+# Optimization: keep fixtures in tests/ci and business code in scripts/ci.
+# Risks/verification: explicit import and script paths; no reduced failure boundaries.
 import json
 import sys
 import tempfile

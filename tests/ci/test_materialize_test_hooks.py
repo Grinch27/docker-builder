@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# Requirements: retain CI behavior coverage independently of runtime script location.
+# Unknowns/research: external execution is covered by nonpublishing Actions acceptance.
+# Optimization: keep fixtures in tests/ci and business code in scripts/ci.
+# Risks/verification: explicit import and script paths; no reduced failure boundaries.
 """README HTML-table script extraction, equality and materialization tests."""
 import os
 import shutil
@@ -131,6 +135,43 @@ class EmbeddedTests(unittest.TestCase):
                 '<!-- app-meta:runner:start -->','<!-- broken -->',1))
         with self.assertRaisesRegex(ValueError,'No embedded'):
             hooks.materialize(ROOT,'unknown-app','meta')
+
+
+    def test_canonical_version_parsers_with_command_fixtures(self):
+        # The retired shared probe was an oracle only. Test the maintained README scripts.
+        samples = {'aria2': ('aria2c', 'aria2 version 1.37.0\nCopyright...\n', '1.37.0'), 'curl': ('curl', 'curl 8.12.0 (x86_64-alpine-linux)\n', '8.12.0'), 'privoxy': ('privoxy', 'Privoxy version 3.0.34 (stable)\n', '3.0.34'), 'squid': ('squid', 'Squid Cache: Version 7.6\nBuilt...\n', '7.6'), 'dnscrypt-proxy': ('dnscrypt-proxy', '2.1.18\n', '2.1.18')}
+        samples['doh-nosni'] = samples['dnscrypt-proxy']
+        for app, (command, output, expected) in samples.items():
+            with self.subTest(app=app), tempfile.TemporaryDirectory() as directory:
+                root = self.make_temp(directory)
+                hooks.materialize(root, app)
+                bindir = root / 'bin'
+                bindir.mkdir()
+                executable = bindir / command
+                env = dict(os.environ, PATH=str(bindir) + os.pathsep + os.environ.get('PATH', ''))
+                for sample, accepted in [(output, True), ('', False), ('bad\x01version\n', False)]:
+                    executable.write_text('#!/bin/sh\nprintf %s ' + __import__('shlex').quote(sample) + '\n')
+                    executable.chmod(0o755)
+                    result = subprocess.run(['sh', str(root/'application'/app/'test/test.sh')],
+                                            env=env, capture_output=True, text=True)
+                    self.assertEqual(result.returncode == 0, accepted, (app, repr(sample), result.stderr))
+                    if accepted:
+                        self.assertEqual(result.stdout, 'version=' + expected + '\n')
+
+    def test_canonical_dns_version_uses_first_line(self):
+        # README semantics deliberately accept a first-line version followed by a banner.
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_temp(directory)
+            hooks.materialize(root, 'dnscrypt-proxy')
+            bindir = root / 'bin'
+            bindir.mkdir()
+            executable = bindir / 'dnscrypt-proxy'
+            executable.write_text('#!/bin/sh\nprintf "2.1.18\\nextra banner\\n"\n')
+            executable.chmod(0o755)
+            env = dict(os.environ, PATH=str(bindir) + os.pathsep + os.environ.get('PATH', ''))
+            result = subprocess.run(['sh', str(root/'application/dnscrypt-proxy/test/test.sh')],
+                                    env=env, capture_output=True, text=True, check=True)
+            self.assertEqual(result.stdout, 'version=2.1.18\n')
 
 if __name__=='__main__':
     unittest.main(verbosity=2)

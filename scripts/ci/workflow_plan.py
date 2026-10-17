@@ -22,7 +22,6 @@ DEV_MODES = {"preflight", "auto", "build", "promote-dockerhub", "promote-ghcr", 
 DEV_EXCLUDED = {"baidunetdisk", "cloudflare-warp", "expressvpn", "ffmpeg", "novnc",
                 "protonvpn", "sdnext", "sdnext-dev", "stable-diffusion-webui-amdgpu",
                 "steamcmd", "ttrss"}
-PROBE_APPS = {"aria2", "curl", "privoxy", "squid", "dnscrypt-proxy", "doh-nosni"}
 
 
 def target_id(app: str, tag: str) -> str:
@@ -46,7 +45,6 @@ def plan(config: dict, event_name: str, event: dict, inputs: dict, runner: str) 
     route = value("execution_route", "production")
     app, tag = value("app_branch"), value("tag_repo")
     selected_id = value("target_id")
-    probe = False
     if event_name in {"push", "pull_request"}:
         # User-controlled push messages can select read-only tests, never publication.
         route, app, tag, selected_id = "validate", "", "", ""
@@ -65,8 +63,6 @@ def plan(config: dict, event_name: str, event: dict, inputs: dict, runner: str) 
             route, selected_id = "smoke", match.group(1)
         elif "[smoke-vlmcsd]" in message:
             route, app = "test", "vlmcsd"
-        elif "[probe-smoke]" in message:
-            route, probe = "test", True
         elif "[diagnostics-full]" in message:
             route = "diagnostics"
     elif event_name == "schedule":
@@ -138,8 +134,7 @@ def plan(config: dict, event_name: str, event: dict, inputs: dict, runner: str) 
             raise ValueError("Promotion requires one target, version and revision")
 
     test_matrix = [{"app": t["app_branch"], "tag": t["tag_repo"], "platform": platform}
-                   for t in targets for platform in t["arch_branch"].split(",")
-                   if not probe or (t["app_branch"] in PROBE_APPS and platform in {"linux/amd64", "linux/arm64"})]
+                   for t in targets for platform in t["arch_branch"].split(",")]
     platform = value("platform")
     if platform:
         if route != "test":
@@ -177,7 +172,7 @@ def plan(config: dict, event_name: str, event: dict, inputs: dict, runner: str) 
         "version": value("version"), "revision": value("revision"), "custom_env": custom,
         "fetch_versions": str(route in {"production", "monitor", "build"} or
                               (route == "diagnostics" and diagnostic_mode in {"version", "both"})).lower(),
-        "diagnostic_mode": diagnostic_mode, "probe": str(probe).lower(),
+        "diagnostic_mode": diagnostic_mode,
         "version_matrix": {"include": versions}, "build_targets": {"include": targets},
         "dev_matrix": {"include": dev_targets}, "test_matrix": {"include": test_matrix},
         "images": images, "image_platforms": [{"image_name": image, "arch": arch}
