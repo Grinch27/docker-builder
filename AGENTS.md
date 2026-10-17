@@ -18,9 +18,7 @@
 `operation=pull-image` 通过 `image_ref` 和 `image_platform` 拉取与导出平台明确的 Docker 镜像，压缩并上传 Actions Artifact。
 不进行 Registry Push。外部仍直接调用已删除 Workflow 的用户必须迁移到此两文件入口；尚未覆盖外部消费者。
 
-**已有验证：** `8474dac` 的 [39034967939](https://github.com/Grinch27/docker-builder/actions/runs/39034967939)
-为 106 项测试通过、2 个运行 Job 成功；尚不代表新两文件版本的 CI 结果。
-应用按约八成标准冻结，失败清单及跨 SHA 证据保留在下方历史验收记录，不再本阶段新增应用修复。
+**当前目录迁移验证：** `c7ad230` 的 [39045898957](https://github.com/Grinch27/docker-builder/actions/runs/39045898957) 已通过 113 项测试，Dev 与 Container 的 vlmcsd 三架构非发布路径均成功。完整矩阵结果见下方 Tag 目录迁移验收记录；未结束项不计为通过。应用仍按约八成标准，失败只记录原因与状态，不追加应用专项修复。
 
 ### 已完成的实际验收
 
@@ -61,12 +59,12 @@
 |---|---|---|
 | expressvpn | amd64、arm64、386、arm/v7 | 旧下载页未提供所需 `.deb` 链接，下载地址为空。后续核对官方包来源、CLI 迁移与 32 位兼容方案；本轮暂缓。 |
 | ffmpeg | amd64 | 原 Meson 引号已修复；`62dbd5a` / [39033385954](https://github.com/Grinch27/docker-builder/actions/runs/39033385954) 最终仍失败，现为 Mesa 构建中 once_flag/call_once 类型冲突。只记录，不追加修复。 |
-| stable-diffusion-webui-amdgpu | amd64 | 首轮为 Python 3.12/scikit-image/Pythran 编译错误；`3893ab4` / [39033539487](https://github.com/Grinch27/docker-builder/actions/runs/39033539487) 最终 failure，Job 日志下载返回 404，后续失败根因未确认。只记录，不追加修复。 |
+| stable-diffusion-webui-amdgpu | amd64 | 首轮为 Python 3.12/scikit-image/Pythran 编译错误；`3893ab4` / [39033539487](https://github.com/Grinch27/docker-builder/actions/runs/39033539487) 最终 failure，Job 日志下载返回 404；后续读取 Check Run annotation 确认 Runner 根盘耗尽，Worker 日志无法写入。只记录，不追加修复。 |
 | ttrss | amd64、arm64 | 缺少 Dockerfile 的 COPY 输入：`docker-entrypoint.sh`、`src/wait-for.sh`、`src/ttrss.nginx.conf`、`src/initialize.php`、`src/s6`。后续恢复并审查匹配版本的构建资源；本轮暂缓。 |
 
 历史三项重测已结束：SD.Next amd64 成功，日志确认 README Test 通过；FFmpeg 和 WebUI AMDGPU 失败，状态已更新。本轮不再追加这些应用的专项修复。历史结果不替代新目录 Commit 的测试结果。
 
-当前本地与 CI 为 106 项测试通过，含实际平台门禁、Meson 文件生成、目标筛选、规划失败门禁和镜像比较边界；最新轻量验收见下节。actionlint 仅精确忽略前述 queue / false 两类提示，shellcheck / pyflakes 未执行。Dev/Container 实测仅证明代表性 vlmcsd 目标，未验证所有应用、真实 Registry/Release 晋升、VPN 联网、GUI 或 GPU 运行。跨 SHA 的定向通过不得汇总成同一 SHA 的 52/52。
+工作流精简阶段本地与 CI 为 106 项测试通过，含实际平台门禁、Meson 文件生成、目标筛选、规划失败门禁和镜像比较边界；最新轻量验收见下节。actionlint 仅精确忽略前述 queue / false 两类提示，shellcheck / pyflakes 未执行。Dev/Container 实测仅证明代表性 vlmcsd 目标，未验证所有应用、真实 Registry/Release 晋升、VPN 联网、GUI 或 GPU 运行。跨 SHA 的定向通过不得汇总成同一 SHA 的 52/52。
 
 ### 工作流精简验收（2026-10-17）
 
@@ -156,7 +154,7 @@ README 改写需比较全部 JSON 配置、监控记录、应用行和 Meta-app 
 
 普通 push 默认 `validate`，也可显式使用 `[gpt-validate]`；代表性完整验证需手动选 `verification` 或使用 `[gpt-verification]`，全量仍为 `[gpt-acceptance]`。保留 `[gpt-retest:APP:TAG]`、`[gpt-dev:APP:TAG]`、`[gpt-container:APP:TAG]` 等既有定向路由，每次 push 仅接受一个标记。retest 支持逗号分隔的多个 `APP:TAG`，逐项从配置验证，拒绝重复或未知目标。全量验收拒绝目标筛选，不能用子集冒充全部。每个组合上传含 SHA、平台、阶段和退出码的证据；Dev/Container 归档只上传 Actions Artifact。定向重测不同 SHA 的历史成功不能替代同一 SHA 的全量通过。
 
-正式 Dev 仅 `execution_route=dev` + `dev_mode=preflight` 是已验收的非发布预检；`auto` / `build` / `promote-*` 可能创建 Release 或推送 Docker Hub/GHCR，不能当作 dry run。检查、构建、镜像内测试、发布是不同验收等级；报告必须给出 Commit、Run、实际范围、跳过项及限制。
+历史正式 Dev 仅 `execution_route=dev` + `dev_mode=preflight` 是已验收的非发布预检；`auto` / `build` / `promote-*` 可能创建 Release 或推送 Docker Hub/GHCR，不能当作 dry run。检查、构建、镜像内测试、发布是不同验收等级；报告必须给出 Commit、Run、实际范围、跳过项及限制。
 
 待办顺序：完成本次 Tag 目录迁移的同 SHA 非发布验收并按约八成标准收尾，历史失败只记录；继续核对外部调用方和未选路由。旧工作流已退役，不恢复重复定时任务。正式发布和 Dev 晋升须未来另行实现并验收；既有代表性 Dev/Container 成功不能代替新目录版本的实测。
 
@@ -168,7 +166,26 @@ README 改写需比较全部 JSON 配置、监控记录、应用行和 Meta-app 
 
 Catalog 严格解析与全部执行路径已更新，普通 Push 仍只轻量校验；完整矩阵显式选择。各应用 `.dockerignore` 排除恢复的 test/meta-app、参考文件、日志和输出归档；本地 COPY/ADD 审计仅保留 TT-RSS 已有的五项缺失，不补包或修复历史应用。
 
-本地 113 项测试通过，README 的全部 Meta-app、Test、监控记录及除 dockerfile 字段外的配置已逐项比较。actionlint 核心通过；未修改的手动工具存在两个既有未使用 Anchor 提示。shellcheck/pyflakes 不可用。迁移后的同 SHA 全量/Dev/Container 验收尚待实际 Run，不能引用旧累计 44/52 作为新版本成功率。
+本地及同 SHA CI 的 113 项测试通过，另外全部 30 个 Target 的 load/registry 两模式共 60 次真实 Bash 参数夹具通过（未调用 Docker）。README 的全部 Meta-app、Test、监控记录及除 dockerfile 字段外的配置已逐项比较。actionlint 核心通过；未修改的手动工具存在两个既有未使用 Anchor 提示。shellcheck/pyflakes 不可用。迁移后的同 SHA 52 组合已运行，Dev/Container 通过；完整状态见下方验收记录，不能引用旧累计 44/52 作为新版本成功率。
+
+### Tag 迁移 CI 验收记录
+
+- 代码 Commit：`c7ad230ee590bc72f3cf5163706a1587e7d95681`；Run：[39045898957](https://github.com/Grinch27/docker-builder/actions/runs/39045898957)。52 个唯一组合与全部 Catalog 配置逐项一致；没有筛选或删除失败目标。
+- Dev Job `117434560200`：vlmcsd 的 amd64/arm64/386 构建、Test、比较及逐平台 tar 校验均通过。
+- Container Job `117434494806`：三架构元数据、构建、本地 Registry、Test、导出、xz/分卷、校验及说明均通过；严格最终门禁通过，登录/Push/Release 跳过，日志确认 external publication=0。
+- 本轮冻结应用故障：ExpressVPN 四平台下载地址为空；TT-RSS 两平台仍缺少迁移前就不存在的入口脚本及 src 资源。
+- 新观测的应用下载故障：noVNC amd64 未取得 tarball_url，curl 报无 URL；runner:actions 未提取出版本号，拼成 actions/runner/releases/download/v/actions-runner-linux-x64-.tar.gz 并返回 HTTP 404。对应 Dockerfile 字节与迁移前相同，非文件选择或上下文错误；只记录，不修改应用。
+- 截至 2026-10-18 00:15:33 +0800，同一 SHA 的矩阵为 **42 成功、8 失败、2 运行中**。剩余 FFmpeg Job `117434496358` 和 WebUI AMDGPU Job `117434498636` 在该快照时仍运行。用户于 2026-10-18 明确允许耗时长的个别应用本轮先不检查，因此这两项标记为“本轮暂不验收／待后续”，停止等待和读取其结果；不计为通过，不取消现有运行，不追加应用专项修复或重跑全量。
+
+| 同 SHA 统计口径 | 已确认结果 |
+|---|---|
+| 至少一个 Target/平台成功的应用 | 20/24（83.3%）；补充统计，不替代完整配置口径 |
+| 全部配置均成功的应用 | 18/24（75.0%）；与历史应用口径一致 |
+| 全部平台均成功的 Target | 24/30（80.0%） |
+| Target/平台组合成功 | 42/52（80.8%） |
+
+本次代码迁移及静态、代表性 Dev/Container 验收已完成，按约八成可构建范围收尾代码修改。已完成 Job 中未发现本轮结构回归；**完整应用口径尚未确认达到约八成，完整矩阵仍在运行，不能宣称 52 项已全部结束或全部通过**。本轮按用户允许跳过耗时项的最新要求，以已完成证据收尾；上述两项留待以后需要时再检查。这里的跳过是人工验收范围调整，不代表 Actions Job 实际为 skipped，也不通过删除矩阵或修改失败门禁改变结果；当前八个失败如实保留。
+
 
 下表路径均相对于仓库根目录；迁移前后映射覆盖全部 38 个原始移动文件，原本已在 test/ 的数据未移动。
 
