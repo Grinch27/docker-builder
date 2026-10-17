@@ -1,3 +1,7 @@
+# Requirement: preserve the upstream dependency versions and Python while compiling scikit-image with current Pythran.
+# Unknown/research: GPU inference and upstream Python-3.12 runtime compatibility need separate hardware acceptance.
+# Optimization: prefer existing wheels; use C++17 only for source builds in the requirements step.
+# Risk/verification: build isolation can expose ABI mismatches; require an actual skimage import after installation.
 ARG base_image=rocm/dev-ubuntu-24.04
 FROM ${base_image}
 
@@ -51,7 +55,9 @@ RUN set -eux; \
 
 RUN set -eux; \
     git clone --depth 1 --branch "${webui_ref}" "${webui_repo}" "${webui_dir}"; \
-    "${venv_dir}/bin/pip" install --prefer-binary -r "${webui_dir}/requirements_versions.txt"
+    CXXFLAGS="${CXXFLAGS:-} -std=c++17" \
+        "${venv_dir}/bin/pip" install --prefer-binary -r "${webui_dir}/requirements_versions.txt"; \
+    "${venv_dir}/bin/python" -c 'import skimage; print("scikit-image import PASS:", skimage.__version__)'
 
 RUN set -eux; \
     mkdir -p /data/models /data/outputs; \
