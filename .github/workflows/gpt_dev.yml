@@ -138,7 +138,7 @@ jobs:
       images: ${{ steps.plan.outputs.images }}
       image_platforms: ${{ steps.plan.outputs.image_platforms }}
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@main
     - name: Check catalog, unit tests and Job dependencies
       run: |
         set -euo pipefail
@@ -1690,7 +1690,7 @@ jobs:
         } >> "${GITHUB_STEP_SUMMARY}"
     - name: Upload inspect metadata
       if: steps.inspect.outputs.mode == 'auto' || steps.inspect.outputs.mode == 'build' || steps.inspect.outputs.mode == 'smoke-target'
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@main
       with:
         name: ${{ steps.inspect.outputs.artifact_name }}
         path: ${{ runner.temp }}/inspect-data
@@ -1750,7 +1750,7 @@ jobs:
       uses: docker/setup-buildx-action@master
     - name: Download inspect metadata
       if: env.MODE == 'auto' || env.MODE == 'build'
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@main
       with:
         name: ${{ needs.dev-inspect.outputs.artifact_name }}
         path: ${{ runner.temp }}/inspect-baseline
@@ -2371,7 +2371,7 @@ jobs:
         fi
     - name: Upload Dev acceptance evidence (no Release)
       if: always()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@main
       with:
         name: dev-acceptance-${{ matrix.target_id }}-a${{ github.run_attempt }}
         path: ${{ runner.temp }}/docker-pipeline/${{ matrix.target_id }}
@@ -2417,7 +2417,7 @@ jobs:
     - name: Configure Buildx
       uses: docker/setup-buildx-action@master
     - name: Download published-image inspection (read only)
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@main
       with:
         name: ${{ needs.dev-inspect.outputs.artifact_name }}
         path: ${{ runner.temp }}/inspect-baseline
@@ -2547,7 +2547,7 @@ jobs:
         echo "Smoke success: $TARGET_ID, ${#versions[@]} declared platforms; NO registry push / NO GitHub Release." >> "$GITHUB_STEP_SUMMARY"
     - name: Upload smoke evidence (Actions Artifact ONLY)
       if: always()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@main
       with:
         name: smoke-${{ matrix.target_id }}-${{ github.run_id }}
         path: ${{ runner.temp }}/smoke-${{ matrix.target_id }}
@@ -2571,7 +2571,7 @@ jobs:
       matrix: ${{ fromJSON(needs.plan.outputs.test_matrix) }}
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@main
     - name: Install job-scoped privilege helper
       if: runner.environment == 'github-hosted' && env.LARGE_IMAGE_BUILD == 'true'
       uses: Grinch27/github-actions/.github/actions/run-sudo@main
@@ -2589,9 +2589,9 @@ jobs:
         df -h /
         docker system df
     - name: Enable cross-platform emulation
-      uses: docker/setup-qemu-action@v3
+      uses: docker/setup-qemu-action@master
     - name: Setup Docker Buildx
-      uses: docker/setup-buildx-action@v3
+      uses: docker/setup-buildx-action@master
     - name: Build image, execute README Test, and inspect result
       shell: bash
       env:
@@ -2655,7 +2655,7 @@ jobs:
         printf 'PASS app=%s tag=%s platform=%s (local only)\n' "$APP" "$TARGET_TAG" "$TARGET_PLATFORM" | tee -a "$GITHUB_STEP_SUMMARY"
     - name: Upload per-combination evidence
       if: always()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@main
       with:
         name: full-test-${{ matrix.app }}-${{ matrix.tag }}-${{ strategy.job-index }}-a${{ github.run_attempt }}
         path: ${{ runner.temp }}/full-test
@@ -3049,7 +3049,7 @@ jobs:
     if: ${{ always() && !cancelled() && needs.plan.result == 'success' && (needs.plan.outputs.route == 'diagnostics' || needs.plan.outputs.route == 'verification') && needs.plan.outputs.diagnostic_mode != 'all-platforms' }}
     steps:
     - name: Download diagnostic evidence
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@main
       with:
         path: ${{ runner.temp }}/diagnostic-contracts
     - name: Check selected diagnostic contracts
@@ -3997,7 +3997,7 @@ jobs:
         PY
     - name: Upload Container acceptance evidence (no Release)
       if: always()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@main
       with:
         name: container-acceptance-${{ matrix.app_branch }}-${{ matrix.tag_repo }}-a${{ github.run_attempt }}
         path: |
