@@ -458,6 +458,8 @@ class CatalogTests(unittest.TestCase):
         self.assertIn('test -x /usr/bin/llvm-config-18',mesa)
         self.assertIn('llvm-config = "/usr/bin/llvm-config-18"',mesa)
         self.assertIn('--native-file /tmp/mesa-llvm.ini',mesa)
+        self.assertIn("printf '[binaries]'"+chr(92)+"nllvm-config",mesa)
+        self.assertNotIn("printf '[binaries]'"+chr(92)*2+"nllvm-config",mesa)
         self.assertIn('-Dvideo-codecs=all',mesa)
 
     def test_shared_buildx_registry_and_load_contracts(self):
