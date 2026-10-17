@@ -1,3 +1,7 @@
+# Requirement: preserve the configured version and architectures while restoring official package download.
+# Unknown/research: official CDN availability varies by runner region; upstream package checksum is unpublished here.
+# Optimization: use Baidu's direct issue CDN instead of the failing port-19001 redirect.
+# Risks/verification: keep package version/architecture unchanged; require real amd64/arm64 build and README Test.
 #==============================
 # Inpired by:
 #	https://github.com/jlesage/docker-baseimage-gui
@@ -107,7 +111,7 @@ RUN set -x \
     && OS_ARCH=$(dpkg --print-architecture) \
 	# ===== baidunetdisk: Pre-Setup =====
 	&& APP_VER="4.17.7" \
-	&& URL_baidunetdisk="https://pkg-ant.baidu.com/issue/netdisk/LinuxGuanjia/${APP_VER}/baidunetdisk_${APP_VER}_${OS_ARCH}.deb" \
+	&& URL_baidunetdisk="https://issuecdn.baidupcs.com/issue/netdisk/LinuxGuanjia/${APP_VER}/baidunetdisk_${APP_VER}_${OS_ARCH}.deb" \
 	&& FILE_baidunetdisk="/baidunetdisk.deb" \
 	&& curl -fsSL ${URL_baidunetdisk} -o ${FILE_baidunetdisk} \
 	# ===== Clean pre-install =====
