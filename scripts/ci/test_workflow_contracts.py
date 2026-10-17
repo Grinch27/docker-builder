@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Requirements: fail closed on missing, failed, or wrong-target check evidence.
+# Requirements: fail closed on failed check evidence and prohibit publication during acceptance.
 # Unknowns/research: GitHub-hosted execution and registry publication remain unverified locally.
 # Risks/verification: execute real check-result shell with fixtures; check all inline Bash syntax.
 # Optimization: use standard-library extraction; actionlint validates the full YAML separately.
@@ -105,13 +105,21 @@ class WorkflowContractTests(unittest.TestCase):
 
     def test_staging_publication_is_hard_disabled(self):
         jobs = graph.job_blocks(TEXT)
-        for name in ["dev-build", "container-build"]:
-            self.assertIn("    if: ${{ false }}", jobs[name])
         self.assertIn("WORKFLOW_READ_ONLY: 'true'", jobs["plan"])
         self.assertIn("publish: 'false'", jobs["build"])
-        for name in ["(Publish) Log in to Docker Hub", "(Push) Image to ${{ env.registry_push }}", "(Upload) to Release"]:
-            step = jobs["build"].split("    - name: " + name + "\n", 1)[1].split("    - name:", 1)[0]
-            self.assertIn("if: ${{ false }}", step)
+        for job, names in {
+            "build": ["(Publish) Log in to Docker Hub", "(Push) Image to ${{ env.registry_push }}", "(Upload) to Release"],
+            "container-build": ["(Log in) to Docker Hub", "(Push) Image to ${{ env.registry_push }}", "(Upload) to Release"],
+            "dev-build": ["Promote archived images"],
+        }.items():
+            for name in names:
+                step = jobs[job].split("    - name: " + name + "\n", 1)[1].split("    - name:", 1)[0]
+                self.assertIn("if: ${{ false }}", step, job + ': ' + name)
+        dev = script_for("dev-build", "Build, test, compare and archive locally")
+        self.assertNotRegex(dev, r"\bgh\s+release\b|\bdocker\s+(?:login|push)\b")
+        self.assertIn('verify_image_archive.py', dev)
+        self.assertIn('Upload Dev acceptance evidence', jobs['dev-build'])
+        self.assertIn('Enforce complete Container acceptance', jobs['container-build'])
         self.assertNotIn("  schedule:", TEXT)
         self.assertNotIn("  repository_dispatch:", TEXT)
 

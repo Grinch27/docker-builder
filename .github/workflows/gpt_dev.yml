@@ -1,7 +1,7 @@
 # Requirements: isolated candidate for the single-core-workflow migration; keep production files unchanged.
 # Unknowns/research: full application matrix and live publication equivalence need separate acceptance.
 # Optimization: share catalog routing and runner selection; test representative architectures and artifacts.
-# Risks/verification: publishing Jobs and README pushes are hard-disabled; read-only planner rejects write routes.
+# Risks/verification: full/Dev/Container acceptance is local-only; publication and README pushes stay hard-disabled.
 name: GPT Dev - Unified Jobs (Nonpublishing)
 run-name: GPT Dev - ${{ github.event_name }} - ${{ inputs.execution_route || 'verification' }}
 'on':
@@ -24,6 +24,9 @@ run-name: GPT Dev - ${{ github.event_name }} - ${{ inputs.execution_route || 've
         default: verification
         options:
         - verification
+        - acceptance
+        - dev-verify
+        - container-verify
         - validate
         - monitor
         - build
@@ -1346,7 +1349,7 @@ jobs:
         token: ${{ secrets.GITHUB_TOKEN }}
         bodyFile: ${{ env.release_md }}
   dev-inspect:
-    if: ${{ needs.plan.outputs.route == 'smoke' || (needs.plan.outputs.route == 'dev' && needs.plan.outputs.dev_mode != 'preflight') }}
+    if: ${{ contains(fromJSON('["smoke","acceptance","dev-verify"]'), needs.plan.outputs.route) || (needs.plan.outputs.route == 'dev' && needs.plan.outputs.dev_mode != 'preflight') }}
     name: ${{ needs.runner-image.outputs.RUNNER_IMAGE }} - inspect
     needs:
     - runner-image
@@ -1733,7 +1736,10 @@ jobs:
     - runner-image
     - plan
     - dev-inspect
-    if: ${{ false }}
+    if: ${{ contains(fromJSON('["acceptance","dev-verify"]'), needs.plan.outputs.route) }}
+    timeout-minutes: 75
+    permissions:
+      contents: read
     runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
     concurrency:
       group: docker-allinone-dev-${{ matrix.app_branch }}
@@ -1779,8 +1785,6 @@ jobs:
     - name: Build, test, compare and archive locally
       id: build-release
       if: env.MODE == 'auto' || env.MODE == 'build'
-      env:
-        GH_TOKEN: ${{ github.token }}
       run: |
         set -euo pipefail
 
@@ -2227,7 +2231,8 @@ jobs:
           printf 'need_archive=%q\n' "${need_archive}"
         } > "${decision_file}"
 
-        if [[ "${need_archive}" == false ]]; then
+        # Staging always exercises export; comparison decisions remain in decision.env.
+        if [[ "${need_archive}" == false && "${GPT_STAGING}" != true ]]; then
           {
             echo "## ${TARGET_ID} ${actual_version}"
             echo
@@ -2243,31 +2248,19 @@ jobs:
           exit 0
         fi
 
-        release_tag="${APP_BRANCH}"
-        if ! gh release view "${release_tag}" >/dev/null 2>&1; then
-          gh release create "${release_tag}" \
-            --title "${repo_dockerhub}" \
-            --notes "Neutral Docker image archives for ${APP_BRANCH}. Versions, channels, build revisions and platforms are encoded in asset filenames."
-        fi
-
         : > "${state_dir}/release.tsv"
         while IFS=$'\t' read -r platform arch_label platform_version local_ref status reason; do
           [[ "${status}" == success ]] || continue
           asset_name="${TARGET_ID}-v${version_tag}-${REVISION}-linux-${arch_label}.tar"
           asset_path="${tar_dir}/${asset_name}"
 
-          if ! docker save --output "${asset_path}" "${local_ref}"; then
+          if ! docker image save --platform "${platform}" --output "${asset_path}" "${local_ref}"; then
             echo "docker save failed for ${platform}" >&2
             exit 1
           fi
 
-          if gh release view "${release_tag}" --json assets --jq '.assets[].name' |
-               grep -Fxq "${asset_name}"; then
-            printf 'Release asset already exists and will not be overwritten: %s\n' "${asset_name}" >&2
-            exit 1
-          fi
-
-          gh release upload "${release_tag}" "${asset_path}"
+          python3 scripts/ci/verify_image_archive.py "${asset_path}" "${platform}"
+          sha256sum "${asset_path}" >> "${state_dir}/archives.sha256"
           printf '%s\t%s\t%s\t%s\t%s\n' \
             "${platform}" "${arch_label}" "${asset_name}" success ok \
             >> "${state_dir}/release.tsv"
@@ -2284,11 +2277,13 @@ jobs:
           echo "- Docker Hub promotion required: ${dockerhub_need}"
           echo "- GHCR promotion required: ${ghcr_need}"
           echo "- Archive format: raw Docker \`.tar\`"
+          echo "- Nonpublishing acceptance: Registry login/push=0, Release create/upload=0"
           echo "- Revision: \`${REVISION}\`"
           echo "- Hash calculations: NONE"
         } >> "${GITHUB_STEP_SUMMARY}"
     - name: Promote archived images
       id: promote
+      if: ${{ false }}
       env:
         GH_TOKEN: ${{ github.token }}
         DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
@@ -2600,6 +2595,14 @@ jobs:
         if [[ "${overall_fail}" -ne 0 ]]; then
           exit 1
         fi
+    - name: Upload Dev acceptance evidence (no Release)
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: dev-acceptance-${{ matrix.target_id }}
+        path: ${{ runner.temp }}/docker-pipeline/${{ matrix.target_id }}
+        if-no-files-found: error
+        retention-days: 5
   smoke:
     name: Smoke ${{ matrix.target_id }} (local only)
     needs:
@@ -2977,14 +2980,14 @@ jobs:
     needs:
     - runner-image
     - plan
-    if: ${{ needs.plan.outputs.route == 'verification' || (needs.plan.outputs.route == 'test') }}
+    if: ${{ contains(fromJSON('["verification","acceptance","test"]'), needs.plan.outputs.route) }}
     runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
     timeout-minutes: 120
     permissions:
       contents: read
     strategy:
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 8
       matrix: ${{ fromJSON(needs.plan.outputs.test_matrix) }}
     steps:
     - name: Checkout repository
@@ -3002,29 +3005,44 @@ jobs:
         PROBE_PARITY: ${{ needs.plan.outputs.probe }}
       run: |
         set -euo pipefail
+        evidence="$RUNNER_TEMP/full-test"
+        mkdir -p "$evidence"
+        phase=configuration
+        cid=""
+        image_ref="full-check-${APP}:${TARGET_TAG}-${TARGET_PLATFORM//\//-}"
+        finish() {
+          result=$?
+          trap - EXIT
+          jq -cn --arg app "$APP" --arg tag "$TARGET_TAG" --arg platform "$TARGET_PLATFORM" \
+            --arg sha "$GITHUB_SHA" --arg phase "$phase" --argjson exit_code "$result" \
+            '{app:$app,tag:$tag,platform:$platform,sha:$sha,phase:$phase,exit_code:$exit_code,publish:false}' \
+            > "$evidence/result.json"
+          if [[ -n "$cid" ]]; then docker rm -f "$cid" >/dev/null 2>&1 || true; fi
+          docker image rm -f "$image_ref" >/dev/null 2>&1 || true
+          exit "$result"
+        }
+        trap finish EXIT
         target="$(python3 scripts/ci/catalog.py get --app "$APP" --tag "$TARGET_TAG")"
+        printf '%s\n' "$target" > "$evidence/target.json"
         base_image="$(jq -er .base_image <<<"$target")"
         dockerfile="$(jq -er .dockerfile <<<"$target")"
         build_arg="$(jq -r .build_arg <<<"$target")"
         arch_branch="$TARGET_PLATFORM"
-        image_ref="full-check-${APP}:${TARGET_TAG}-${TARGET_PLATFORM//\//-}"
         export base_image dockerfile build_arg arch_branch image_ref
         export build_output=load
+        phase=build
         (
           cd "application/${APP}/build"
           bash "$GITHUB_WORKSPACE/scripts/ci/build-image.sh"
-        )
-        docker image inspect "$image_ref" >/dev/null
+        ) 2>&1 | tee "$evidence/build.log"
+        phase=platform
+        docker image inspect "$image_ref" > "$evidence/image.json"
+        jq -e --arg arch "${TARGET_PLATFORM#linux/}" '.[0].Os == "linux" and .[0].Architecture == $arch' "$evidence/image.json"
         python3 scripts/ci/materialize_test_hooks.py --app "$APP"
-        cid=""
-        cleanup() {
-          if [[ -n "$cid" ]]; then docker rm -f "$cid" >/dev/null 2>&1 || true; fi
-          docker image rm -f "$image_ref" >/dev/null 2>&1 || true
-        }
-        trap cleanup EXIT
+        phase=test
         cid="$(docker run --detach --platform "$TARGET_PLATFORM" --entrypoint /bin/sh "$image_ref" -c 'sleep 600')"
         docker cp "application/${APP}/test/test.sh" "$cid:/tmp/test.sh"
-        docker exec --user 0 "$cid" /bin/sh /tmp/test.sh | tee "$RUNNER_TEMP/actual-version.log"
+        docker exec --user 0 "$cid" /bin/sh /tmp/test.sh 2>&1 | tee "$RUNNER_TEMP/actual-version.log" "$evidence/test.log"
         if [[ "$PROBE_PARITY" == true ]]; then
           docker cp scripts/ci/probe-image.sh "$cid:/tmp/probe-image.sh"
           reference_app="$APP"
@@ -3034,7 +3052,16 @@ jobs:
           v_shared=$(awk -F= '/^version=/{sub(/^[^=]*=/,""); v=$0} END{print v}' "$RUNNER_TEMP/shared-version.log")
           test -n "$v_actual" && test "$v_actual" = "$v_shared"
         fi
+        phase=complete
         printf 'PASS app=%s tag=%s platform=%s (local only)\n' "$APP" "$TARGET_TAG" "$TARGET_PLATFORM" | tee -a "$GITHUB_STEP_SUMMARY"
+    - name: Upload per-combination evidence
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: full-test-${{ matrix.app }}-${{ matrix.tag }}-${{ strategy.job-index }}
+        path: ${{ runner.temp }}/full-test
+        if-no-files-found: error
+        retention-days: 5
   registry-smoke:
     name: Buildx ${{ matrix.app }}:${{ matrix.tag }} (local registry only)
     if: ${{ needs.plan.outputs.route == 'verification' || (needs.plan.outputs.route == 'registry-smoke') }}
@@ -3466,6 +3493,9 @@ jobs:
     - runner-image
     - plan
     runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
+    timeout-minutes: 90
+    permissions:
+      contents: read
     defaults:
       run:
         shell: bash
@@ -4150,14 +4180,14 @@ jobs:
         echo "status=success" | tee -a "${GITHUB_OUTPUT}"
     - name: (Log in) to Docker Hub
       id: login
-      if: success() && steps.test.outputs.status == 'success' && (steps.build.outputs.status == 'success' && !cancelled())
+      if: ${{ false }}
       working-directory: /
       run: |
         echo "${{ secrets.DOCKER_PASSWORD }}" | docker login docker.io --username "${{ secrets.DOCKER_USERNAME }}" --password-stdin
         echo "status=success" | tee -a "${GITHUB_OUTPUT}"
     - name: (Push) Image to ${{ env.registry_push }}
       id: push
-      if: success() && steps.test.outputs.status == 'success' && (steps.login.outputs.status == 'success' && !cancelled())
+      if: ${{ false }}
       working-directory: ${{ env.PATH_app }}
       run: |
         echo "Current working directory: $(pwd)"
@@ -4344,7 +4374,7 @@ jobs:
         echo "status=success" | tee -a "${GITHUB_OUTPUT}"
     - name: (Upload) to Release
       id: upload-release
-      if: success() && steps.test.outputs.status == 'success' && (steps.release-md.outputs.status == 'success' && !cancelled())
+      if: ${{ false }}
       uses: ncipollo/release-action@main
       with:
         name: ${{ steps.env-validate.outputs.repo_dockerhub }}
@@ -4355,7 +4385,35 @@ jobs:
         replacesArtifacts: true
         token: ${{ secrets.GITHUB_TOKEN }}
         bodyFile: ${{ env.PATH_release }}
-    if: ${{ false }}
+    - name: Enforce complete Container acceptance
+      if: always() && !cancelled()
+      env:
+        STEP_RESULTS: ${{ toJSON(steps) }}
+      working-directory: /
+      run: |
+        set -euo pipefail
+        python3 - <<'PY'
+        import json
+        import os
+        steps = json.loads(os.environ['STEP_RESULTS'])
+        for key in ['meta-app', 'summary', 'build', 'inspect', 'test', 'output',
+                    'output-compress', 'output-split', 'output-check', 'release-md']:
+            assert steps[key]['conclusion'] == 'success', key + ' did not succeed'
+        assert all(steps[key]['conclusion'] == 'skipped' for key in ['login', 'push', 'upload-release'])
+        print('Container acceptance: build/test/export/compress/metadata PASS; external publication=0')
+        PY
+    - name: Upload Container acceptance evidence (no Release)
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: container-acceptance-${{ matrix.app_branch }}-${{ matrix.tag_repo }}
+        path: |
+          /builder/output
+          /builder/metadata
+          /builder/release.md
+        if-no-files-found: error
+        retention-days: 5
+    if: ${{ contains(fromJSON('["acceptance","container-verify"]'), needs.plan.outputs.route) }}
     strategy:
       fail-fast: false
       matrix:

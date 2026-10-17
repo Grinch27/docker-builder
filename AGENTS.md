@@ -8,7 +8,7 @@
 
 | 入口 | 当前职责 |
 |---|---|
-| `.github/workflows/gpt_dev.yml` | 合并候选，push / 手动非发布验收，默认 `verification` |
+| `.github/workflows/gpt_dev.yml` | 合并候选，默认 `verification`；`acceptance` 为完整矩阵及 Dev/Container 非发布验收 |
 | `.github/workflows/docker_allinone.yml` | 正式定时检查、构建、发布；手动 Dev 路由 |
 | `.github/workflows/docker_allinone_dev.yml` | Dev 预检、构建、晋升；部分模式会发布 |
 | `.github/workflows/docker_allinone_gpt.yml` | 原非发布回归入口 |
@@ -95,9 +95,13 @@ README 改写需比较全部 JSON 配置、监控记录、应用行和 Meta-app 
 
 ## 发布边界与下一步
 
-用户已授权候选推送、非发布测试、读取日志和迭代修正；本次文档整理不扩大为正式发布、密钥操作或旧入口退役。
+用户已授权候选推送、非发布测试、读取日志和迭代修正；尚未授权正式发布、密钥操作或旧入口退役。
 
-候选 `WORKFLOW_READ_ONLY=true` 拒绝生产、容器发布和 Dev 晋升路由；发布步骤、README 推送、Dev/Container 发布 Jobs 另有硬禁用。这里描述的是执行门禁，候选 YAML 的 token 权限仍为 `write-all`。验证权限收窄的可行性属于后续工作。
+用户本轮追加授权完整 52 组合及 Dev/Container 验收。`acceptance`（push 标记 `[gpt-acceptance]`）从配置生成全量矩阵，并以 `vlmcsd:latest` 三架构运行 Dev 和 Container 路径；`dev-verify` / `container-verify` 可定向选择一个配置目标。初始验收正在实施，结果以本轮 Run 为准，不能预先计为通过。
+
+候选 `WORKFLOW_READ_ONLY=true` 拒绝生产、容器发布和 Dev 晋升路由。Dev 仅运行本地构建、比较及归档，Release 创建/上传已从该构建步骤移除；晋升、外部 Registry 登录/推送、README 推送及 Release 发布步骤硬禁用。Container 构建启用后同样保留逐步骤发布禁用。这里描述的是执行门禁，候选 YAML 的全局 token 权限仍为用户既定的 `write-all`；验收 Jobs 仅请求 `contents: read`。
+
+定向重测标记为 `[gpt-retest:APP:TAG]`、`[gpt-dev:APP:TAG]`、`[gpt-container:APP:TAG]`，每次 push 仅接受一个标记。全量验收拒绝目标筛选，不能用子集冒充全部。每个组合上传含 SHA、平台、阶段和退出码的证据；Dev/Container 归档只上传 Actions Artifact。定向重测不同 SHA 的历史成功不能替代同一 SHA 的全量通过。
 
 正式 Dev 仅 `execution_route=dev` + `dev_mode=preflight` 是已验收的非发布预检；`auto` / `build` / `promote-*` 可能创建 Release 或推送 Docker Hub/GHCR，不能当作 dry run。检查、构建、镜像内测试、发布是不同验收等级；报告必须给出 Commit、Run、实际范围、跳过项及限制。
 

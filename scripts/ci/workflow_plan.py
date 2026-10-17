@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # Requirements/ambiguities: legacy external callers must migrate to docker_allinone.yml.
 # Research/optimization: preserve Dev default exclusions until live promotion parity exists.
-# Risks: production/container/Dev may publish; push routing must never select those modes.
-# Verification: event isolation, invalid inputs, catalog-derived matrices, target/platform filters.
+# Risks: production/container/Dev may publish; staging acceptance must force publication off.
+# Verification: full catalog coverage, isolated Dev/Container selection, invalid inputs and event isolation.
 """Plan the single workflow without executing builds, probes, or external writes."""
 
 from __future__ import annotations
@@ -194,7 +194,15 @@ def staging_plan(config: dict, event_name: str, event: dict, inputs: dict, runne
     if event_name == "push":
         route = "verification"
         message = event.get("head_commit", {}).get("message", "")
-        patterns = [(r"\[gpt-build:([a-z0-9_.-]+):([a-z0-9_.-]+)\]", "build"),
+        selectors = re.findall(r"\[gpt-(?:acceptance|retest|dev|container|build|monitor|smoke)[^\]]*\]", message)
+        if len(selectors) > 1:
+            raise ValueError("Use exactly one staging selector per push")
+        if "[gpt-acceptance]" in message:
+            route = "acceptance"
+        patterns = [(r"\[gpt-retest:([a-z0-9_.-]+):([a-z0-9_.-]+)\]", "test"),
+                    (r"\[gpt-dev:([a-z0-9_.-]+):([a-z0-9_.-]+)\]", "dev-verify"),
+                    (r"\[gpt-container:([a-z0-9_.-]+):([a-z0-9_.-]+)\]", "container-verify"),
+                    (r"\[gpt-build:([a-z0-9_.-]+):([a-z0-9_.-]+)\]", "build"),
                     (r"\[gpt-monitor:([a-z0-9_.-]+):([a-z0-9_.-]+)\]", "monitor"),
                     (r"\[gpt-smoke:([a-zA-Z0-9_.-]+)\]", "smoke")]
         for pattern, candidate in patterns:
@@ -208,13 +216,37 @@ def staging_plan(config: dict, event_name: str, event: dict, inputs: dict, runne
                 break
     elif event_name != "workflow_dispatch":
         raise ValueError("Staging accepts push/workflow_dispatch only")
-    if route not in {"verification", "validate", "monitor", "build", "test", "smoke",
+    if route not in {"verification", "acceptance", "dev-verify", "container-verify",
+                     "validate", "monitor", "build", "test", "smoke",
                      "diagnostics", "registry-smoke", "dev"}:
         raise ValueError("Publishing routes are prohibited in gpt_dev.yml")
     if route == "dev" and selected.get("dev_mode", "preflight") != "preflight":
         raise ValueError("Dev build/promotion is prohibited in gpt_dev.yml")
-    selected["execution_route"] = "test" if route == "verification" else route
+    acceptance_routes = {"acceptance", "dev-verify", "container-verify"}
+    if route in {"dev-verify", "container-verify"} and any(
+            selected.get(key) for key in ("platform", "custom_env", "build_matrix")):
+        raise ValueError("Dev/Container acceptance uses one unmodified catalog target")
+    if route == "acceptance" and any(selected.get(key) for key in
+                                     ("app_branch", "tag_repo", "target_id", "build_matrix", "platform", "custom_env")):
+        raise ValueError("Full acceptance cannot be combined with target filters")
+    if route in {"dev-verify", "container-verify"} and not any(
+            selected.get(key) for key in ("app_branch", "target_id", "build_matrix")):
+        selected.update(app_branch="vlmcsd", tag_repo="latest")
+    selected["execution_route"] = "test" if route in acceptance_routes | {"verification"} else route
     result = plan(config, "workflow_dispatch", {}, selected, runner)
+    if route in acceptance_routes:
+        if route == "acceptance":
+            target = next(t for t in result["build_targets"]["include"]
+                          if t["app_branch"] == "vlmcsd" and t["tag_repo"] == "latest")
+        else:
+            if len(result["build_targets"]["include"]) != 1:
+                raise ValueError("Dev/Container acceptance requires exactly one configured target")
+            target = result["build_targets"]["include"][0]
+        dev = plan(config, "workflow_dispatch", {},
+                   dict(execution_route="dev", dev_mode="build", target_id=target["target_id"]), runner)
+        result.update(dev_mode="build", target_id=target["target_id"],
+                      dev_matrix=dev["dev_matrix"], build_targets={"include": [target]},
+                      force_build="true", fetch_versions="false")
     if route == "build" and len(result["build_targets"]["include"]) != 1:
         raise ValueError("Staged build requires exactly one configured target")
     if route in {"verification", "build"}:

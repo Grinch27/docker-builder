@@ -182,6 +182,50 @@ class WorkflowPlanTests(unittest.TestCase):
         self.assertEqual(result["may_publish"], "false")
         self.assertEqual(len(result["build_targets"]["include"]), 1)
 
+    def test_full_acceptance_covers_catalog_and_isolates_compatibility_jobs(self):
+        result = workflow_plan.staging_plan(self.config, "push",
+                   {"head_commit": {"message": "ci: full acceptance [gpt-acceptance]"}}, {}, "runner")
+        expected = {(app, target["tag"], platform) for app, meta in self.config["apps"].items()
+                    for target in meta["targets"] for platform in meta["platforms"]}
+        actual = {(row["app"], row["tag"], row["platform"]) for row in result["test_matrix"]["include"]}
+        self.assertEqual(actual, expected)
+        self.assertEqual(len(actual), 52)
+        self.assertEqual(result["route"], "acceptance")
+        self.assertEqual(result["dev_mode"], "build")
+        self.assertEqual(result["publish"], "false")
+        self.assertEqual(result["may_publish"], "false")
+        self.assertEqual(result["fetch_versions"], "false")
+        self.assertEqual(result["force_build"], "true")
+        for matrix in ["dev_matrix", "build_targets"]:
+            self.assertEqual([t["target_id"] for t in result[matrix]["include"]], ["vlmcsd"])
+
+    def test_acceptance_filters_and_multiple_push_selectors_fail(self):
+        for route, inputs in [("acceptance", dict(app_branch="aria2")),
+                              ("acceptance", dict(platform="linux/amd64")),
+                              ("dev-verify", dict(platform="linux/amd64")),
+                              ("container-verify", dict(custom_env="arch_branch=linux/amd64")),
+                              ("dev-verify", dict(app_branch="runner"))]:
+            with self.subTest(route=route, inputs=inputs), self.assertRaises(ValueError):
+                workflow_plan.staging_plan(self.config, "workflow_dispatch", {},
+                                          dict(execution_route=route, **inputs), "runner")
+        with self.assertRaises(ValueError):
+            workflow_plan.staging_plan(self.config, "push", {"head_commit": {
+                "message": "[gpt-acceptance] [gpt-retest:aria2:latest]"}}, {}, "runner")
+
+    def test_dev_container_and_retest_push_routes_remain_nonpublishing(self):
+        for selector, route in [("gpt-dev", "dev-verify"), ("gpt-container", "container-verify"),
+                                ("gpt-retest", "test")]:
+            with self.subTest(selector=selector):
+                result = workflow_plan.staging_plan(self.config, "push", {"head_commit": {
+                    "message": "test [" + selector + ":vlmcsd:latest]"}}, {}, "runner")
+                self.assertEqual(result["route"], route)
+                self.assertEqual(result["publish"], "false")
+                self.assertEqual(result["may_publish"], "false")
+                self.assertEqual(len(result["test_matrix"]["include"]), 3)
+        result = workflow_plan.staging_plan(self.config, "workflow_dispatch", {},
+                                            dict(execution_route="dev-verify", target_id="novnc_alpine"), "runner")
+        self.assertEqual(result["dev_matrix"]["include"][0]["tag_repo"], "alpine")
+
 
 if __name__ == "__main__":
     unittest.main()
