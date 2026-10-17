@@ -443,7 +443,7 @@ class CatalogTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'Incomplete monitor record'):
             catalog.validate_document(bad)
 
-    def test_v1_compatibility_reader(self):
+    def test_retired_fenced_storage_is_rejected(self):
         import monitor_state
         source=(ROOT/'README.md').read_text(encoding='utf-8')
         old=source.replace(catalog.SUMMARY_START,
@@ -453,8 +453,9 @@ class CatalogTests(unittest.TestCase):
         fence=chr(96)*3
         legacy=(old+'\n<!-- app-version-json:start -->\n'+fence+'json\n'+
                 json.dumps(records,indent=2)+'\n'+fence+'\n<!-- app-version-json:end -->\n')
-        self.assertEqual(catalog.catalog_data_from_text(legacy),self.config)
-        self.assertEqual(len(monitor_state.parse_readme_versions(legacy)),24)
+        for reader in [catalog.catalog_data_from_text, catalog.snapshot_from_readme, monitor_state.parse_readme_versions]:
+            with self.subTest(reader=reader.__name__), self.assertRaisesRegex(ValueError, 'Retired README format'):
+                reader(legacy)
     def test_monitor_round_trip_keeps_config_and_summary(self):
         import monitor_state
         original=(ROOT/'README.md').read_text(encoding='utf-8')

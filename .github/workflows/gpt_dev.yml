@@ -405,13 +405,13 @@ jobs:
             --build-targets-json "${BUILD_TARGETS}" \
             --force-build "${FORCE_BUILD}"
         done
-    if: ${{ contains(fromJSON('["production","monitor","build","verification"]'), needs.plan.outputs.route) }}
+    if: ${{ contains(fromJSON('["monitor","build","verification"]'), needs.plan.outputs.route) }}
   check:
     name: Check ${{ matrix.app_branch }}:${{ matrix.tag_repo }}
     needs:
     - plan
     - monitor
-    if: ${{ contains(fromJSON('["production","build","verification"]'), needs.plan.outputs.route) && needs.monitor.result == 'success' && needs.monitor.outputs.changed_count != '0' }}
+    if: ${{ contains(fromJSON('["build","verification"]'), needs.plan.outputs.route) && needs.monitor.result == 'success' && needs.monitor.outputs.changed_count != '0' }}
     runs-on: ${{ matrix.runner_image }}
     strategy:
       fail-fast: false
@@ -805,7 +805,7 @@ jobs:
     - plan
     - monitor
     - check
-    if: ${{ always() && !cancelled() && contains(fromJSON('["production","build","verification"]'), needs.plan.outputs.route) && needs.monitor.result == 'success' && needs.monitor.outputs.changed_count != '0' }}
+    if: ${{ always() && !cancelled() && contains(fromJSON('["build","verification"]'), needs.plan.outputs.route) && needs.monitor.result == 'success' && needs.monitor.outputs.changed_count != '0' }}
     runs-on: ${{ matrix.runner_image }}
     strategy:
       fail-fast: false

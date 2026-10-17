@@ -106,7 +106,7 @@ python3 scripts/ci/materialize_test_hooks.py --app APP --kind test
 | `scripts/ci/catalog.py` | 读取表格 JSON、生成矩阵和展示列、维护配置与标签策略 |
 | `scripts/ci/materialize_test_hooks.py` | 从表格恢复 Meta-app / Test 的完整源码 |
 | `scripts/ci/build-image.sh` | 共用 Buildx 命令，生产默认 `registry`，Dev/GPT 使用 `load` |
-| `scripts/ci/workflow_plan.py` | 路由和矩阵选择；候选必须经过 `staging_plan` 的非发布限制 |
+| `scripts/ci/workflow_plan.py` | 唯一非发布 `plan()` 负责路由与矩阵选择；不存在生产规划分支 |
 | `scripts/ci/monitor_state.py` | 监控状态、变更矩阵及稳定 README 展示 |
 | `tests/ci/test_workflow_contracts.py` | 在单元测试中统一检查两工作流布局、依赖图、调用引用和非发布门禁 |
 | `scripts/ci/verify_image_archive.py` | 不解压、不执行归档；验证唯一 manifest、平台配置和层文件 |
@@ -153,11 +153,11 @@ README 改写需比较全部 JSON 配置、监控记录、应用行和 Meta-app 
 
 用户本轮追加授权完整 52 组合及 Dev/Container 验收。`acceptance`（push 标记 `[gpt-acceptance]`）从配置生成全量矩阵，并以 `vlmcsd:latest` 三架构运行 Dev 和 Container 路径；`dev-verify` / `container-verify` 可定向选择一个配置目标。结果与未通过项见上表；不能预先计为通过。
 
-候选 `WORKFLOW_READ_ONLY=true` 拒绝生产、容器发布和 Dev 晋升路由。Dev 仅运行本地构建、比较及归档，Release 创建/上传已从该构建步骤移除；晋升、外部 Registry 登录/推送、README 推送及 Release 发布步骤硬禁用。Container 构建启用后同样保留逐步骤发布禁用。这里描述的是执行门禁，候选 YAML 的全局 token 权限仍为用户既定的 `write-all`；验收 Jobs 仅请求 `contents: read`。
+规划器无条件拒绝生产、容器发布和 Dev 晋升路由；`WORKFLOW_READ_ONLY` 不再是启用生产规划的开关。Dev 仅运行本地构建、比较及归档，Release 创建/上传已从该构建步骤移除；晋升、外部 Registry 登录/推送、README 推送及 Release 发布步骤硬禁用。Container 构建启用后同样保留逐步骤发布禁用。这里描述的是执行门禁，候选 YAML 的全局 token 权限仍为用户既定的 `write-all`；验收 Jobs 仅请求 `contents: read`。
 
 普通 push 默认 `validate`，也可显式使用 `[gpt-validate]`；代表性完整验证需手动选 `verification` 或使用 `[gpt-verification]`，全量仍为 `[gpt-acceptance]`。保留 `[gpt-retest:APP:TAG]`、`[gpt-dev:APP:TAG]`、`[gpt-container:APP:TAG]` 等既有定向路由，每次 push 仅接受一个标记。retest 支持逗号分隔的多个 `APP:TAG`，逐项从配置验证，拒绝重复或未知目标。全量验收拒绝目标筛选，不能用子集冒充全部。每个组合上传含 SHA、平台、阶段和退出码的证据；Dev/Container 归档只上传 Actions Artifact。定向重测不同 SHA 的历史成功不能替代同一 SHA 的全量通过。
 
-历史正式 Dev 仅 `execution_route=dev` + `dev_mode=preflight` 是已验收的非发布预检；`auto` / `build` / `promote-*` 可能创建 Release 或推送 Docker Hub/GHCR，不能当作 dry run。检查、构建、镜像内测试、发布是不同验收等级；报告必须给出 Commit、Run、实际范围、跳过项及限制。
+当前 `execution_route=dev` 仅接受 `dev_mode=preflight`；外部 `auto` / `build` / `promote-*` 全部拒绝。`dev-verify` / `container-verify` 是独立的非发布验收入口。旧发布实现仅在 Git 历史和 YAML 硬禁用步骤中追溯，不能当作 dry run。检查、构建、镜像内测试、发布是不同验收等级；报告必须给出 Commit、Run、实际范围、跳过项及限制。
 
 待办顺序：完成本次 Tag 目录迁移的同 SHA 非发布验收并按约八成标准收尾，历史失败只记录；继续核对外部调用方和未选路由。旧工作流已退役，不恢复重复定时任务。正式发布和 Dev 晋升须未来另行实现并验收；既有代表性 Dev/Container 成功不能代替新目录版本的实测。
 
@@ -239,8 +239,12 @@ Catalog 严格解析与全部执行路径已更新，普通 Push 仍只轻量校
 
 ## CI 精简 P1–P4（2026-10-18）
 
-用户已明确批准 P1–P4 的实现、清理、提交及非发布验证；冻结应用不追加修复。基线为 `cfe8dfc`，已包含核验后的 Action 默认分支引用。P1 退休旧 image-pipeline 入口和表格实验编解码器，将两份依赖图检查合并进契约测试，移除未使用的 workflow-name 参数。旧入口仅从当前树退休，Git 历史保留；不再提供旧 CLI 兼容。后续阶段的最终结果与验收证据在本节更新。
+用户已明确批准 P1–P4 的实现、清理、提交及非发布验证；冻结应用不追加修复。最终基线为 `0f1ce52`，已包含核验后的 Action 默认分支引用及固定 registry-smoke 的退役；保留该并行更新。P1 退休旧 image-pipeline 入口和表格实验编解码器，将两份依赖图检查合并进契约测试，移除未使用的 workflow-name 参数。旧入口仅从当前树退休，Git 历史保留；不再提供旧 CLI 兼容。后续阶段的最终结果与验收证据在本节更新。
 
 P2 将行为测试集中到 `tests/ci/`；运行脚本固定保留 9 个。旧 probe 对照分支在统一入口不可达，已退休；正常版本、空值、非法控制字符及 DNS 首行解析语义改由 README Test 的真实 Shell 夹具验证。新增测试触发路径；测试必须从仓库根目录使用上面的显式 PYTHONPATH 命令执行。目录迁移不计作运行时间收益。
 
 P3 对每次 Catalog 加载只读取一个 README 快照，复用已经解码的测试覆盖集合，去除 validate CLI 的第二次完整校验及 monitor 的重复整表渲染；脚本恢复复用同一快照。无持久缓存，无新 Python 依赖；文件存在性、符号链接、行归属与监控校验继续执行。
+
+P4 退休通用生产规划器和 fenced README 兼容读取。`workflow_plan.plan()` 是唯一入口，允许 push/schedule/workflow_dispatch 和现有 11 个非发布路由；保留全部现有选择器、16 个 Job 以及 Dev/Container 的内部构建参数。production/container 发布路由、promotion、PR/workflow_call/repository_dispatch 直接失败，环境变量不能恢复发布。旧 app-config/app-version-json 存储明确报错，不回退读取；内部 config 的 schema_version=1 保留，当前 README 行存储仍派生 schema_version=2 文档。
+
+本地验收：111 项测试通过；相对基线保存的 333 组当前入口规划夹具（退休 probe 输出除外）完全一致；README 配置、监控、24 份 Test、23 份 Meta-app、相同/变化监控渲染逐字节一致，68 个 application 文件哈希未变化。实验 codec 的 5 项和退休 probe 的 5 项专属测试移除；新增手动工作流引用保护、两项 README 真实脚本夹具、两项单快照/单次校验测试、一项环境变量不能恢复发布的测试，业务约束继续覆盖。没有运行全量 52 组合，也未重新检查冻结/耗时应用。

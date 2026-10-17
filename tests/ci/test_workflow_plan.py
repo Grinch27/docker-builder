@@ -39,21 +39,36 @@ class WorkflowPlanTests(unittest.TestCase):
                     self.assertEqual(result["may_publish"], "false")
                     self.assertNotIn(result["route"], {"production", "dev", "container", "build", "monitor"})
 
-    def test_pr_ignores_commit_and_payload_routes(self):
-        result = self.make("production", "pull_request", {"head_commit": {"message": "[full-build]"}})
-        self.assertEqual(result["route"], "validate")
-        self.assertEqual(result["publish"], "false")
+    def test_retired_external_events_are_rejected(self):
+        for event in ['pull_request', 'workflow_call', 'repository_dispatch']:
+            with self.subTest(event=event), self.assertRaises(ValueError):
+                self.make('production', event)
 
-    def test_schedule_preserves_production(self):
-        self.assertEqual(self.make("validate", "schedule")["route"], "production")
+    def test_schedule_is_monitor_only(self):
+        result = self.make('production', 'schedule')
+        self.assertEqual(result['route'], 'monitor')
+        self.assertEqual(result['publish'], 'false')
+        self.assertEqual(result['may_publish'], 'false')
 
-    def test_repository_dispatch_default_and_explicit_routes(self):
-        for route in ["production", "monitor", "test"]:
-            result = workflow_plan.plan(self.config, "repository_dispatch",
-                                       {"client_payload": {"execution_route": route}}, {}, "runner")
-            self.assertEqual(result["route"], route)
-        result = workflow_plan.plan(self.config, "repository_dispatch", {}, {}, "runner")
-        self.assertEqual(result["route"], "production")
+    def test_publishing_routes_cannot_be_selected(self):
+        for route in ['production', 'container', 'promote-all']:
+            with self.subTest(route=route), self.assertRaises(ValueError):
+                self.make(route)
+
+    def test_environment_flag_cannot_restore_publication(self):
+        import os
+        import tempfile
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as directory:
+            event = Path(directory) / 'event.json'
+            event.write_text('{}', encoding='utf-8')
+            output = Path(directory) / 'output'
+            env = dict(GITHUB_EVENT_PATH=str(event), GITHUB_EVENT_NAME='workflow_dispatch',
+                       WORKFLOW_INPUTS=json.dumps({'execution_route': 'production'}),
+                       WORKFLOW_READ_ONLY='false', RUNNER_IMAGE='fixture', GITHUB_OUTPUT=str(output))
+            with mock.patch.dict(os.environ, env), self.assertRaisesRegex(ValueError, 'Publishing routes'):
+                workflow_plan.main()
+            self.assertFalse(output.exists())
 
     def test_full_matrix_is_derived_from_all_configured_platforms(self):
         result = self.make("test")
@@ -65,7 +80,7 @@ class WorkflowPlanTests(unittest.TestCase):
                             for t in result["build_targets"]["include"]))
 
     def test_retest_selects_target_and_configured_platforms(self):
-        result = self.make(event_name="push", event={"head_commit": {"message": "fix [full-retest:runner:actions]"}})
+        result = self.make(event_name="push", event={"head_commit": {"message": "fix [gpt-retest:runner:actions]"}})
         self.assertEqual({(t["app"], t["tag"]) for t in result["test_matrix"]["include"]}, {("runner", "actions")})
 
     def test_target_and_platform_selection(self):
@@ -90,7 +105,7 @@ class WorkflowPlanTests(unittest.TestCase):
             self.make("unknown")
 
     def test_malformed_commit_selectors_fail(self):
-        for message in ["[full-retest:runner]", "[smoke-target:../runner]"]:
+        for message in ["[gpt-retest:runner]", "[gpt-smoke:../runner]"]:
             with self.subTest(message=message), self.assertRaises(ValueError):
                 self.make(event_name="push", event={"head_commit": {"message": message}})
 
@@ -105,33 +120,32 @@ class WorkflowPlanTests(unittest.TestCase):
 
     def test_matrix_supports_formatted_json_and_preserves_order(self):
         rows = [{"app_branch": "samba", "tag_repo": "alpine"}, {"app_branch": "runner", "tag_repo": "actions"}]
-        result = self.make("build", build_matrix=json.dumps({"include": rows}, indent=2))
+        result = self.make("monitor", build_matrix=json.dumps({"include": rows}, indent=2))
         self.assertEqual([t["target_id"] for t in result["build_targets"]["include"]], ["samba-alpine", "runner-actions"])
         self.assertEqual(result["publish"], "false")
         with self.assertRaises(ValueError):
             self.make("build", app_branch="samba", build_matrix=json.dumps(rows))
 
-    def test_container_requires_a_single_target(self):
-        with self.assertRaises(ValueError):
-            self.make("container")
-        self.assertEqual(len(self.make("container", app_branch="runner", tag_repo="actions")["build_targets"]["include"]), 1)
+    def test_dev_container_acceptance_requires_single_target(self):
+        for route in ['dev-verify', 'container-verify']:
+            with self.subTest(route=route), self.assertRaises(ValueError):
+                self.make(route, app_branch='runner')
+            self.assertEqual(len(self.make(route, app_branch='runner', tag_repo='actions')['build_targets']['include']), 1)
 
-    def test_smoke_and_promotion_require_concrete_targets(self):
+    def test_smoke_requires_target_and_promotion_is_rejected(self):
         with self.assertRaises(ValueError):
-            self.make("smoke")
-        self.assertEqual(self.make("smoke", target_id="runner-actions")["dev_mode"], "smoke-target")
-        for inputs in [{}, dict(target_id="runner-actions"), dict(target_id="runner-actions", version="1.0")]:
-            with self.subTest(inputs=inputs), self.assertRaises(ValueError):
-                self.make("dev", dev_mode="promote-all", **inputs)
-        result = self.make("dev", dev_mode="promote-all", target_id="runner-actions", version="1.0", revision="r1-a1")
-        self.assertEqual(result["dev_mode"], "promote-all")
+            self.make('smoke')
+        self.assertEqual(self.make('smoke', target_id='runner-actions')['dev_mode'], 'smoke-target')
+        for mode in ['auto', 'build', 'promote-dockerhub', 'promote-ghcr', 'promote-all']:
+            with self.subTest(mode=mode), self.assertRaises(ValueError):
+                self.make('dev', dev_mode=mode, target_id='runner-actions', version='1.0', revision='r1-a1')
 
     def test_dev_defaults_preserve_exclusions_and_alpine_destination(self):
-        result = self.make("dev", dev_mode="auto")
+        result = self.make("dev", dev_mode="preflight")
         targets = result["dev_matrix"]["include"]
         self.assertFalse({t["app_branch"] for t in targets} & workflow_plan.DEV_EXCLUDED)
         self.assertEqual(next(t["tag_repo"] for t in targets if t["app_branch"] == "novnc_alpine"), "alpine")
-        production = self.make("production")["build_targets"]["include"]
+        production = self.make("test")["build_targets"]["include"]
         self.assertEqual(next(t["tag_repo"] for t in production if t["app_branch"] == "novnc_alpine"), "latest")
         dev = next(t for t in targets if t['app_branch'] == 'novnc_alpine')
         self.assertEqual(dev['build_tag'], 'latest')
@@ -160,20 +174,20 @@ class WorkflowPlanTests(unittest.TestCase):
                        dict(execution_route="dev", dev_mode="build"),
                        dict(execution_route="dev", dev_mode="promote-all")]:
             with self.subTest(inputs=inputs), self.assertRaises(ValueError):
-                workflow_plan.staging_plan(self.config, "workflow_dispatch", {}, inputs, "runner")
+                workflow_plan.plan(self.config, "workflow_dispatch", {}, inputs, "runner")
 
     def test_staging_rejects_automatic_and_external_write_entrypoints(self):
-        scheduled = workflow_plan.staging_plan(self.config, "schedule", {}, {}, "runner")
+        scheduled = workflow_plan.plan(self.config, "schedule", {}, {}, "runner")
         self.assertEqual(scheduled["route"], "monitor")
         self.assertEqual(scheduled["fetch_versions"], "true")
         self.assertEqual(scheduled["publish"], "false")
         self.assertEqual(scheduled["may_publish"], "false")
         for event_name in ["repository_dispatch", "workflow_call"]:
             with self.subTest(event=event_name), self.assertRaises(ValueError):
-                workflow_plan.staging_plan(self.config, event_name, {}, {}, "runner")
+                workflow_plan.plan(self.config, event_name, {}, {}, "runner")
 
     def test_staging_verifies_real_representative_paths(self):
-        result = workflow_plan.staging_plan(self.config, "push", {"head_commit": {
+        result = workflow_plan.plan(self.config, "push", {"head_commit": {
             "message": "workflow regression [gpt-verification]"}}, {}, "runner")
         self.assertEqual(result["route"], "verification")
         self.assertEqual(result["publish"], "false")
@@ -186,7 +200,7 @@ class WorkflowPlanTests(unittest.TestCase):
     def test_ordinary_staging_push_only_validates(self):
         for message in ["ordinary update", "[full-build]", "[gpt-validate]"]:
             with self.subTest(message=message):
-                result = workflow_plan.staging_plan(self.config, "push", {"head_commit": {
+                result = workflow_plan.plan(self.config, "push", {"head_commit": {
                     "message": message}}, {"execution_route": "acceptance"}, "runner")
                 self.assertEqual(result["route"], "validate")
                 self.assertEqual(result["fetch_versions"], "false")
@@ -195,10 +209,10 @@ class WorkflowPlanTests(unittest.TestCase):
 
     def test_dispatch_keeps_explicit_verification_and_full_coverage(self):
         for inputs in [{}, {"execution_route": "verification"}]:
-            result = workflow_plan.staging_plan(self.config, "workflow_dispatch", {}, inputs, "runner")
+            result = workflow_plan.plan(self.config, "workflow_dispatch", {}, inputs, "runner")
             self.assertEqual(result["route"], "verification")
             self.assertEqual(len(result["test_matrix"]["include"]), 8)
-        result = workflow_plan.staging_plan(self.config, "push", {"head_commit": {
+        result = workflow_plan.plan(self.config, "push", {"head_commit": {
             "message": "[gpt-acceptance]"}}, {}, "runner")
         self.assertEqual(result["route"], "acceptance")
         self.assertEqual(len(result["test_matrix"]["include"]), 52)
@@ -209,11 +223,11 @@ class WorkflowPlanTests(unittest.TestCase):
                         "[gpt-retest:aria2:latest", "[gpt-validate] [gpt-",
                         "[gpt-verification] [gpt-verification]"]:
             with self.subTest(message=message), self.assertRaises(ValueError):
-                workflow_plan.staging_plan(self.config, "push", {"head_commit": {
+                workflow_plan.plan(self.config, "push", {"head_commit": {
                     "message": message}}, {}, "runner")
 
     def test_staging_target_build_is_forced_and_nonpublishing(self):
-        result = workflow_plan.staging_plan(self.config, "push",
+        result = workflow_plan.plan(self.config, "push",
                    {"head_commit": {"message": "fix [gpt-build:vlmcsd:latest]"}}, {}, "runner")
         self.assertEqual(result["route"], "build")
         self.assertEqual(result["force_build"], "true")
@@ -223,7 +237,7 @@ class WorkflowPlanTests(unittest.TestCase):
     def test_manual_single_target_build_replaces_fixed_registry_smoke(self):
         for app, tag in [("samba", "alpine"), ("aria2", "latest"), ("runner", "actions")]:
             with self.subTest(app=app, tag=tag):
-                result = workflow_plan.staging_plan(
+                result = workflow_plan.plan(
                     self.config, "workflow_dispatch", {},
                     {"execution_route": "build", "app_branch": app, "tag_repo": tag}, "runner")
                 self.assertEqual(result["route"], "build")
@@ -234,11 +248,11 @@ class WorkflowPlanTests(unittest.TestCase):
                 self.assertEqual([(t["app_branch"], t["tag_repo"]) for t in
                                   result["build_targets"]["include"]], [(app, tag)])
         with self.assertRaises(ValueError):
-            workflow_plan.staging_plan(self.config, "workflow_dispatch", {},
+            workflow_plan.plan(self.config, "workflow_dispatch", {},
                                        {"execution_route": "registry-smoke"}, "runner")
 
     def test_full_acceptance_covers_catalog_and_isolates_compatibility_jobs(self):
-        result = workflow_plan.staging_plan(self.config, "push",
+        result = workflow_plan.plan(self.config, "push",
                    {"head_commit": {"message": "ci: full acceptance [gpt-acceptance]"}}, {}, "runner")
         expected = {(app, target["tag"], platform) for app, meta in self.config["apps"].items()
                     for target in meta["targets"] for platform in meta["platforms"]}
@@ -261,28 +275,28 @@ class WorkflowPlanTests(unittest.TestCase):
                               ("container-verify", dict(custom_env="arch_branch=linux/amd64")),
                               ("dev-verify", dict(app_branch="runner"))]:
             with self.subTest(route=route, inputs=inputs), self.assertRaises(ValueError):
-                workflow_plan.staging_plan(self.config, "workflow_dispatch", {},
+                workflow_plan.plan(self.config, "workflow_dispatch", {},
                                           dict(execution_route=route, **inputs), "runner")
         with self.assertRaises(ValueError):
-            workflow_plan.staging_plan(self.config, "push", {"head_commit": {
+            workflow_plan.plan(self.config, "push", {"head_commit": {
                 "message": "[gpt-acceptance] [gpt-retest:aria2:latest]"}}, {}, "runner")
 
     def test_dev_container_and_retest_push_routes_remain_nonpublishing(self):
         for selector, route in [("gpt-dev", "dev-verify"), ("gpt-container", "container-verify"),
                                 ("gpt-retest", "test")]:
             with self.subTest(selector=selector):
-                result = workflow_plan.staging_plan(self.config, "push", {"head_commit": {
+                result = workflow_plan.plan(self.config, "push", {"head_commit": {
                     "message": "test [" + selector + ":vlmcsd:latest]"}}, {}, "runner")
                 self.assertEqual(result["route"], route)
                 self.assertEqual(result["publish"], "false")
                 self.assertEqual(result["may_publish"], "false")
                 self.assertEqual(len(result["test_matrix"]["include"]), 3)
-        result = workflow_plan.staging_plan(self.config, "workflow_dispatch", {},
+        result = workflow_plan.plan(self.config, "workflow_dispatch", {},
                                             dict(execution_route="dev-verify", target_id="novnc_alpine"), "runner")
         self.assertEqual(result["dev_matrix"]["include"][0]["tag_repo"], "alpine")
 
     def test_staging_retest_list_selects_only_configured_targets(self):
-        result = workflow_plan.staging_plan(self.config, "push", {"head_commit": {
+        result = workflow_plan.plan(self.config, "push", {"head_commit": {
             "message": "repair [gpt-retest:ffmpeg:latest,sdnext:latest]"}}, {}, "runner")
         self.assertEqual(result['route'], 'test')
         self.assertEqual({(r['app'], r['tag']) for r in result['test_matrix']['include']},
@@ -292,7 +306,7 @@ class WorkflowPlanTests(unittest.TestCase):
         for suffix in ['ffmpeg', 'ffmpeg:latest,', '../ffmpeg:latest',
                        'ffmpeg:latest,ffmpeg:latest', 'missing:latest']:
             with self.subTest(selector=suffix), self.assertRaises(ValueError):
-                workflow_plan.staging_plan(self.config, 'push', {'head_commit': {
+                workflow_plan.plan(self.config, 'push', {'head_commit': {
                     'message': '[gpt-retest:' + suffix + ']'}}, {}, 'runner')
 
 

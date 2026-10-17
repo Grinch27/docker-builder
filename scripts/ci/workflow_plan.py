@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-# Requirements/ambiguities: legacy external callers must migrate to docker_allinone.yml.
+# Requirements: preserve the current eleven routes; every plan is intrinsically nonpublishing.
 # Research/optimization: ordinary staging pushes validate only; explicit verification keeps representative coverage.
-# Risks: production/container/Dev may publish; staging acceptance must force publication off.
+# Risks: retired events/routes must fail; Dev/Container acceptance keeps catalog-only settings.
 # Verification: explicit selector parsing, full catalog coverage, Dev/Container selection and event isolation.
 """Plan the single workflow without executing builds, probes, or external writes."""
 
@@ -15,9 +15,8 @@ from pathlib import Path
 import catalog
 
 
-ROUTES = {"validate", "production", "monitor", "build", "test", "smoke", "dev",
-          "diagnostics", "container"}
-DEV_MODES = {"preflight", "auto", "build", "promote-dockerhub", "promote-ghcr", "promote-all"}
+ROUTES = {"verification", "acceptance", "dev-verify", "container-verify", "validate",
+          "monitor", "build", "test", "smoke", "diagnostics", "dev"}
 # This is the former Dev auto-selection policy, not another application catalog.
 DEV_EXCLUDED = {"baidunetdisk", "cloudflare-warp", "expressvpn", "ffmpeg", "novnc",
                 "protonvpn", "sdnext", "sdnext-dev", "stable-diffusion-webui-amdgpu",
@@ -30,50 +29,22 @@ def target_id(app: str, tag: str) -> str:
     return app + "-" + tag
 
 
-def plan(config: dict, event_name: str, event: dict, inputs: dict, runner: str) -> dict:
+def _target_plan(config: dict, inputs: dict, runner: str) -> dict:
     """Reject ambiguous/unsafe selections before returning any Job outputs."""
-    payload = event.get("client_payload", {}) if event_name == "repository_dispatch" else {}
-
     def value(key: str, default: str = "") -> str:
-        raw = inputs.get(key) or payload.get(key) or default
+        raw = inputs.get(key) or default
         if isinstance(raw, bool):
             raw = str(raw).lower()
         if not isinstance(raw, str) or any(c in raw for c in "\r\n\0"):
             raise ValueError("Expected a single-line string for " + key)
         return raw
 
-    route = value("execution_route", "production")
+    route = value("execution_route", "test")
     app, tag = value("app_branch"), value("tag_repo")
     selected_id = value("target_id")
-    if event_name in {"push", "pull_request"}:
-        # User-controlled push messages can select read-only tests, never publication.
-        route, app, tag, selected_id = "validate", "", "", ""
-        message = event.get("head_commit", {}).get("message", "") if event_name == "push" else ""
-        if "[full-retest:" in message:
-            match = re.search(r"\[full-retest:([a-z0-9_.-]+):([a-z0-9_.-]+)\]", message)
-            if not match:
-                raise ValueError("Malformed full-retest selector")
-            route, app, tag = "test", *match.groups()
-        elif "[full-build]" in message:
-            route = "test"
-        elif "[smoke-target:" in message:
-            match = re.search(r"\[smoke-target:([a-zA-Z0-9_.-]+)\]", message)
-            if not match:
-                raise ValueError("Malformed smoke-target selector")
-            route, selected_id = "smoke", match.group(1)
-        elif "[smoke-vlmcsd]" in message:
-            route, app = "test", "vlmcsd"
-        elif "[diagnostics-full]" in message:
-            route = "diagnostics"
-    elif event_name == "schedule":
-        route = "production"
-    elif event_name not in {"workflow_dispatch", "workflow_call", "repository_dispatch"}:
-        raise ValueError("Unsupported event: " + event_name)
-    if route not in ROUTES:
-        raise ValueError("Unknown execution_route: " + route)
     dev_mode = value("dev_mode", "preflight")
-    if dev_mode not in DEV_MODES:
-        raise ValueError("Unknown dev_mode: " + dev_mode)
+    if dev_mode not in {"preflight", "build"}:
+        raise ValueError("Unknown internal dev_mode: " + dev_mode)
     force = value("force_build", "false").lower()
     if force not in {"true", "false"}:
         raise ValueError("force_build must be true or false")
@@ -97,13 +68,13 @@ def plan(config: dict, event_name: str, event: dict, inputs: dict, runner: str) 
     if selected_id:
         targets = [t for t in targets if t["target_id"] == selected_id]
     custom = value("custom_env")
-    raw_matrix = inputs.get("build_matrix") or payload.get("build_matrix") or ""
+    raw_matrix = inputs.get("build_matrix") or ""
     if not isinstance(raw_matrix, str):
         raise ValueError("build_matrix must be JSON text")
     if custom and route in {"test", "smoke", "dev"}:
         raise ValueError("This route uses catalog settings; custom_env is unsupported")
     if raw_matrix:
-        if route not in {"production", "monitor", "build", "test", "container"} or app or tag or selected_id:
+        if route not in {"monitor", "build", "test"} or app or tag or selected_id:
             raise ValueError("build_matrix cannot be combined with other target selectors or this route")
         raw = json.loads(raw_matrix)
         rows = raw.get("include") if isinstance(raw, dict) else raw
@@ -125,14 +96,8 @@ def plan(config: dict, event_name: str, event: dict, inputs: dict, runner: str) 
         targets = [dict(t, custom_env=custom) for t in targets]
     if not targets or len({t["target_id"] for t in targets}) != len(targets):
         raise ValueError("Empty or duplicated target selection")
-    if route == "container" and len(targets) != 1:
-        raise ValueError("container requires exactly one configured target")
     if route == "smoke" and len(targets) != 1:
         raise ValueError("smoke requires exactly one configured target")
-    if route == "dev" and dev_mode.startswith("promote-"):
-        if len(targets) != 1 or not value("version") or not value("revision"):
-            raise ValueError("Promotion requires one target, version and revision")
-
     test_matrix = [{"app": t["app_branch"], "tag": t["tag_repo"], "platform": platform}
                    for t in targets for platform in t["arch_branch"].split(",")]
     platform = value("platform")
@@ -166,11 +131,9 @@ def plan(config: dict, event_name: str, event: dict, inputs: dict, runner: str) 
     return {
         "route": route, "dev_mode": "smoke-target" if route == "smoke" else dev_mode,
         "target_id": targets[0]["target_id"] if len(targets) == 1 else "",
-        "force_build": force, "publish": str(route == "production").lower(),
-        "may_publish": str(route in {"production", "container"} or
-                           (route == "dev" and dev_mode != "preflight")).lower(),
+        "force_build": force, "publish": "false", "may_publish": "false",
         "version": value("version"), "revision": value("revision"), "custom_env": custom,
-        "fetch_versions": str(route in {"production", "monitor", "build"} or
+        "fetch_versions": str(route in {"monitor", "build"} or
                               (route == "diagnostics" and diagnostic_mode in {"version", "both"})).lower(),
         "diagnostic_mode": diagnostic_mode,
         "version_matrix": {"include": versions}, "build_targets": {"include": targets},
@@ -180,8 +143,8 @@ def plan(config: dict, event_name: str, event: dict, inputs: dict, runner: str) 
     }
 
 
-def staging_plan(config: dict, event_name: str, event: dict, inputs: dict, runner: str) -> dict:
-    """Plan only nonpublishing routes for the explicitly isolated gpt_dev.yml."""
+def plan(config: dict, event_name: str, event: dict, inputs: dict, runner: str) -> dict:
+    """Reject retired/publication entrypoints before selecting catalog-only Jobs."""
     selected = dict(inputs)
     route = selected.get("execution_route") or "verification"
     if event_name == "push":
@@ -225,9 +188,7 @@ def staging_plan(config: dict, event_name: str, event: dict, inputs: dict, runne
         selected = {"execution_route": "monitor", "force_build": "false"}
     elif event_name != "workflow_dispatch":
         raise ValueError("Core accepts push/schedule/workflow_dispatch only")
-    if route not in {"verification", "acceptance", "dev-verify", "container-verify",
-                     "validate", "monitor", "build", "test", "smoke",
-                     "diagnostics", "dev"}:
+    if route not in ROUTES:
         raise ValueError("Publishing routes are prohibited in gpt_dev.yml")
     if route == "dev" and selected.get("dev_mode", "preflight") != "preflight":
         raise ValueError("Dev build/promotion is prohibited in gpt_dev.yml")
@@ -242,7 +203,7 @@ def staging_plan(config: dict, event_name: str, event: dict, inputs: dict, runne
             selected.get(key) for key in ("app_branch", "target_id", "build_matrix")):
         selected.update(app_branch="vlmcsd", tag_repo="latest")
     selected["execution_route"] = "test" if route in acceptance_routes | {"verification"} else route
-    result = plan(config, "workflow_dispatch", {}, selected, runner)
+    result = _target_plan(config, selected, runner)
     if route in acceptance_routes:
         if route == "acceptance":
             target = next(t for t in result["build_targets"]["include"]
@@ -251,8 +212,8 @@ def staging_plan(config: dict, event_name: str, event: dict, inputs: dict, runne
             if len(result["build_targets"]["include"]) != 1:
                 raise ValueError("Dev/Container acceptance requires exactly one configured target")
             target = result["build_targets"]["include"][0]
-        dev = plan(config, "workflow_dispatch", {},
-                   dict(execution_route="dev", dev_mode="build", target_id=target["target_id"]), runner)
+        dev = _target_plan(config,
+                           dict(execution_route="dev", dev_mode="build", target_id=target["target_id"]), runner)
         result.update(dev_mode="build", target_id=target["target_id"],
                       dev_matrix=dev["dev_matrix"], build_targets={"include": [target]},
                       force_build="true", fetch_versions="false")
@@ -284,8 +245,7 @@ def staging_plan(config: dict, event_name: str, event: dict, inputs: dict, runne
 def main() -> None:
     event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text(encoding="utf-8"))
     inputs = json.loads(os.environ.get("WORKFLOW_INPUTS", "{}"))
-    planner = staging_plan if os.environ.get("WORKFLOW_READ_ONLY") == "true" else plan
-    result = planner(catalog.catalog_from_readme(Path("README.md")),
+    result = plan(catalog.catalog_from_readme(Path("README.md")),
                   os.environ["GITHUB_EVENT_NAME"], event, inputs, os.environ["RUNNER_IMAGE"])
     with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as stream:
         for key, value in result.items():

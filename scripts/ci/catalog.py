@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Requirement: Tag alone selects application/<app>/<tag>.Dockerfile; missing Tag means latest.
-# Unknown/research: external consumers of old build paths require migration.
+# Unknown/research: external consumers of retired fenced README storage must migrate.
 # Optimization: read one README snapshot per load; reuse decoded script coverage without global caches.
 # Risk: explicit empty/invalid Tags, symlinks, shared fallbacks and expanded contexts.
 # Verify: strict resolution, unchanged 24/30/52 configuration, scripts and monitor records.
@@ -21,7 +21,6 @@ from pathlib import Path
 
 START = '<!-- app-config:start -->'
 END = '<!-- app-config:end -->'
-FENCE = chr(96) * 3
 SUMMARY_START = '<!-- app-summary:start -->'
 SUMMARY_END = '<!-- app-summary:end -->'
 TAG = re.compile(r'^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$')
@@ -48,14 +47,10 @@ def resolve_dockerfile(root, app, tag='latest'):
     return path
 
 def catalog_document_from_text(text):
-    """Read the canonical table JSON or historical fenced configuration."""
-    if text.count(START)==1 and text.count(END)==1:
-        raw=text.split(START,1)[1].split(END,1)[0].strip()
-        if not raw.startswith(FENCE+'json\n') or not raw.endswith('\n'+FENCE):
-            raise ValueError('app-config must be a single fenced JSON block')
-        return json.loads(raw[len(FENCE)+5:-len(FENCE)-1])
-    if START in text or END in text:
-        raise ValueError('Expected exactly one app-config marker pair')
+    """Read only canonical per-row JSON; reject retired fenced storage explicitly."""
+    retired = (START, END, '<!-- app-version-json:start -->', '<!-- app-version-json:end -->')
+    if any(marker in text for marker in retired):
+        raise ValueError('Retired README format: migrate to the application table JSON column')
     entries=embedded_json_from_text(text)
     apps={name:entry['config'] for name,entry in entries.items()}
     records=[record for entry in entries.values() for record in entry['monitor']]
@@ -64,7 +59,8 @@ def catalog_document_from_text(text):
 
 def validate_document(document):
     if not isinstance(document,dict): raise ValueError('Catalog JSON must be an object')
-    if document.get('schema_version')!=2: return document
+    if document.get('schema_version')!=2:
+        raise ValueError('Unsupported README document schema')
     if set(document)!={'schema_version','config','monitor'}:
         raise ValueError('Combined document must have config and monitor sections')
     monitor=document['monitor']
@@ -97,21 +93,13 @@ def _normalize_config(config):
 
 def catalog_data_from_text(text):
     document=validate_document(catalog_document_from_text(text))
-    return _normalize_config(document['config'] if document.get('schema_version')==2 else document)
+    return _normalize_config(document['config'])
 
 def replace_catalog_document(text,document):
     """Rewrite per-row JSON without touching canonical Shell source cells."""
-    if text.count(START)==1 and text.count(END)==1:
-        before,rest=text.split(START,1)
-        middle,after=rest.split(END,1)
-        if END in middle: raise ValueError('Invalid app-config marker order')
-        content=json.dumps(document,indent=2,ensure_ascii=False)
-        return before+START+'\n'+FENCE+'json\n'+content+'\n'+FENCE+'\n'+END+after
     if START in text or END in text:
-        raise ValueError('Expected exactly one app-config marker pair')
+        raise ValueError('Retired README format: migrate before editing')
     validate_document(document)
-    if document.get('schema_version')!=2:
-        raise ValueError('Table storage requires schema v2')
     if text.count(SUMMARY_START)!=1 or text.count(SUMMARY_END)!=1:
         raise ValueError('Expected one application table')
     if any(r['app_branch'] not in document['config']['apps']
@@ -343,15 +331,8 @@ def tags(item,version,consistent):
 
 def snapshot_from_readme(text):
     document=validate_document(catalog_document_from_text(text))
-    if document.get('schema_version')==2: return document['monitor']['records']
-    start, end = '<!-- app-version-json:start -->', '<!-- app-version-json:end -->'
-    if text.count(start) != 1 or text.count(end) != 1: return []
-    raw=text.split(start,1)[1].split(end,1)[0].strip()
-    if not raw.startswith(FENCE+'json\n') or not raw.endswith('\n'+FENCE):
-        raise ValueError('Malformed version JSON snapshot')
-    records=json.loads(raw[len(FENCE)+5:-len(FENCE)-1])
-    if not isinstance(records,list): raise ValueError('Snapshot must be a list')
-    return records
+    return document['monitor']['records']
+
 
 def render_build_preview(name, app):
     """Nonpublishing Buildx commands derived from each configured target."""
@@ -458,12 +439,8 @@ def update(readme, c, app, field, value, *, scope='app', tag='latest'):
     validate(c, readme.parent)
     current = readme.read_text(encoding='utf-8')
     document=validate_document(catalog_document_from_text(current))
-    if document.get('schema_version')==2:
-        document['config']=c
-    else:
-        document=c
+    document['config']=c
     payload=replace_catalog_document(current,document)
-    payload=updated_summary(payload,c)
     return atomic_write(readme,current,payload)
 
 def main():

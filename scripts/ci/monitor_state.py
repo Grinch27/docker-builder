@@ -34,8 +34,6 @@ TARGET_FIELDS = [
     "force_push",
 ]
 
-START_JSON = "<!-- app-version-json:start -->"
-END_JSON = "<!-- app-version-json:end -->"
 
 
 def load_json_text(raw: str, fallback: Any) -> Any:
@@ -78,33 +76,13 @@ def load_version_artifacts(artifact_root: Path) -> list[dict[str, str]]:
 def parse_readme_versions(text: str) -> list[dict[str, str]]:
     # The combined v2 document is authoritative for the previous observation.
     document=catalog.validate_document(catalog.catalog_document_from_text(text))
-    if document.get('schema_version')==2:
-        records=document['monitor']['records']
-    else:
-        records=catalog.snapshot_from_readme(text)
-    return sorted((normalize_record(r) for r in records),key=record_sort_key)
-
-def replace_or_append(text: str, start: str, end: str, content: str) -> str:
-    block = f"{start}\n{content}\n{end}"
-    if start in text and end in text and text.index(start) < text.index(end):
-        before = text.split(start, 1)[0]
-        after = text.split(end, 1)[1]
-        return before + block + after
-
-    prefix = text if text.endswith("\n") else text + "\n"
-    return prefix + "\n" + block + "\n"
-
+    return sorted((normalize_record(r) for r in document['monitor']['records']),key=record_sort_key)
 
 
 def render_readme(text: str, records: list[dict[str, str]]) -> str:
-    # Build one merged readable table from canonical config and latest probes.
-    json_block = chr(96)*3 + 'json\n' + dump_json(records).rstrip('\n') + '\n' + chr(96)*3
     document=catalog.validate_document(catalog.catalog_document_from_text(text))
-    if document.get('schema_version')==2:
-        document['monitor']['records']=[dict(sorted(record.items())) for record in records]
-        return catalog.replace_catalog_document(text,document)
-    content=replace_or_append(text, START_JSON, END_JSON, json_block)
-    return catalog.updated_summary(content, catalog.catalog_data_from_text(content))
+    document['monitor']['records']=[dict(sorted(record.items())) for record in records]
+    return catalog.replace_catalog_document(text,document)
 
 def semantic_changed_apps(old_records: list[dict[str, str]], new_records: list[dict[str, str]]) -> list[str]:
     old_map = {
