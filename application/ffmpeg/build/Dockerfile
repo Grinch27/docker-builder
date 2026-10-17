@@ -3,6 +3,10 @@
 ############################################################
 
 # syntax=docker/dockerfile:1
+# Requirement: preserve the paired LLVM/SPIR-V toolchain and emit a valid Meson native file.
+# Unknown/research: later codec builds still require a complete native-image acceptance run.
+# Optimization: validate the generated machine file before expensive compilation.
+# Risk/verification: Meson strings require single quotes; test actual printf output and Meson parsing.
 
 # build stage
 # FROM ghcr.io/linuxserver/baseimage-ubuntu:noble AS buildstage
@@ -446,7 +450,7 @@ RUN \
   echo "**** compiling mesa ****" && \
   cd /tmp/mesa && \
   test -x /usr/bin/llvm-config-18 && \
-  printf '[binaries]\nllvm-config = "/usr/bin/llvm-config-18"\n' > /tmp/mesa-llvm.ini && \
+  printf '%s\n' '[binaries]' "llvm-config = '/usr/bin/llvm-config-18'" > /tmp/mesa-llvm.ini && \
   meson setup \
     --native-file /tmp/mesa-llvm.ini \
     -Dprefix="/usr/local" \

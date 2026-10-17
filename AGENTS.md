@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-截至 2026-10-17，已验收的代码提交为 [`95bb3fa`](https://github.com/Grinch27/docker-builder/commit/95bb3fac6a42409192c15f942d5212c5369943f1)。当前有 **15 个工作流文件：原 14 个 + `gpt_dev.yml` 合并候选**。核心能力已并入候选的 18 个普通 Jobs，无嵌套工作流调用；正式入口尚未替换，因此文件数量精简尚未落地。目标是一个核心工作流，另保留两个独立 Artifact 工具。
+截至 2026-10-17，初始代表性验收提交为 [`95bb3fa`](https://github.com/Grinch27/docker-builder/commit/95bb3fac6a42409192c15f942d5212c5369943f1)，后续全量与定向结果见下表。当前有 **15 个工作流文件：原 14 个 + `gpt_dev.yml` 合并候选**。核心能力已并入候选的 18 个普通 Jobs，无嵌套工作流调用；正式入口尚未替换，因此文件数量精简尚未落地。目标是一个核心工作流，另保留两个独立 Artifact 工具。
 
 | 入口 | 当前职责 |
 |---|---|
@@ -26,7 +26,24 @@
 - 日志确认 `plan=true check=true`、`forced=true changed=true publish=false`。逐平台导出验证为 `linux/amd64`、`linux/arm64`、`linux/386`，三个归档 SHA256 不同。
 - Registry 登录、外部镜像推送、GitHub Release 发布均跳过。候选写入步骤禁用，原正式工作流和应用构建源码在上述迁移提交中未改动。
 
-以上证明代表性非发布路径通过，**不证明全部 52 个 Target/平台组合、正式发布、Dev 晋升或容器构建路径通过**。`verification` 的 8 个组合为 aria2:latest × amd64/arm64、samba:alpine × amd64/arm64、vlmcsd:latest × amd64/arm64/386、runner:actions-slim × amd64；本地 Registry 测试为 aria2、samba、vlmcsd 的 amd64。
+以上为初始代表性非发布验收，**不证明全部 52 个 Target/平台组合、正式发布或 Dev 晋升通过**。`verification` 的 8 个组合为 aria2:latest × amd64/arm64、samba:alpine × amd64/arm64、vlmcsd:latest × amd64/arm64/386、runner:actions-slim × amd64；本地 Registry 测试为 aria2、samba、vlmcsd 的 amd64。
+
+### 全量与 Dev/Container 验收（2026-10-17）
+
+| 范围 | 代码与运行 | 实际结果 |
+|---|---|---|
+| 完整配置矩阵 | `faefe3f` / [39028192731](https://github.com/Grinch27/docker-builder/actions/runs/39028192731) | 41/52 通过、11/52 失败；52 个唯一组合与 README 配置逐项一致，SD.Next Dev 通过 |
+| Dev 构建、比较、归档 | 同上，Job `117383380616` | vlmcsd 的 amd64 / arm64 / 386 全通过，逐平台 tar 验证通过；晋升跳过 |
+| Container 全链路 | `342a289` / [39028584662](https://github.com/Grinch27/docker-builder/actions/runs/39028584662) | vlmcsd 三架构元数据、强制构建、本地 Registry、Test、导出、xz、分卷、校验及说明生成通过；外部发布全部跳过 |
+| 百度网盘定向重测 | `5a7ef20` / [39028873811](https://github.com/Grinch27/docker-builder/actions/runs/39028873811) | amd64 / arm64 构建及现有 README Test 均通过 |
+
+本轮修正：Container 元数据恢复脚本改用实际克隆目录 `PATH_self`；平台检查分别核对 OS、架构、可选 Variant；验收 Artifact 名含 run attempt，避免重跑冲突。百度网盘改用同版本、同架构的百度官方直连 CDN，并从 GitHub 发布页跳转解析 noVNC/websockify 归档，避免匿名 API 未返回下载字段。未改平台、镜像标签及正式工作流。
+
+已发现的应用阻断：ExpressVPN 四架构的旧下载页均未提供所需 `.deb` 链接；[官方当前说明](https://www.expressvpn.com/support/vpn-setup/app-for-linux-cli/)使用 `expressvpnctl` 且仅列 64 位系统，迁移涉及现有 CLI / 32 位兼容决策。TT-RSS 两架构缺少 Dockerfile 的 `COPY` 输入（入口脚本及 `src/` 资源）。stable-diffusion-webui-amdgpu 在 Python 3.12 下构建锁定的 scikit-image 0.21.0 时发生 Pythran/C++ 错误。不得删除这些失败项或换用旧包冒充全量通过。
+
+FFmpeg 首轮失败为 Meson native file 使用双引号；现改为单引号，本地 Meson 1.12.1 实际解析器已确认旧文件拒绝、新文件接受。SD.Next 首轮为 Runner 根盘耗尽，连 Worker 日志也无法写入；其 Job 日志下载因此不可用，根因来自 GitHub Check Run annotation。修复为仅在一次性 GitHub-hosted Runner 的大型镜像 Job 中移除不用的 SDK 和 Docker 缓存，不清理自托管主机；实际效果需定向构建验收。
+
+本地回归为 95 项测试通过，含实际平台门禁、Meson 文件生成及定向多目标筛选；最新已完成 CI 基线 `5a7ef20` 为 94 项通过。actionlint 仅精确忽略前述 queue / false 两类提示，shellcheck / pyflakes 未执行。Dev/Container 实测仅证明代表性 vlmcsd 目标，未验证所有应用、真实 Registry/Release 晋升、VPN 联网、GUI 或 GPU 运行。跨 SHA 的定向通过不得汇总成同一 SHA 的 52/52。
 
 ## 配置、脚本与目录
 
@@ -97,11 +114,11 @@ README 改写需比较全部 JSON 配置、监控记录、应用行和 Meta-app 
 
 用户已授权候选推送、非发布测试、读取日志和迭代修正；尚未授权正式发布、密钥操作或旧入口退役。
 
-用户本轮追加授权完整 52 组合及 Dev/Container 验收。`acceptance`（push 标记 `[gpt-acceptance]`）从配置生成全量矩阵，并以 `vlmcsd:latest` 三架构运行 Dev 和 Container 路径；`dev-verify` / `container-verify` 可定向选择一个配置目标。初始验收正在实施，结果以本轮 Run 为准，不能预先计为通过。
+用户本轮追加授权完整 52 组合及 Dev/Container 验收。`acceptance`（push 标记 `[gpt-acceptance]`）从配置生成全量矩阵，并以 `vlmcsd:latest` 三架构运行 Dev 和 Container 路径；`dev-verify` / `container-verify` 可定向选择一个配置目标。结果与未通过项见上表；不能预先计为通过。
 
 候选 `WORKFLOW_READ_ONLY=true` 拒绝生产、容器发布和 Dev 晋升路由。Dev 仅运行本地构建、比较及归档，Release 创建/上传已从该构建步骤移除；晋升、外部 Registry 登录/推送、README 推送及 Release 发布步骤硬禁用。Container 构建启用后同样保留逐步骤发布禁用。这里描述的是执行门禁，候选 YAML 的全局 token 权限仍为用户既定的 `write-all`；验收 Jobs 仅请求 `contents: read`。
 
-定向重测标记为 `[gpt-retest:APP:TAG]`、`[gpt-dev:APP:TAG]`、`[gpt-container:APP:TAG]`，每次 push 仅接受一个标记。全量验收拒绝目标筛选，不能用子集冒充全部。每个组合上传含 SHA、平台、阶段和退出码的证据；Dev/Container 归档只上传 Actions Artifact。定向重测不同 SHA 的历史成功不能替代同一 SHA 的全量通过。
+定向重测标记为 `[gpt-retest:APP:TAG]`、`[gpt-dev:APP:TAG]`、`[gpt-container:APP:TAG]`，每次 push 仅接受一个标记。retest 支持逗号分隔的多个 `APP:TAG`，逐项从配置验证，拒绝重复或未知目标。全量验收拒绝目标筛选，不能用子集冒充全部。每个组合上传含 SHA、平台、阶段和退出码的证据；Dev/Container 归档只上传 Actions Artifact。定向重测不同 SHA 的历史成功不能替代同一 SHA 的全量通过。
 
 正式 Dev 仅 `execution_route=dev` + `dev_mode=preflight` 是已验收的非发布预检；`auto` / `build` / `promote-*` 可能创建 Release 或推送 Docker Hub/GHCR，不能当作 dry run。检查、构建、镜像内测试、发布是不同验收等级；报告必须给出 Commit、Run、实际范围、跳过项及限制。
 

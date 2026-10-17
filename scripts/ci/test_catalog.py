@@ -2,6 +2,7 @@
 # Requirement: assert the compact five-column README table.
 # Unknown: external consumers of the former display columns.
 # Research: stricter, cell-level HTML script preservation tests.
+# Optimization: execute native-file generation rather than mirroring Dockerfile quoting.
 # Risk: confusing display-only removals with deleted canonical data.
 # Verify: header/row shape, unchanged embedded JSON and Shell sources.
 """Offline regression tests for the README catalog. No Docker or network access."""
@@ -474,10 +475,12 @@ class CatalogTests(unittest.TestCase):
         self.assertIn('libllvmspirvlib-18-dev',source)
         mesa=source.split('**** compiling mesa ****',1)[1].split('**** grabbing gmmlib ****',1)[0]
         self.assertIn('test -x /usr/bin/llvm-config-18',mesa)
-        self.assertIn('llvm-config = "/usr/bin/llvm-config-18"',mesa)
+        self.assertIn("llvm-config = '/usr/bin/llvm-config-18'",mesa)
         self.assertIn('--native-file /tmp/mesa-llvm.ini',mesa)
-        self.assertIn("printf '[binaries]"+chr(92)+"nllvm-config",mesa)
-        self.assertNotIn("printf '[binaries]"+chr(92)*2+"nllvm-config",mesa)
+        command=next(line.strip() for line in mesa.splitlines() if 'printf ' in line)
+        command=command.split(' > /tmp/mesa-llvm.ini',1)[0]
+        generated=subprocess.run(['sh','-ec',command],capture_output=True,text=True,check=True).stdout
+        self.assertEqual(generated,"[binaries]\nllvm-config = '/usr/bin/llvm-config-18'\n")
         self.assertIn('-Dvideo-codecs=all',mesa)
 
     def test_shared_buildx_registry_and_load_contracts(self):

@@ -226,6 +226,20 @@ class WorkflowPlanTests(unittest.TestCase):
                                             dict(execution_route="dev-verify", target_id="novnc_alpine"), "runner")
         self.assertEqual(result["dev_matrix"]["include"][0]["tag_repo"], "alpine")
 
+    def test_staging_retest_list_selects_only_configured_targets(self):
+        result = workflow_plan.staging_plan(self.config, "push", {"head_commit": {
+            "message": "repair [gpt-retest:ffmpeg:latest,sdnext:latest]"}}, {}, "runner")
+        self.assertEqual(result['route'], 'test')
+        self.assertEqual({(r['app'], r['tag']) for r in result['test_matrix']['include']},
+                         {('ffmpeg', 'latest'), ('sdnext', 'latest')})
+        self.assertEqual(result['publish'], 'false')
+        self.assertEqual(result['may_publish'], 'false')
+        for suffix in ['ffmpeg', 'ffmpeg:latest,', '../ffmpeg:latest',
+                       'ffmpeg:latest,ffmpeg:latest', 'missing:latest']:
+            with self.subTest(selector=suffix), self.assertRaises(ValueError):
+                workflow_plan.staging_plan(self.config, 'push', {'head_commit': {
+                    'message': '[gpt-retest:' + suffix + ']'}}, {}, 'runner')
+
 
 if __name__ == "__main__":
     unittest.main()

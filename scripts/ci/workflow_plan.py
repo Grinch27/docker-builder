@@ -199,8 +199,15 @@ def staging_plan(config: dict, event_name: str, event: dict, inputs: dict, runne
             raise ValueError("Use exactly one staging selector per push")
         if "[gpt-acceptance]" in message:
             route = "acceptance"
-        patterns = [(r"\[gpt-retest:([a-z0-9_.-]+):([a-z0-9_.-]+)\]", "test"),
-                    (r"\[gpt-dev:([a-z0-9_.-]+):([a-z0-9_.-]+)\]", "dev-verify"),
+        if "[gpt-retest:" in message:
+            match = re.search(r"\[gpt-retest:([^\]]+)\]", message)
+            pairs = match.group(1).split(",") if match else []
+            if not pairs or any(not re.fullmatch(r"[a-z0-9_.-]+:[a-z0-9_.-]+", pair) for pair in pairs):
+                raise ValueError("Malformed staging retest selector")
+            selected["build_matrix"] = json.dumps({"include": [
+                dict(zip(("app_branch", "tag_repo"), pair.split(":"))) for pair in pairs]})
+            route = "test"
+        patterns = [(r"\[gpt-dev:([a-z0-9_.-]+):([a-z0-9_.-]+)\]", "dev-verify"),
                     (r"\[gpt-container:([a-z0-9_.-]+):([a-z0-9_.-]+)\]", "container-verify"),
                     (r"\[gpt-build:([a-z0-9_.-]+):([a-z0-9_.-]+)\]", "build"),
                     (r"\[gpt-monitor:([a-z0-9_.-]+):([a-z0-9_.-]+)\]", "monitor"),

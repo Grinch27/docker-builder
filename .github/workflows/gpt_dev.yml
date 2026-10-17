@@ -1,7 +1,7 @@
 # Requirements: isolated candidate for the single-core-workflow migration; keep production files unchanged.
 # Unknowns/research: full application matrix and live publication equivalence need separate acceptance.
 # Optimization: share catalog routing and runner selection; test representative architectures and artifacts.
-# Risks/verification: full/Dev/Container acceptance is local-only; publication and README pushes stay hard-disabled.
+# Risks/verification: publication stays disabled; large-image disk cleanup is restricted to disposable GitHub-hosted runners.
 name: GPT Dev - Unified Jobs (Nonpublishing)
 run-name: GPT Dev - ${{ github.event_name }} - ${{ inputs.execution_route || github.event.head_commit.message || 'verification' }}
 'on':
@@ -2986,6 +2986,8 @@ jobs:
     timeout-minutes: 120
     permissions:
       contents: read
+    env:
+      LARGE_IMAGE_BUILD: ${{ contains(fromJSON('["ffmpeg","sdnext","sdnext-dev","stable-diffusion-webui-amdgpu"]'), matrix.app) }}
     strategy:
       fail-fast: false
       max-parallel: 8
@@ -2993,6 +2995,22 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
+    - name: Install job-scoped privilege helper
+      if: runner.environment == 'github-hosted' && env.LARGE_IMAGE_BUILD == 'true'
+      uses: Grinch27/github-actions/.github/actions/run-sudo@main
+    - name: Reclaim disposable hosted-runner disk for large images
+      if: runner.environment == 'github-hosted' && env.LARGE_IMAGE_BUILD == 'true'
+      run: |
+        set -euo pipefail
+        # Only unused SDKs on the disposable VM; preserve Python, Git and the Actions runtime.
+        df -h /
+        docker system df
+        run_sudo rm -rf -- /usr/local/lib/android /usr/share/dotnet /opt/ghc \
+          /usr/local/.ghcup /usr/local/share/powershell /usr/share/swift /usr/local/swift \
+          /usr/local/share/boost /opt/hostedtoolcache/CodeQL
+        docker system prune --all --force --volumes
+        df -h /
+        docker system df
     - name: Enable cross-platform emulation
       uses: docker/setup-qemu-action@v3
     - name: Setup Docker Buildx
