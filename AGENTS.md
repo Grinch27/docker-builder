@@ -49,6 +49,14 @@ python3 scripts/ci/catalog.py summary --check
 
 ### 修改后必检项
 
+#### gpt_dev.yml 隔离验收
+
+`gpt_dev.yml` 是单工作流合并候选；旧正式工作流在验收阶段保留。用户本轮已明确授权推送该候选、非发布测试、读取日志与迭代修正，未授权 Registry/Release 发布或替换正式入口。
+
+候选仅接受 push/手动运行，默认 `verification` 覆盖代表性多架构 Buildx/Test、本地 Registry、vlmcsd 完整非发布检查/构建/归档，以及版本/层诊断。`WORKFLOW_READ_ONLY=true` 拒绝生产、容器发布及 Dev 晋升路由；发布步骤、README 推送、Dev/Container 发布 Jobs 另有硬禁用。候选图检查使用 `gpt_workflow_graph.py`；原依赖检查只排除这个并行验收文件，原正式能力要求不变。
+
+候选成功不代表 52 个应用平台组合或生产发布已通过。记录实际 Commit、Run、Job 和失败日志；只修复有证据的阻断，不用跳过失败换取成功。模板中的 `if: false` 为隔离发布边界，不能因 lint 常量条件提示而启用。
+
 ```bash
 python3 scripts/ci/catalog.py validate
 python3 scripts/ci/catalog.py summary --check

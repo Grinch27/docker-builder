@@ -1,0 +1,4337 @@
+# Requirements: isolated candidate for the single-core-workflow migration; keep production files unchanged.
+# Unknowns/research: full application matrix and live publication equivalence need separate acceptance.
+# Optimization: share catalog routing and runner selection; test representative architectures and artifacts.
+# Risks/verification: publishing Jobs and README pushes are hard-disabled; read-only planner rejects write routes.
+name: GPT Dev - Unified Jobs (Nonpublishing)
+run-name: GPT Dev - ${{ github.event_name }} - ${{ inputs.execution_route || 'verification' }}
+'on':
+  push:
+    branches:
+    - main
+    paths:
+    - .github/workflows/gpt_dev.yml
+    - scripts/ci/workflow_plan.py
+    - scripts/ci/gpt_workflow_graph.py
+    - scripts/ci/test_workflow_plan.py
+    - scripts/ci/test_workflow_contracts.py
+  workflow_dispatch:
+    inputs:
+      execution_route:
+        description: Nonpublishing verification profile; production/promotion prohibited
+        type: choice
+        default: verification
+        options:
+        - verification
+        - validate
+        - monitor
+        - build
+        - test
+        - smoke
+        - diagnostics
+        - registry-smoke
+        - dev
+      app_branch:
+        description: Optional configured application; empty selects all
+        type: string
+        default: ''
+      tag_repo:
+        description: Optional configured tag; empty selects all tags of the application
+        type: string
+        default: ''
+      force_build:
+        description: Force selected targets through change checks
+        type: choice
+        default: 'false'
+        options:
+        - 'true'
+        - 'false'
+      target_id:
+        description: Optional target_id; required for smoke or single-target promotion
+        type: string
+        default: ''
+      build_matrix:
+        description: Optional JSON include list of configured app_branch/tag_repo/custom_env
+        type: string
+        default: ''
+      platform:
+        description: Optional configured platform for test Jobs only
+        type: string
+        default: ''
+      diagnostic_mode:
+        description: Diagnostics Jobs to run
+        type: choice
+        default: both
+        options:
+        - version
+        - layers
+        - both
+        - all-platforms
+      layer_profile:
+        description: Default diagnostic images
+        type: choice
+        default: stable
+        options:
+        - stable
+        - base
+      image_name:
+        description: Single diagnostic image override
+        type: string
+        default: ''
+permissions: write-all
+defaults:
+  run:
+    shell: bash
+env:
+  DEBIAN_FRONTEND: noninteractive
+  DEBCONF_NONINTERACTIVE_SEEN: 'true'
+  APT_LISTCHANGES_FRONTEND: none
+  NEEDRESTART_MODE: a
+  FORCE_UNSAFE_CONFIGURE: '1'
+  TZ: Etc/UTC
+  DISPLAY_TZ: Etc/UTC
+  LANG: C.UTF-8
+  LC_ALL: C.UTF-8
+  GIT_TERMINAL_PROMPT: '0'
+  DOCKER_BUILDKIT: '1'
+  COMPOSE_DOCKER_CLI_BUILD: '1'
+  CONTAINER_IMAGE: ubuntu:devel
+  GPT_STAGING: 'true'
+jobs:
+  runner-image:
+    name: ubuntu-latest - runner-image
+    runs-on: ubuntu-latest
+    outputs:
+      RUNNER_IMAGE: ${{ steps.resolve-runner-image.outputs.RUNNER_IMAGE }}
+      CONTAINER_IMAGE: ${{ env.CONTAINER_IMAGE }}
+    steps:
+    - name: Resolve runner-image
+      id: resolve-runner-image
+      uses: Grinch27/github-actions/.github/actions/resolve-runner-image@main
+  validate:
+    name: Validate catalog and workflow contracts
+    needs: runner-image
+    runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@v4
+    - name: Check catalog, unit tests and Job dependencies
+      run: |
+        set -euo pipefail
+        python3 scripts/ci/catalog.py validate
+        python3 scripts/ci/catalog.py summary --check
+        python3 -m unittest discover -s scripts/ci -p 'test_*.py' -v
+        python3 scripts/ci/gpt_workflow_graph.py
+  plan:
+    name: Select isolated Job route and catalog matrices
+    needs:
+    - runner-image
+    - validate
+    runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
+    permissions:
+      contents: read
+    outputs:
+      route: ${{ steps.plan.outputs.route }}
+      dev_mode: ${{ steps.plan.outputs.dev_mode }}
+      target_id: ${{ steps.plan.outputs.target_id }}
+      force_build: ${{ steps.plan.outputs.force_build }}
+      publish: ${{ steps.plan.outputs.publish }}
+      may_publish: ${{ steps.plan.outputs.may_publish }}
+      version: ${{ steps.plan.outputs.version }}
+      revision: ${{ steps.plan.outputs.revision }}
+      custom_env: ${{ steps.plan.outputs.custom_env }}
+      fetch_versions: ${{ steps.plan.outputs.fetch_versions }}
+      diagnostic_mode: ${{ steps.plan.outputs.diagnostic_mode }}
+      probe: ${{ steps.plan.outputs.probe }}
+      version_matrix: ${{ steps.plan.outputs.version_matrix }}
+      build_targets: ${{ steps.plan.outputs.build_targets }}
+      dev_matrix: ${{ steps.plan.outputs.dev_matrix }}
+      test_matrix: ${{ steps.plan.outputs.test_matrix }}
+      images: ${{ steps.plan.outputs.images }}
+      image_platforms: ${{ steps.plan.outputs.image_platforms }}
+    steps:
+    - uses: actions/checkout@v4
+    - name: Plan without network or publication
+      id: plan
+      env:
+        WORKFLOW_INPUTS: ${{ toJSON(inputs) }}
+        RUNNER_IMAGE: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
+        WORKFLOW_READ_ONLY: 'true'
+      run: |
+        python3 scripts/ci/workflow_plan.py
+  fetch-versions:
+    name: Fetch ${{ matrix.app_branch }}
+    needs:
+    - runner-image
+    - plan
+    runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.plan.outputs.version_matrix).include }}
+    env:
+      app_branch: ${{ matrix.app_branch }}
+      tag_repo: ${{ matrix.tag_repo || 'latest' }}
+      custom_env: ${{ matrix.custom_env || '' }}
+      dir_app: application/${{ matrix.app_branch }}
+      platform_prefer: linux/amd64
+      fallback_version: unknown
+    steps:
+    - name: Checkout ${{ github.repository }}
+      uses: actions/checkout@main
+    - name: Load app env files
+      id: env-app
+      run: |
+        set -euo pipefail
+        python3 scripts/ci/catalog.py env --app "${app_branch}" --tag "${tag_repo}" --app-only --output "${GITHUB_ENV}"
+    - name: Load custom env inputs
+      if: ${{ env.custom_env != '' }}
+      env:
+        flag_split: ;
+      run: |
+        printf '%s\n' "${custom_env}" | tr "${flag_split}" '\n' >> "${GITHUB_ENV}"
+    - name: Collect version from meta-app scripts
+      id: meta-app
+      env:
+        container_name: version-meta-app
+        dir_container: /tmp
+      working-directory: ${{ github.workspace }}/${{ env.dir_app }}
+      run: |
+        set +e
+        printf 'Current working directory: %s\n' "$(pwd)"
+
+        arch_branch="${arch_branch:-linux/amd64}"
+        base_image="${base_image:-ubuntu:latest}"
+
+        platform_used="${platform_prefer}"
+        if ! grep -q ",${platform_prefer}," <<< ",${arch_branch},"; then
+          platform_used=$(cut -d',' -f1 <<< "${arch_branch}")
+        fi
+
+        printf 'Using base_image=%s\nUsing arch_branch=%s\nUsing platform=%s\n' \
+          "${base_image}" "${arch_branch}" "${platform_used}"
+
+        log_container=$(mktemp)
+        status="success"
+        version="${fallback_version}"
+
+        docker pull --platform "${platform_used}" "${base_image}" >/dev/null 2>&1
+        if [[ $? -ne 0 ]]; then
+          status="pull_failed"
+        else
+          docker run \
+            --name "${container_name}" \
+            --rm \
+            --detach \
+            --platform "${platform_used}" \
+            "${base_image}" \
+            /bin/sh -c "uname -a && sleep infinity" >/dev/null 2>&1
+
+          if [[ $? -ne 0 ]]; then
+            status="run_failed"
+          else
+            docker exec "${container_name}" mkdir -p "${dir_container}" >/dev/null 2>&1
+
+            env_temp=$(mktemp)
+            printf '%s\n' "${custom_env}" | tr ';' '\n' > "${env_temp}"
+            docker cp "${env_temp}" "${container_name}:/tmp/build.env" >/dev/null 2>&1
+
+            shopt -s nullglob
+            python3 "${GITHUB_WORKSPACE}/scripts/ci/materialize_test_hooks.py" --app "$(basename "$PWD")" --kind meta
+            meta_scripts=(./meta-app/*.sh)
+            if ((${#meta_scripts[@]} > 0)); then
+              for script_file in "${meta_scripts[@]}"; do
+                container_script="${dir_container}/$(basename "${script_file}")"
+                script_temp=$(mktemp)
+                {
+                  echo '#!/bin/sh'
+                  printenv | awk -F= '/^[a-zA-Z_][a-zA-Z0-9_]*=/ {printf "%s=\"%s\"\n", $1, $2}'
+                  cat "${script_file}"
+                } > "${script_temp}"
+
+                docker cp "${script_temp}" "${container_name}:${container_script}" >/dev/null 2>&1
+                docker exec "${container_name}" chmod +x "${container_script}" >/dev/null 2>&1
+                docker exec "${container_name}" sh -c "${container_script}" |
+                  tee -a "${log_container}" >/dev/null
+              done
+            else
+              status="meta_app_missing"
+            fi
+
+            docker stop "${container_name}" >/dev/null 2>&1 || true
+          fi
+        fi
+
+        parsed_version=$(awk -F= '/^version=/{print $2}' "${log_container}" | tail -n 1)
+        if [[ -n "${parsed_version}" ]]; then
+          version="${parsed_version}"
+        fi
+
+        now_utc=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+        version_dir="${RUNNER_TEMP}/app-version"
+        version_json="${version_dir}/version-${app_branch}.json"
+        mkdir -p "${version_dir}"
+
+        jq -n \
+          --arg app_branch "${app_branch}" \
+          --arg tag_repo "${tag_repo}" \
+          --arg repo_dockerhub "${repo_dockerhub:-}" \
+          --arg base_image "${base_image}" \
+          --arg arch_branch "${arch_branch}" \
+          --arg platform_used "${platform_used}" \
+          --arg version "${version}" \
+          --arg status "${status}" \
+          --arg updated_at "${now_utc}" \
+          '{
+            app_branch: $app_branch,
+            tag_repo: $tag_repo,
+            repo_dockerhub: $repo_dockerhub,
+            base_image: $base_image,
+            arch_branch: $arch_branch,
+            platform_used: $platform_used,
+            version: $version,
+            status: $status,
+            updated_at: $updated_at
+          }' > "${version_json}"
+
+        {
+          echo "version=${version}"
+          echo "repo_dockerhub=${repo_dockerhub:-}"
+          echo "base_image=${base_image}"
+          echo "arch_branch=${arch_branch}"
+          echo "platform_used=${platform_used}"
+          echo "status=${status}"
+          echo "artifact_file=${version_json}"
+        } >> "${GITHUB_OUTPUT}"
+    - name: Upload app version artifact
+      uses: actions/upload-artifact@main
+      with:
+        name: app-version-${{ matrix.app_branch }}
+        path: ${{ steps.meta-app.outputs.artifact_file }}
+        if-no-files-found: error
+        retention-days: 1
+    if: ${{ needs.plan.outputs.fetch_versions == 'true' }}
+  monitor:
+    name: Render Monitor State
+    needs:
+    - runner-image
+    - plan
+    - fetch-versions
+    runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
+    outputs:
+      changed_count: ${{ steps.monitor.outputs.changed_count }}
+      changed_apps: ${{ steps.monitor.outputs.changed_apps }}
+      changed_build_matrix: ${{ steps.monitor.outputs.changed_build_matrix }}
+      readme_changed: ${{ steps.monitor.outputs.readme_changed }}
+    steps:
+    - name: Checkout ${{ github.repository }}
+      uses: actions/checkout@main
+    - name: Download app version artifacts
+      uses: actions/download-artifact@main
+      with:
+        path: /tmp/app-version-artifacts
+        pattern: app-version-*
+        merge-multiple: true
+    - name: Render monitor outputs and update README
+      id: monitor
+      env:
+        BUILD_TARGETS: ${{ needs.plan.outputs.build_targets }}
+        FORCE_BUILD: ${{ needs.plan.outputs.force_build }}
+        MONITOR_OUTPUT: /tmp/monitor-output
+      run: |
+        set -euo pipefail
+        python3 scripts/ci/monitor_state.py \
+          --artifact-root /tmp/app-version-artifacts \
+          --readme-path README.md \
+          --output-dir "${MONITOR_OUTPUT}" \
+          --build-targets-json "${BUILD_TARGETS}" \
+          --force-build "${FORCE_BUILD}" \
+          --workflow-name ".github/workflows/docker_allinone.yml"
+
+        changed_count=$(jq '.include | length' "${MONITOR_OUTPUT}/build-matrix.json")
+        changed_apps=$(jq -c . "${MONITOR_OUTPUT}/changed-apps.json")
+        changed_build_matrix=$(jq -c . "${MONITOR_OUTPUT}/build-matrix.json")
+        readme_changed=$(cat "${MONITOR_OUTPUT}/readme_changed.txt")
+
+        {
+          echo "changed_count=${changed_count}"
+          echo "changed_apps=${changed_apps}"
+          echo "changed_build_matrix<<__JSON__"
+          echo "${changed_build_matrix}"
+          echo "__JSON__"
+          echo "readme_changed=${readme_changed}"
+        } >> "${GITHUB_OUTPUT}"
+
+        {
+          echo '## Docker image monitor'
+          echo
+          printf '| Field | Value |\n|---|---|\n'
+          printf '| Changed targets | `%s` |\n' "${changed_count}"
+          printf '| Force build | `%s` |\n' "${FORCE_BUILD}"
+          printf '| Timestamp (UTC) | `%s` |\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+        } >> "${GITHUB_STEP_SUMMARY}"
+    - name: Upload monitor artifacts
+      uses: actions/upload-artifact@main
+      with:
+        name: monitor-output
+        path: |
+          /tmp/monitor-output/build-matrix.json
+          /tmp/monitor-output/monitor-state.json
+          /tmp/monitor-output/monitor-report.md
+          /tmp/monitor-output/versions.json
+        retention-days: 7
+    - name: Commit README updates (preserve current config on concurrent push)
+      if: ${{ false }}
+      env:
+        BUILD_TARGETS: ${{ needs.plan.outputs.build_targets }}
+        FORCE_BUILD: ${{ needs.plan.outputs.force_build }}
+      run: |
+        set -euo pipefail
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        for attempt in 1 2 3; do
+          git add README.md
+          if git diff --cached --quiet; then
+            echo "README already up to date."
+            exit 0
+          fi
+          git commit -m "ci: update stable container version matrix in README"
+          if git push origin HEAD:main; then
+            exit 0
+          fi
+          if [ "${attempt}" -eq 3 ]; then
+            echo "::error::README update push failed after 3 attempts"
+            exit 1
+          fi
+          echo "Concurrent main update detected; regenerating version sections on latest main."
+          git fetch origin main
+          git reset --hard origin/main
+          python3 scripts/ci/monitor_state.py \
+            --artifact-root /tmp/app-version-artifacts \
+            --readme-path README.md \
+            --output-dir "/tmp/monitor-output-retry-${attempt}" \
+            --build-targets-json "${BUILD_TARGETS}" \
+            --force-build "${FORCE_BUILD}" \
+            --workflow-name ".github/workflows/docker_allinone.yml"
+        done
+    if: ${{ contains(fromJSON('["production","monitor","build","verification"]'), needs.plan.outputs.route) }}
+  check:
+    name: Check ${{ matrix.app_branch }}:${{ matrix.tag_repo }}
+    needs:
+    - plan
+    - monitor
+    if: ${{ contains(fromJSON('["production","build","verification"]'), needs.plan.outputs.route) && needs.monitor.result == 'success' && needs.monitor.outputs.changed_count != '0' }}
+    runs-on: ${{ matrix.runner_image }}
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include: ${{ fromJson(needs.monitor.outputs.changed_build_matrix).include }}
+    env:
+      app_branch: ${{ matrix.app_branch }}
+      tag_repo: ${{ matrix.tag_repo || 'latest' }}
+      force_push: ${{ matrix.force_push || needs.plan.outputs.force_build || 'false' }}
+      publish: 'true'
+      registry_push: docker.io
+      dir_app: application/${{ matrix.app_branch }}
+      compress: 'true'
+      custom_env: ${{ matrix.custom_env || '' }}
+      path_build: /build
+      metadata_image_path: ${{ github.workspace }}/application/${{ matrix.app_branch }}/metadata_image.json
+      metadata_app_path: ${{ github.workspace }}/application/${{ matrix.app_branch }}/metadata_app.json
+    steps:
+    - name: Checkout ${{ github.repository }}
+      uses: actions/checkout@main
+    - name: Initialize environment
+      id: init
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      working-directory: /
+      run: |
+        echo -e "Current working directory: $(pwd)"
+
+        packages_install=(
+          "ca-certificates"
+          "curl"
+          "gpg"
+          "skopeo"
+          "jq"
+        )
+        sudo -E apt-get -y -qq update
+        sudo -E apt-get -y -qq install "${packages_install[@]}"
+        sudo -E apt-get -qq -y autoremove --purge
+        sudo -E apt-get -qq clean
+        sudo -E systemctl daemon-reload
+
+        echo "status=success" | tee -a ${GITHUB_OUTPUT}
+    - name: (Env) Load .env files
+      id: env-app
+      run: |
+        set -euo pipefail
+        python3 scripts/ci/catalog.py env --app "${app_branch}" --tag "${tag_repo}"  --output "${GITHUB_ENV}"
+    - name: (Env) Load Custom inputs
+      id: env-custom
+      if: ${{ env.custom_env != '' }}
+      env:
+        flag_split: ;
+      working-directory: /
+      run: |
+        echo "${{ env.custom_env }}" | tr '${{ env.flag_split }}' '\n' | tee -a $GITHUB_ENV
+    - name: (Disk) Expand workspace
+      id: disk
+      uses: Grinch27/github-actions/.github/actions/setup-disk@main
+      with:
+        path_build: ${{ env.path_build }}
+        root_num: 4
+        mnt_num: 1
+    - name: (Clean) Docker Images
+      id: clean-docker
+      uses: Grinch27/github-actions/.github/actions/clean-docker_image@main
+    - name: (Setup) Docker
+      id: setup-docker
+      uses: Grinch27/github-actions/.github/actions/setup-docker@main
+    - name: (Setup) Docker Data Root
+      id: setup-docker-root
+      env:
+        docker_data_root: ${{ env.path_build }}/docker-data
+      working-directory: /
+      run: |
+        echo "Current working directory: $(pwd)"
+
+        sudo mkdir -p "${docker_data_root}"
+
+        daemon_file="/etc/docker/daemon.json"
+        temp_file=$(mktemp)
+        if sudo test -s "${daemon_file}"; then
+          sudo cat "${daemon_file}" | jq --arg root "${docker_data_root}" '. + {"data-root": $root}' > "${temp_file}"
+        else
+          jq -n --arg root "${docker_data_root}" '{"data-root": $root}' > "${temp_file}"
+        fi
+        sudo cp "${temp_file}" "${daemon_file}"
+
+        if command -v systemctl >/dev/null 2>&1; then
+          sudo systemctl daemon-reload || true
+          sudo systemctl restart docker
+        else
+          sudo service docker restart
+        fi
+
+        docker info --format 'DockerRootDir={{ .DockerRootDir }}'
+        echo "status=success" | tee -a ${GITHUB_OUTPUT}
+    - name: (Setup) QEMU
+      id: setup-qemu
+      if: ${{ env.arch_branch != 'linux/amd64' }}
+      uses: docker/setup-qemu-action@master
+      with:
+        platforms: ${{ env.arch_branch }}
+    - name: (MetaData) from DockerHub
+      id: meta-image
+      env:
+        category: repository
+      run: |
+        metadata='{"${{ env.category }}":[]}'
+        declare -a repo_array=("${{ env.base_image }}" "${{ env.repo_dockerhub }}:${{ env.tag_repo }}")
+        for repo in "${repo_array[@]}"; do
+          IFS=',' read -ra platforms <<< "${{ env.arch_branch }}"
+          for platform in "${platforms[@]}"; do
+            os=$(echo ${platform} | cut -d'/' -f1)
+            arch=$(echo ${platform} | cut -d'/' -f2-)
+
+            variant=""
+            if echo "${arch}" | grep -q "arm/v"; then
+              variant=$(echo ${arch} | cut -d'/' -f2)
+              arch=$(echo ${arch} | cut -d'/' -f1)
+            fi
+
+            data_json=$(skopeo inspect \
+              --override-os=${os} \
+              --override-arch=${arch} \
+              ${variant:+--override-variant=${variant}} \
+              --format=json \
+              docker://docker.io/${repo} | jq .)
+
+            metadata=$(jq \
+              --argjson data "${data_json}" \
+              --arg platform "${platform}" \
+              --arg repo "${repo}" \
+              '.${{ env.category }} += [{name: $repo, platform: $platform, data: $data}]' <<< "${metadata}")
+          done
+        done
+        echo "metadata=${metadata}"
+        echo "${metadata}" | jq . > ${{ env.metadata_image_path }}
+        echo "status=success" | tee -a ${GITHUB_OUTPUT}
+    - name: (Check) Layer MetaData ${{ env.base_image }} in ${{ env.repo_dockerhub }}:${{ env.tag_repo }}
+      id: check-layer
+      if: steps.meta-image.outputs.status == 'success' && !cancelled()
+      env:
+        category_image: repository
+      run: |
+        changed=false
+        metadata_image=$(cat ${{ env.metadata_image_path }})
+        IFS=',' read -ra platforms <<< "${{ env.arch_branch }}"
+        for platform in "${platforms[@]}"; do
+          base_json=$(echo "${metadata_image}" | jq --arg platform "${platform}" --arg repo "${{ env.base_image }}" '
+            .${{ env.category_image }}[] | select(.platform == $platform and .name == $repo) | .data
+          ')
+          repo_json=$(echo "${metadata_image}" | jq --arg platform "${platform}" --arg repo "${{ env.repo_dockerhub }}:${{ env.tag_repo }}" '
+            .${{ env.category_image }}[] | select(.platform == $platform and .name == $repo) | .data
+          ')
+          echo -e "========== Base image: ${{ env.base_image }} ${platform} ==========\n${base_json}"
+          echo -e "========== Repo image: ${{ env.repo_dockerhub }}:${{ env.tag_repo }} ${platform} ==========\n${repo_json}"
+
+          missing_layers=$(jq -r \
+            --argjson base "$(jq -r '.Layers' <<< "$base_json")" \
+            --argjson repo "$(jq -r '.Layers' <<< "$repo_json")" \
+            '($base - $repo)' <<< '{}')
+          if [ "$(echo "$missing_layers" | jq 'length')" -eq 0 ]; then
+            echo "----- All layers are present in ${platform} -----"
+          else
+            echo -e "----- missing layers in ${platform} -----\n${missing_layers}"
+            changed=true
+            break
+          fi
+        done
+        echo "changed=${changed}" | tee -a ${GITHUB_OUTPUT}
+        echo "status=success" | tee -a ${GITHUB_OUTPUT}
+    - name: (MetaData) ${{ env.app_branch }} in Container
+      id: meta-app
+      if: always() && !cancelled()
+      env:
+        container_name: container-test
+        category: platforms
+        dir_container: /tmp
+      working-directory: ${{ github.workspace }}/${{ env.dir_app }}
+      run: |
+        echo "Current working directory: $(pwd)"
+
+        metadata='{"${{ env.category }}":[]}'
+        IFS=',' read -ra platforms <<< "${{ env.arch_branch }}"
+        for platform in "${platforms[@]}"; do
+          echo "===== Testing Base Image for platform: $platform ====="
+          docker pull --platform $platform ${{ env.base_image }}
+          docker run \
+            --name ${{ env.container_name }} \
+            --rm \
+            --detach \
+            --platform $platform \
+            ${{ env.base_image }} \
+            /bin/sh -c "uname -a && sleep infinity"
+
+          log_container=$(mktemp)
+          docker exec ${{ env.container_name }} mkdir -p ${{ env.dir_container }}
+
+          python3 "${GITHUB_WORKSPACE}/scripts/ci/materialize_test_hooks.py" --app "$(basename "$PWD")" --kind meta
+          dir_step="meta-app"
+          dir_original=$(pwd)
+          if [ -d "${dir_step}" ]; then
+            cd ./${dir_step}
+            echo "Changed to directory: $(pwd)"
+
+            env_temp=$(mktemp)
+            if [ ${{ env.custom_env != '' }} ]; then
+              flag_split=";"
+              # | sed "s|='|=\"|g" | sed "s|'$|\"|g" | sed "s|^|export '|" | sed "s|$|'|"
+              echo "${{ env.custom_env }}" | tr "${flag_split}" '\n' | tee -a ${env_temp}
+              docker cp ${env_temp} ${{ env.container_name }}:/tmp/build.env
+            fi
+
+            for script_file in ./*.sh; do
+              container_script="${{ env.dir_container }}/$(basename ${script_file})"
+              script_temp=$(mktemp)
+              {
+                echo "#!/bin/sh"
+                printenv | awk -F= '/^[a-zA-Z_][a-zA-Z0-9_]*=/ {printf "%s=\"%s\"\n", $1, $2}'
+                cat "${script_file}"
+              } > ${script_temp}
+
+              docker cp ${script_temp} ${{ env.container_name }}:${container_script}
+              docker exec ${{ env.container_name }} chmod +x ${container_script}
+              docker exec ${{ env.container_name }} sh -c "${container_script}" | tee -a ${log_container}
+            done
+
+            cd "${dir_original}"
+            echo "Changed back to original directory: $(pwd)"
+          else
+            echo "No directory found"
+          fi
+
+          docker stop ${{ env.container_name }}
+
+          metadata=$(jq \
+            --arg platform "${platform}" \
+            --arg version "$(awk -F= '/^version=/ {print $2}' ${log_container})" \
+            '.${{ env.category }} += [{platform: $platform, version: $version}]' <<< "${metadata}")
+        done
+        echo "metadata=${metadata}"
+        echo "${metadata}" | jq . > ${{ env.metadata_app_path }}
+        echo "status=success" | tee -a ${GITHUB_OUTPUT}
+    - name: (Check) Version of app
+      id: check-version
+      if: steps.meta-app.outputs.status == 'success' && !cancelled()
+      env:
+        category_image: repository
+        category_app: platforms
+      run: |
+        changed=false
+        metadata_image=$(cat ${{ env.metadata_image_path }})
+        metadata_app=$(cat ${{ env.metadata_app_path }})
+        IFS=',' read -ra platforms <<< "${{ env.arch_branch }}"
+        for platform in "${platforms[@]}"; do
+          repo_json=$(echo "${metadata_image}" | jq --arg platform "${platform}" --arg repo "${{ env.repo_dockerhub }}:${{ env.tag_repo }}" '
+            .${{ env.category_image }}[]
+            | select(.platform == $platform and .name == $repo)
+            | .data
+          ')
+          app_json=$(echo "${metadata_app}" | jq --arg platform "${platform}" '
+            .${{ env.category_app }}[]
+            | select(.platform == $platform)
+          ')
+
+          echo "repo_json=${repo_json}"
+          echo "app_json=${app_json}"
+
+          repo_labels=$(echo "${repo_json}" | jq -r '.Labels')
+          if [[ "${repo_labels}" == "null" || -z "${repo_labels}" ]]; then
+            echo "Labels are either null or empty."
+            changed=true
+            break
+          fi
+
+          repo_version=$(echo "${repo_labels}" | jq -r '.version')
+          app_version=$(echo "${app_json}" | jq -r '.version')
+          if [[ "${repo_version}" != "${app_version}" ]]; then
+            echo "${platform} Version mismatch: repo_version=${repo_version}, app_version=${app_version}"
+            changed=true
+          else
+            echo "${platform} Version match: repo_version=${repo_version}, app_version=${app_version}"
+          fi
+        done
+
+        echo "changed=${changed}" | tee -a ${GITHUB_OUTPUT}
+    - name: Summary
+      id: summary
+      if: always() && !cancelled()
+      env:
+        category_image: repository
+        category_app: platforms
+        platform_prefer: linux/amd64
+      run: |
+        set -euo pipefail
+        metadata_app=$(cat "${{ env.metadata_app_path }}")
+
+        # OCI names must match exactly; never derive a publish tag from a blank version.
+        versions=$(jq -r --arg category "${category_app}" \
+          '.[$category][] | select(.version != null and .version != "") | .version' \
+          <<< "${metadata_app}" | sort -u)
+        version_count=$(printf '%s\n' "${versions}" | sed '/^$/d' | wc -l)
+        if [ "${version_count}" -eq 1 ]; then
+          version="${versions}"
+          consistent=true
+        else
+          version=$(jq -r --arg category "${category_app}" --arg platform "${platform_prefer}" \
+            '.[$category][] | select(.platform == $platform) | .version // empty' <<< "${metadata_app}")
+          consistent=false
+        fi
+        if [[ -z "${version}" || "${version}" == "null" || "${version}" == *$'\n'* ]]; then
+          echo "::error::No valid version detected for ${app_branch}:${tag_repo}" >&2
+          exit 1
+        fi
+        echo "Version ${version}; consistent=${consistent}; preferred platform=${platform_prefer}"
+        echo "version=${version}" >> "${GITHUB_OUTPUT}"
+        echo "consistent=${consistent}" >> "${GITHUB_OUTPUT}"
+
+        # ----- Check changed -----
+        if [ "${{ steps.check-layer.outputs.changed || 'true' }}" != 'true' ] && \
+          [ "${{ steps.check-version.outputs.changed || 'true' }}" != 'true' ] && \
+          [ "${{ env.force_push || 'false' }}" != 'true' ]; then
+            changed=false
+        else
+            changed=true
+        fi
+        echo "changed=${changed}" | tee -a ${GITHUB_OUTPUT}
+    - name: Export check result
+      id: export-check
+      if: ${{ always() && !cancelled() }}
+      env:
+        CHECK_JOB_STATUS: ${{ job.status }}
+        SUMMARY_CHANGED: ${{ steps.summary.outputs.changed || 'false' }}
+        SUMMARY_VERSION: ${{ steps.summary.outputs.version || 'null' }}
+        SUMMARY_CONSISTENT: ${{ steps.summary.outputs.consistent || 'false' }}
+      run: |
+        set -euo pipefail
+
+        check_status="${CHECK_JOB_STATUS}"
+        changed="${SUMMARY_CHANGED}"
+        version="${SUMMARY_VERSION}"
+        consistent="${SUMMARY_CONSISTENT}"
+
+        if [[ "${check_status}" != "success" ]]; then
+          changed="false"
+        fi
+
+        result_dir="${RUNNER_TEMP}/docker-check"
+        result_file="${result_dir}/result.json"
+        mkdir -p "${result_dir}"
+
+        jq -n \
+          --arg app_branch "${app_branch}" \
+          --arg tag_repo "${tag_repo}" \
+          --arg changed "${changed}" \
+          --arg version "${version}" \
+          --arg consistent "${consistent}" \
+          --arg check_status "${check_status}" \
+          '{
+            app_branch: $app_branch,
+            tag_repo: $tag_repo,
+            changed: $changed,
+            version: $version,
+            consistent: $consistent,
+            check_status: $check_status
+          }' > "${result_file}"
+
+        echo "result_file=${result_file}" >> "${GITHUB_OUTPUT}"
+    - name: Upload check result
+      if: ${{ always() && !cancelled() }}
+      uses: actions/upload-artifact@main
+      with:
+        name: docker-check-${{ matrix.app_branch }}-${{ matrix.tag_repo }}
+        path: ${{ steps.export-check.outputs.result_file }}
+        if-no-files-found: error
+        retention-days: 1
+  build:
+    name: Build ${{ matrix.app_branch }}:${{ matrix.tag_repo }}
+    needs:
+    - plan
+    - monitor
+    - check
+    if: ${{ always() && !cancelled() && contains(fromJSON('["production","build","verification"]'), needs.plan.outputs.route) && needs.monitor.result == 'success' && needs.monitor.outputs.changed_count != '0' }}
+    runs-on: ${{ matrix.runner_image }}
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include: ${{ fromJson(needs.monitor.outputs.changed_build_matrix).include }}
+    env:
+      app_branch: ${{ matrix.app_branch }}
+      tag_repo: ${{ matrix.tag_repo || 'latest' }}
+      force_push: ${{ matrix.force_push || needs.plan.outputs.force_build || 'false' }}
+      publish: 'false'
+      registry_push: docker.io
+      dir_app: application/${{ matrix.app_branch }}
+      compress: 'true'
+      custom_env: ${{ matrix.custom_env || '' }}
+      path_build: /build
+      registry_local: localhost:5000
+    steps:
+    - name: Download check result
+      uses: actions/download-artifact@main
+      with:
+        name: docker-check-${{ matrix.app_branch }}-${{ matrix.tag_repo }}
+        path: ${{ runner.temp }}/docker-check
+    - name: Load check result
+      id: check-result
+      run: |
+        set -euo pipefail
+        result_file="${RUNNER_TEMP}/docker-check/result.json"
+
+        changed=$(jq -r '.changed' "${result_file}")
+        version=$(jq -r '.version' "${result_file}")
+        consistent=$(jq -r '.consistent' "${result_file}")
+        check_status=$(jq -r '.check_status' "${result_file}")
+
+        if ! jq -e --arg app "${app_branch}" --arg tag "${tag_repo}" '
+          .app_branch == $app and .tag_repo == $tag
+          and (.changed == "true" or .changed == "false")
+          and (.consistent == "true" or .consistent == "false")
+          and .check_status == "success"
+          and (.version | type == "string" and length > 0 and . != "null"
+               and (contains("\n") | not))
+        ' "${result_file}" >/dev/null; then
+          echo "::error::Invalid or wrong-target check result for ${app_branch}:${tag_repo}" >&2
+          exit 1
+        fi
+
+        {
+          echo "changed=${changed}"
+          echo "version=${version}"
+          echo "consistent=${consistent}"
+          echo "check_status=${check_status}"
+        } >> "${GITHUB_OUTPUT}"
+
+        {
+          echo "version=${version}"
+          echo "consistent=${consistent}"
+        } >> "${GITHUB_ENV}"
+
+        if [[ "${check_status}" != "success" ]]; then
+          echo "::error::Version check failed for ${app_branch}:${tag_repo}"
+          exit 1
+        fi
+    - name: Checkout ${{ github.repository }}
+      uses: actions/checkout@main
+    - name: Initialize environment
+      if: ${{ steps.check-result.outputs.changed == 'true' }}
+      id: init
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      working-directory: /
+      run: |
+        echo -e "Current working directory: $(pwd)"
+
+        packages_install=(
+          "ca-certificates"
+          "curl"
+          "gpg"
+          "skopeo"
+          "jq"
+          "xz-utils"
+        )
+        sudo -E apt-get -y -qq update
+        sudo -E apt-get -y -qq install "${packages_install[@]}"
+        sudo -E apt-get -qq -y autoremove --purge
+        sudo -E apt-get -qq clean
+        sudo -E systemctl daemon-reload
+
+        echo "status=success" | tee -a ${GITHUB_OUTPUT}
+    - name: (Env) Load catalog target settings
+      if: ${{ steps.check-result.outputs.changed == 'true' }}
+      id: env-app
+      run: |
+        set -euo pipefail
+        python3 scripts/ci/catalog.py env \
+          --app "${app_branch}" --tag "${tag_repo}" --output "${GITHUB_ENV}"
+        echo "status=success" >> "${GITHUB_OUTPUT}"
+    - name: (Env) Load Custom inputs
+      id: env-custom
+      if: ${{ steps.check-result.outputs.changed == 'true' && (env.custom_env != '') }}
+      env:
+        flag_split: ;
+      working-directory: /
+      run: |
+        echo "${{ env.custom_env }}" | tr '${{ env.flag_split }}' '\n' | tee -a $GITHUB_ENV
+    - name: (Disk) Expand workspace
+      if: ${{ steps.check-result.outputs.changed == 'true' }}
+      id: disk
+      uses: Grinch27/github-actions/.github/actions/setup-disk@main
+      with:
+        path_build: ${{ env.path_build }}
+        root_num: 4
+        mnt_num: 1
+    - name: (Clean) Docker Images
+      if: ${{ steps.check-result.outputs.changed == 'true' }}
+      id: clean-docker
+      uses: Grinch27/github-actions/.github/actions/clean-docker_image@main
+    - name: (Setup) Docker
+      if: ${{ steps.check-result.outputs.changed == 'true' }}
+      id: setup-docker
+      uses: Grinch27/github-actions/.github/actions/setup-docker@main
+    - name: (Setup) Docker Data Root
+      if: ${{ steps.check-result.outputs.changed == 'true' }}
+      id: setup-docker-root
+      env:
+        docker_data_root: ${{ env.path_build }}/docker-data
+      working-directory: /
+      run: |
+        echo "Current working directory: $(pwd)"
+
+        sudo mkdir -p "${docker_data_root}"
+
+        daemon_file="/etc/docker/daemon.json"
+        temp_file=$(mktemp)
+        if sudo test -s "${daemon_file}"; then
+          sudo cat "${daemon_file}" | jq --arg root "${docker_data_root}" '. + {"data-root": $root}' > "${temp_file}"
+        else
+          jq -n --arg root "${docker_data_root}" '{"data-root": $root}' > "${temp_file}"
+        fi
+        sudo cp "${temp_file}" "${daemon_file}"
+
+        if command -v systemctl >/dev/null 2>&1; then
+          sudo systemctl daemon-reload || true
+          sudo systemctl restart docker
+        else
+          sudo service docker restart
+        fi
+
+        docker info --format 'DockerRootDir={{ .DockerRootDir }}'
+        echo "status=success" | tee -a ${GITHUB_OUTPUT}
+    - name: (Setup) QEMU
+      id: setup-qemu
+      if: ${{ steps.check-result.outputs.changed == 'true' && (env.arch_branch != 'linux/amd64') }}
+      uses: docker/setup-qemu-action@master
+      with:
+        platforms: ${{ env.arch_branch }}
+    - name: Setup Docker Buildx
+      if: ${{ steps.check-result.outputs.changed == 'true' }}
+      id: buildx
+      uses: docker/setup-buildx-action@master
+      with:
+        version: latest
+        driver-opts: network=host
+    - name: (Service) Local Registry
+      if: ${{ steps.check-result.outputs.changed == 'true' }}
+      id: registry
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      working-directory: /
+      run: |
+        docker pull registry:latest
+        docker run \
+          --name registry \
+          --detach \
+          --network host \
+          registry:latest
+        echo "status=success" | tee -a ${GITHUB_OUTPUT}
+    - name: Build and push to local registry
+      if: ${{ steps.check-result.outputs.changed == 'true' }}
+      id: build
+      working-directory: ${{ github.workspace }}/${{ env.dir_app }}/build
+      run: |
+        set -euo pipefail
+        bash "${GITHUB_WORKSPACE}/scripts/ci/build-image.sh"
+        echo "status=success" >> "${GITHUB_OUTPUT}"
+    - name: (Inspect) Layers with skopeo
+      if: ${{ steps.check-result.outputs.changed == 'true' }}
+      id: inspect
+      working-directory: ${{ github.workspace }}/${{ env.dir_app }}
+      run: |
+        echo "Current working directory: $(pwd)"
+
+        IFS=',' read -ra platforms <<< "${{ env.arch_branch }}"
+        for platform in "${platforms[@]}"; do
+          os=$(echo ${platform} | cut -d'/' -f1)
+          arch=$(echo ${platform} | cut -d'/' -f2-)
+
+          variant=""
+          if echo "${arch}" | grep -q "arm/v"; then
+            variant=$(echo ${arch} | cut -d'/' -f2)
+            arch=$(echo ${arch} | cut -d'/' -f1)
+          fi
+
+          skopeo inspect \
+            --override-os=${os} \
+            --override-arch=${arch} \
+            ${variant:+--override-variant=${variant}} \
+            --format=json \
+            --tls-verify=false \
+            docker://${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}
+        done
+        echo "status=success" | tee -a ${GITHUB_OUTPUT}
+    - name: (Test) Docker image
+      if: ${{ steps.check-result.outputs.changed == 'true' }}
+      id: test
+      timeout-minutes: ${{ fromJSON('3') }}
+      env:
+        container_name: container-test
+        dir_container: /tmp
+        time_sleep: ${{ env.time_sleep || '3' }}
+      working-directory: ${{ github.workspace }}/${{ env.dir_app }}
+      run: |
+        set -o pipefail
+        echo "Current working directory: $(pwd)"
+
+        test_failed=0
+        IFS=',' read -ra platforms <<< "${{ env.arch_branch }}"
+        for platform in "${platforms[@]}"; do
+          docker pull --platform $platform ${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}
+          docker run \
+            --name ${{ env.container_name }} \
+            --rm \
+            --detach \
+            --platform $platform \
+            ${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}
+            # /bin/sh -c "uname -a && sleep infinity"
+
+          dir_step="test"
+          dir_original=$(pwd)
+          python3 "${GITHUB_WORKSPACE}/scripts/ci/materialize_test_hooks.py" --app "$(basename "$PWD")"
+          if [ -d "${dir_step}" ]; then
+            cd ./${dir_step}
+            echo "Changed to directory: $(pwd)"
+
+            log_container=$(mktemp)
+            # docker exec -u root ${{ env.container_name }} mkdir -p ${{ env.dir_container }}
+
+            for script_file in ./*.sh; do
+              [ -f "${script_file}" ] || continue
+              container_script="${{ env.dir_container }}/$(basename ${script_file})"
+              script_temp=$(mktemp)
+              {
+                echo "#!/bin/sh"
+                printenv | awk -F= '/^[a-zA-Z_][a-zA-Z0-9_]*=/ {printf "%s=\"%s\"\n", $1, $2}'
+                cat "${script_file}"
+              } > ${script_temp}
+
+              docker cp ${script_temp} ${{ env.container_name }}:${container_script}
+              docker exec -u root ${{ env.container_name }} chmod +x ${container_script}
+              if ! docker exec -u root ${{ env.container_name }} sh -c "${container_script}" | tee -a ${log_container}; then
+                test_failed=1
+              fi
+            done
+
+            cd "${dir_original}"
+            echo "Changed back to original directory: $(pwd)"
+          else
+            echo "No directory found"
+          fi
+          echo "Sleep for ${{ env.time_sleep }} seconds"
+          sleep "${{ env.time_sleep }}"
+          docker logs ${{ env.container_name }} || true
+          docker stop ${{ env.container_name }} || true
+        done
+        if [ "${test_failed}" -ne 0 ]; then
+          echo "Image test failed"
+          exit 1
+        fi
+        echo "status=success" | tee -a ${GITHUB_OUTPUT}
+    - name: (Publish) Log in to Docker Hub
+      if: ${{ false }}
+      uses: docker/login-action@master
+      with:
+        registry: docker.io
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+    - name: (Push) Image to ${{ env.registry_push }}
+      id: push
+      if: ${{ false }}
+      working-directory: ${{ github.workspace }}/${{ env.dir_app }}
+      run: |
+        echo "Current working directory: $(pwd)"
+        set -euo pipefail
+        tags_json=$(
+
+          python3 "${GITHUB_WORKSPACE}/scripts/ci/catalog.py" tags \
+          --app "${app_branch}" --tag "${tag_repo}" --version "${version}" \
+          --consistent "${consistent}"
+        )
+        mapfile -t tag_array < <(jq -r '.[]' <<< "${tags_json}")
+        if [ "${#tag_array[@]}" -eq 0 ]; then
+          echo "::error::No publication tags returned" >&2
+          exit 1
+        fi
+
+        IFS=',' read -ra registries <<< "${{ env.registry_push }}"
+        for registry_remote in "${registries[@]}"; do
+          for tag_each in "${tag_array[@]}"; do
+            docker buildx imagetools create --tag "${registry_remote}/${{ env.repo_dockerhub }}:${tag_each}" "${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}"
+          done
+        done
+
+        echo "status=success" | tee -a ${GITHUB_OUTPUT}
+    - name: (Output) Save
+      if: ${{ steps.check-result.outputs.changed == 'true' }}
+      id: output
+      env:
+        dir_output: ${{ env.path_build }}/${{ env.dir_app }}/output
+        target_ext: tar
+      working-directory: ${{ github.workspace }}/${{ env.dir_app }}
+      run: |
+        echo "Current working directory: $(pwd)"
+
+        mkdir -p ${{ env.dir_output }}
+
+        IFS=',' read -ra platforms <<< "${{ env.arch_branch }}"
+        for platform in "${platforms[@]}"; do
+          target_file="${{ env.app_branch }}_${{ env.tag_repo }}_${version}_$(echo ${platform} | tr '/' '_').${{ env.target_ext }}"
+
+          docker pull --platform ${platform} ${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }}
+          docker tag ${{ env.registry_local }}/${{ env.repo_dockerhub }}:${{ env.tag_repo }} ${{ env.repo_dockerhub }}:${{ env.tag_repo }}
+          docker save --output ${{ env.dir_output }}/${target_file} ${{ env.repo_dockerhub }}:${{ env.tag_repo }}
+
+          echo "Exported ${platform} image to ${target_file}"
+        done
+        ls -lh "${{ env.dir_output }}"
+
+        if [ "$(echo ${{ env.compress }} | tr '[:upper:]' '[:lower:]')" != "true" ]; then
+          echo "compress=false" | tee -a $GITHUB_ENV
+        else
+          echo "compress=true" | tee -a $GITHUB_ENV
+        fi
+
+        echo "dir_output=${dir_output}" | tee -a $GITHUB_ENV
+        echo "target_ext=${target_ext}" | tee -a $GITHUB_ENV
+        echo "target_ext=${target_ext}" | tee -a ${GITHUB_OUTPUT}
+        echo "status=success" | tee -a ${GITHUB_OUTPUT}
+    - name: (Optimize) Free Disk Before Compress
+      id: optimize-disk
+      if: ${{ steps.check-result.outputs.changed == 'true' && (steps.output.outputs.status == 'success' && (env.app_branch == 'stable-diffusion-webui-amdgpu' || env.app_branch == 'sdnext')) }}
+      working-directory: /
+      run: |
+        echo "Current working directory: $(pwd)"
+        docker system df || true
+        docker image prune --all --force || true
+        docker builder prune --all --force || true
+        docker system df || true
+        df -hT
+    - name: (Output) Compress
+      id: output-compress
+      if: ${{ steps.check-result.outputs.changed == 'true' && (env.compress == 'true') }}
+      env:
+        dir_output: ${{ env.dir_output }}
+        target_ext: ${{ env.target_ext }}
+        split_size: 1900M
+        split_threshold: '2000000000'
+      working-directory: ${{ env.dir_output }}
+      run: |
+        echo -e "Current working directory: $(pwd)"
+        ls -lh ./
+
+        free -h
+        available_mem=$(free -m | awk '/^Mem:/{print $7}')
+        echo "Available memory: ${available_mem} MiB"
+        reserve_mem=2048
+        if [ "${available_mem}" -gt 6144 ]; then
+          memlimit=$((${available_mem} - ${reserve_mem}))
+          memlimit="${memlimit}MiB"
+        else
+          memlimit="4GiB"
+        fi
+        echo "Set memlimit: ${memlimit}"
+
+        for file in ${{ env.dir_output }}/*.${{ env.target_ext }}; do
+          if [ ! -f "${file}" ]; then
+            continue
+          fi
+          if [[ ! -d "${file}" ]]; then
+            # For compression level -9, each thread may use approximately 67 MiB to 768 MiB or more of memory
+            # check: crc32, sha256, sha512
+            xz --compress \
+              --threads=0 \
+              -9 \
+              --extreme \
+              --memlimit-compress=${memlimit} \
+              --check=sha256 \
+              --verbose \
+              "${file}"
+
+            compressed_file="${file}.xz"
+            compressed_size=$(du -b "${compressed_file}" | cut -f1)
+            if [ "${compressed_size}" -gt "${{ env.split_threshold }}" ]; then
+              echo "Split ${compressed_file} with chunk size ${{ env.split_size }}"
+              split -b "${{ env.split_size }}" --numeric-suffixes=1 --suffix-length=3 "${compressed_file}" "${compressed_file}.part"
+              rm -f "${compressed_file}"
+              ls -lh "${compressed_file}.part"*
+            fi
+          fi
+        done
+
+        ls -lh ./
+        echo "target_ext=xz" | tee -a $GITHUB_ENV
+        echo "status=success" | tee -a ${GITHUB_OUTPUT}
+    - name: (Output) Check
+      id: output-check
+      if: ${{ steps.check-result.outputs.changed == 'true' && (steps.output.outputs.status == 'success' && !cancelled())}}
+      env:
+        metadata_sum_path: ${{ github.workspace }}/metadata_sum.json
+        category: files
+        target_ext: ${{ env.target_ext }}
+      working-directory: ${{ env.dir_output }}
+      run: |
+        echo -e "Current working directory: $(pwd)"
+        ls -lh ./
+
+        metadata='{"${{ env.category }}":[]}'
+        for file in ./*.${{ env.target_ext }}*; do
+          if [ ! -f "${file}" ]; then
+            continue
+          fi
+          if [[ ! -d "${file}" ]]; then
+            read -r checksum filename <<< "$(sha256sum "${file}")"
+            filename=$(basename "${filename}")
+            metadata=$(jq \
+              --arg filename "${filename}" \
+              --arg checksum "${checksum}" \
+              '.${{ env.category }} += [{filename: $filename, checksum: $checksum}]' <<< "${metadata}")
+          fi
+        done
+        echo "metadata=${metadata}"
+        echo "${metadata}" | jq . > ${{ env.metadata_sum_path }}
+
+        echo "timestamp=$(date -u +'%Y%m%dT%H%M%SZ')" | tee -a "${GITHUB_OUTPUT}"
+        echo "metadata_sum_path=${metadata_sum_path}" | tee -a ${GITHUB_OUTPUT}
+        echo "status=success" | tee -a ${GITHUB_OUTPUT}
+    - name: (release.md) Generate
+      if: ${{ steps.check-result.outputs.changed == 'true' }}
+      id: release-md
+      env:
+        release_md: ${{ github.workspace }}/${{ env.dir_app }}/release.md
+        metadata_sum_path: ${{ steps.output-check.outputs.metadata_sum_path }}
+      working-directory: ${{ github.workspace }}/${{ env.dir_app }}
+      run: |
+        echo "Current working directory: $(pwd)"
+
+        release_md_dir=$(dirname ${{ env.release_md }})
+        mkdir -p ${release_md_dir}
+        : > ${{ env.release_md }}
+
+        record_to_markdown() {
+          local title="$1"
+          local content="$2"
+          local code_block="${3:-}"
+          local format="\n### %s\n%s\n"
+
+          if [[ -n "${code_block}" ]]; then
+            format="\n### %s\n\n<details>\n<summary>%s</summary>\n\n\`\`\`%s\n%s\n\`\`\`\n\n</details>\n"
+            printf "${format}" "${title}" "${title}" "${code_block}" "${content}" | tee -a ${{ env.release_md }}
+          else
+            printf "${format}" "${title}" "${content}" | tee -a ${{ env.release_md }}
+          fi
+        }
+
+        record_to_markdown "Timestamp (UTC)" "- [x] $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+
+        IFS=',' read -ra registries <<< "${{ env.registry_push }}" >> ${{ env.release_md }}
+        for registry_remote in "${registries[@]}"; do
+          echo -e "### Info\n" >> ${{ env.release_md }}
+          echo "Registry: ${registry_remote}" >> ${{ env.release_md }}
+          echo "Repository: ${{ env.repo_dockerhub }}" >> ${{ env.release_md }}
+          echo "docker pull ${registry_remote}/${{ env.repo_dockerhub }}:\*"  >> ${{ env.release_md }}
+          echo "docker load < \*.xz" >> ${{ env.release_md }}
+          echo "xz --decompress --verbose *.xz" >> ${{ env.release_md }}
+          echo "docker load < \*.tar" >> ${{ env.release_md }}
+        done
+
+        echo -e "\n### Split Assets\n" >> ${{ env.release_md }}
+        echo "If an image archive is split into multiple parts (for GitHub asset size limits), merge it before decompressing:" >> ${{ env.release_md }}
+        echo '```bash' >> ${{ env.release_md }}
+        echo 'cat image.tar.xz.part* > image.tar.xz' >> ${{ env.release_md }}
+        echo 'xz --decompress --verbose image.tar.xz' >> ${{ env.release_md }}
+        echo 'docker load < image.tar' >> ${{ env.release_md }}
+        echo '```' >> ${{ env.release_md }}
+
+        sum_json_content=$(jq '.' "${{ env.metadata_sum_path }}")
+        record_to_markdown "sha256sum" "${sum_json_content}" "json"
+
+        cat ${{ env.release_md }}
+        echo "release_md=${release_md}" | tee -a $GITHUB_ENV
+        echo "status=success" | tee -a ${GITHUB_OUTPUT}
+    - name: (Upload) to Release
+      id: upload-release
+      if: ${{ false }}
+      uses: ncipollo/release-action@main
+      env:
+        dir_output: ${{ env.dir_output }}
+        target_ext: ${{ env.target_ext }}
+        release_md: ${{ env.release_md }}
+      with:
+        name: ${{ env.repo_dockerhub }}
+        tag: ${{ env.app_branch }}
+        artifacts: ${{ env.dir_output }}/*.${{ env.target_ext }},${{ env.dir_output }}/*.${{ env.target_ext }}.part*
+        allowUpdates: true
+        removeArtifacts: false
+        replacesArtifacts: true
+        token: ${{ secrets.GITHUB_TOKEN }}
+        bodyFile: ${{ env.release_md }}
+  dev-inspect:
+    if: ${{ needs.plan.outputs.route == 'smoke' || (needs.plan.outputs.route == 'dev' && needs.plan.outputs.dev_mode != 'preflight') }}
+    name: ${{ needs.runner-image.outputs.RUNNER_IMAGE }} - inspect
+    needs:
+    - runner-image
+    - plan
+    runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
+    outputs:
+      mode: ${{ steps.inspect.outputs.mode }}
+      target_count: ${{ steps.inspect.outputs.target_count }}
+      target_matrix: ${{ steps.inspect.outputs.target_matrix }}
+      artifact_name: ${{ steps.inspect.outputs.artifact_name }}
+      fatal_count: ${{ steps.inspect.outputs.fatal_count }}
+      unobservable_count: ${{ steps.inspect.outputs.unobservable_count }}
+    steps:
+    - name: Checkout ${{ github.repository }}
+      uses: actions/checkout@main
+      with:
+        fetch-depth: 1
+    - name: Configure Buildx
+      uses: docker/setup-buildx-action@master
+    - name: Inspect targets and published images
+      id: inspect
+      env:
+        MODE_INPUT: ${{ needs.plan.outputs.dev_mode }}
+        TARGET_INPUT: ${{ needs.plan.outputs.target_id }}
+        VERSION_INPUT: ${{ needs.plan.outputs.version }}
+        REVISION_INPUT: ${{ needs.plan.outputs.revision }}
+        FORCE_INPUT: ${{ needs.plan.outputs.force_build }}
+        DEV_TARGETS: ${{ needs.plan.outputs.dev_matrix }}
+      run: |
+        set -euo pipefail
+
+        mode="${MODE_INPUT:-auto}"
+        target_input="${TARGET_INPUT:-}"
+        version_input="${VERSION_INPUT:-}"
+        revision_input="${REVISION_INPUT:-}"
+        force_input="${FORCE_INPUT:-false}"
+        revision="r${GITHUB_RUN_ID}-a${GITHUB_RUN_ATTEMPT}"
+        artifact_name="docker-inspect-${GITHUB_RUN_ID}-a${GITHUB_RUN_ATTEMPT}"
+        inspect_dir="${RUNNER_TEMP}/inspect-data"
+        work_dir="${RUNNER_TEMP}/inspect-work"
+        mkdir -p "${inspect_dir}" "${work_dir}"
+
+        case "${mode}" in
+          auto|build|smoke-target|promote-dockerhub|promote-ghcr|promote-all) ;;
+          *)
+            printf 'Unsupported mode: %s\n' "${mode}" >&2
+            exit 2
+            ;;
+        esac
+
+        case "${force_input,,}" in
+          true|false) ;;
+          *)
+            printf 'Invalid force_build: %s\n' "${force_input}" >&2
+            exit 2
+            ;;
+        esac
+
+        if [[ "${force_input,,}" == true && ("${mode}" == auto || "${mode}" == build) ]]; then
+          echo 'force_build is retained only for compatibility; every selected candidate is already built.'
+        fi
+
+        targets="${DEV_TARGETS}"
+
+        duplicates=$(jq -r '.include[].target_id' <<< "${targets}" | sort | uniq -d)
+        if [[ -n "${duplicates}" ]]; then
+          printf 'Duplicate target_id(s):\n%s\n' "${duplicates}" >&2
+          exit 1
+        fi
+
+        if [[ -n "${target_input}" ]] && ! jq -e --arg id "${target_input}" '.include[] | select(.target_id == $id)' <<< "${targets}" >/dev/null; then
+          printf 'Unknown target_id: %s\n' "${target_input}" >&2
+          exit 2
+        fi
+
+        if [[ "${mode}" == promote-* ]]; then
+          if [[ -z "${target_input}" || -z "${version_input}" || -z "${revision_input}" ]]; then
+            echo 'Promotion-only modes require target_id, version and revision.' >&2
+            exit 2
+          fi
+        fi
+
+        selected_jsonl="${work_dir}/selected.jsonl"
+        : > "${selected_jsonl}"
+
+        while IFS= read -r target; do
+          app_branch=$(jq -r '.app_branch' <<< "${target}")
+          tag_repo=$(jq -r '.tag_repo' <<< "${target}")
+          target_id=$(jq -r '.target_id' <<< "${target}")
+
+          if [[ -n "${target_input}" && "${target_id}" != "${target_input}" ]]; then
+            continue
+          fi
+          dir_app="application/${app_branch}"
+          if [[ ! -d "${dir_app}" ]]; then
+            printf 'Missing application directory: %s\n' "${dir_app}" >&2
+            exit 1
+          fi
+          base_image=$(jq -r '.base_image' <<< "${target}")
+          arch_branch=$(jq -r '.arch_branch' <<< "${target}")
+          repo_dockerhub=$(jq -r '.repo_dockerhub' <<< "${target}")
+          dockerfile=$(jq -r '.dockerfile' <<< "${target}")
+          build_arg=$(jq -r '.build_arg' <<< "${target}")
+          legacy_tag_policy=$(jq -r '.tag_policy' <<< "${target}")
+          case "${legacy_tag_policy}" in
+            strip_channel|strip_channel_and_spaces|none|keep|default) ;;
+            *) echo "Unsupported tag_policy: ${legacy_tag_policy}" >&2; exit 2 ;;
+          esac
+          [[ -f "${dir_app}/build/${dockerfile}" ]] || {
+            printf 'Missing Dockerfile: %s\n' "${dir_app}/build/${dockerfile}" >&2
+            exit 1
+          }
+          repo_name="${repo_dockerhub##*/}"
+          owner_lower=$(printf '%s' "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')
+          ghcr_repo="ghcr.io/${owner_lower}/${repo_name}"
+
+          item=$(jq -cn \
+            --arg target_id "${target_id}" \
+            --arg app_branch "${app_branch}" \
+            --arg tag_repo "${tag_repo}" \
+            --arg base_image "${base_image}" \
+            --arg arch_branch "${arch_branch}" \
+            --arg repo_dockerhub "${repo_dockerhub}" \
+            --arg ghcr_repo "${ghcr_repo}" \
+            --arg dockerfile "${dockerfile}" \
+            --arg build_arg "${build_arg}" \
+            --arg legacy_tag_policy "${legacy_tag_policy}" \
+            --arg revision "$([[ "${mode}" == promote-* ]] && printf '%s' "${revision_input}" || printf '%s' "${revision}")" \
+            --arg version "$([[ "${mode}" == promote-* ]] && printf '%s' "${version_input}" || true)" \
+            --arg version_assertion "$([[ "${mode}" == promote-* ]] && true || printf '%s' "${version_input}")" '
+              {
+                target_id: $target_id,
+                app_branch: $app_branch,
+                tag_repo: $tag_repo,
+                base_image: $base_image,
+                arch_branch: $arch_branch,
+                repo_dockerhub: $repo_dockerhub,
+                ghcr_repo: $ghcr_repo,
+                dockerfile: $dockerfile,
+                build_arg: $build_arg,
+                legacy_tag_policy: $legacy_tag_policy,
+                revision: $revision,
+                version: $version,
+                version_assertion: $version_assertion
+              }')
+          printf '%s\n' "${item}" >> "${selected_jsonl}"
+        done < <(jq -c '.include[]' <<< "${targets}")
+
+        target_matrix=$(jq -sc '{include: .}' "${selected_jsonl}")
+        target_count=$(jq '.include | length' <<< "${target_matrix}")
+        if [[ "${target_count}" -eq 0 ]]; then
+          echo 'No targets selected.' >&2
+          exit 2
+        fi
+
+        fatal_count=0
+        unobservable_count=0
+
+        classify_error() {
+          local log="$1"
+          if grep -Eiq 'manifest unknown|name unknown|not found|does not exist' "${log}"; then
+            printf 'missing'
+          elif grep -Eiq 'unauthorized|denied|forbidden|authentication required|insufficient_scope|anonymous token.*403|403 forbidden' "${log}"; then
+            printf 'unobservable'
+          else
+            printf 'inspect_failed'
+          fi
+        }
+
+        write_registry_status() {
+          local out="$1"
+          local ref="$2"
+          local status="$3"
+          local error_file="$4"
+          jq -cn \
+            --arg reference "${ref}" \
+            --arg status "${status}" \
+            --rawfile error "${error_file}" '
+              {
+                reference: $reference,
+                status: $status,
+                error: ($error | sub("[\\r\\n]+$"; "")),
+                source: {raw: null, parsed: null, platforms: {}}
+              }' > "${out}"
+        }
+
+        inspect_registry() {
+          local registry="$1"
+          local ref="$2"
+          local arch_branch="$3"
+          local out="$4"
+          local dir="${work_dir}/registry-${RANDOM}-${RANDOM}"
+          local raw_file="${dir}/raw.json"
+          local parsed_file="${dir}/parsed.json"
+          local error_file="${dir}/error.log"
+          local platforms_file="${dir}/platforms.jsonl"
+          mkdir -p "${dir}"
+          : > "${error_file}"
+          : > "${platforms_file}"
+
+          if ! docker buildx imagetools inspect "${ref}" --raw > "${raw_file}" 2> "${error_file}"; then
+            status=$(classify_error "${error_file}")
+            write_registry_status "${out}" "${ref}" "${status}" "${error_file}"
+            if [[ "${status}" == inspect_failed ]]; then
+              fatal_count=$((fatal_count + 1))
+            elif [[ "${status}" == unobservable ]]; then
+              unobservable_count=$((unobservable_count + 1))
+            fi
+            rm -rf "${dir}"
+            return 0
+          fi
+
+          if ! jq -e . "${raw_file}" >/dev/null 2>&1; then
+            printf 'imagetools --raw returned invalid JSON\n' > "${error_file}"
+            write_registry_status "${out}" "${ref}" inspect_failed "${error_file}"
+            fatal_count=$((fatal_count + 1))
+            rm -rf "${dir}"
+            return 0
+          fi
+
+          if ! docker buildx imagetools inspect "${ref}" --format '{{json .}}' > "${parsed_file}" 2> "${error_file}" ||
+             ! jq -e . "${parsed_file}" >/dev/null 2>&1; then
+            [[ -s "${error_file}" ]] || printf 'imagetools parsed metadata returned invalid JSON\n' > "${error_file}"
+            write_registry_status "${out}" "${ref}" inspect_failed "${error_file}"
+            fatal_count=$((fatal_count + 1))
+            rm -rf "${dir}"
+            return 0
+          fi
+
+          IFS=',' read -r -a platforms <<< "${arch_branch}"
+          for platform in "${platforms[@]}"; do
+            platform="${platform//[[:space:]]/}"
+            [[ -n "${platform}" ]] || continue
+            platform_file="${dir}/platform.json"
+            platform_error="${dir}/platform-error.log"
+            : > "${platform_error}"
+
+            if docker buildx imagetools inspect "${ref}" \
+                 --format "{{json (index .Image \"${platform}\")}}" \
+                 > "${platform_file}" 2> "${platform_error}" &&
+               jq -e 'type == "object" and . != {}' "${platform_file}" >/dev/null 2>&1; then
+              jq -cn \
+                --arg platform "${platform}" \
+                --arg status present \
+                --argjson image "$(cat "${platform_file}")" \
+                '{platform: $platform, status: $status, image: $image, error: ""}' \
+                >> "${platforms_file}"
+              continue
+            fi
+
+            if docker buildx imagetools inspect "${ref}" \
+                 --format '{{json .Image}}' \
+                 > "${platform_file}" 2> "${platform_error}" &&
+               jq -e --arg platform "${platform}" '
+                 type == "object" and
+                 ((.architecture // .Architecture // "") != "") and
+                 ((.os // .Os // "") != "") and
+                 (($platform | split("/")[0]) == (.os // .Os)) and
+                 (($platform | split("/")[1]) == (.architecture // .Architecture))
+               ' "${platform_file}" >/dev/null 2>&1; then
+              jq -cn \
+                --arg platform "${platform}" \
+                --arg status present \
+                --argjson image "$(cat "${platform_file}")" \
+                '{platform: $platform, status: $status, image: $image, error: ""}' \
+                >> "${platforms_file}"
+            else
+              jq -cn \
+                --arg platform "${platform}" \
+                --rawfile error "${platform_error}" '
+                {
+                  platform: $platform,
+                  status: "missing",
+                  image: null,
+                  error: ($error | sub("[\\r\\n]+$"; ""))
+                }' >> "${platforms_file}"
+            fi
+          done
+
+          python3 - "${ref}" "${raw_file}" "${parsed_file}" "${platforms_file}" "${out}" <<'PY'
+        import json
+        import sys
+        from pathlib import Path
+
+        ref, raw_path, parsed_path, platforms_path, out_path = sys.argv[1:]
+        raw = json.loads(Path(raw_path).read_text(encoding="utf-8"))
+        parsed = json.loads(Path(parsed_path).read_text(encoding="utf-8"))
+        platforms = {}
+        for line in Path(platforms_path).read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            platforms[row["platform"]] = {
+                "status": row["status"],
+                "image": row["image"],
+                "error": row["error"],
+            }
+        result = {
+            "reference": ref,
+            "status": "present",
+            "error": "",
+            "source": {
+                "raw": raw,
+                "parsed": parsed,
+                "platforms": platforms,
+            },
+        }
+        Path(out_path).write_text(
+            json.dumps(result, ensure_ascii=False, separators=(",", ":")),
+            encoding="utf-8",
+        )
+        PY
+          rm -rf "${dir}"
+        }
+
+        if [[ "${mode}" == auto || "${mode}" == build || "${mode}" == smoke-target ]]; then
+          while IFS= read -r target; do
+            target_id=$(jq -r '.target_id' <<< "${target}")
+            tag_repo=$(jq -r '.tag_repo' <<< "${target}")
+            arch_branch=$(jq -r '.arch_branch' <<< "${target}")
+            repo_dockerhub=$(jq -r '.repo_dockerhub' <<< "${target}")
+            ghcr_repo=$(jq -r '.ghcr_repo' <<< "${target}")
+            target_work="${work_dir}/${target_id}"
+            mkdir -p "${target_work}"
+
+            dockerhub_ref="${repo_dockerhub}:${tag_repo}"
+            ghcr_ref="${ghcr_repo}:${tag_repo}"
+            inspect_registry dockerhub "${dockerhub_ref}" "${arch_branch}" "${target_work}/dockerhub.json"
+            inspect_registry ghcr "${ghcr_ref}" "${arch_branch}" "${target_work}/ghcr.json"
+
+            jq -cn \
+              --argjson target "${target}" \
+              --slurpfile dockerhub "${target_work}/dockerhub.json" \
+              --slurpfile ghcr "${target_work}/ghcr.json" '
+                {
+                  schema_version: 1,
+                  target: $target,
+                  registries: {
+                    dockerhub: $dockerhub[0],
+                    ghcr: $ghcr[0]
+                  }
+                }' > "${inspect_dir}/${target_id}.json"
+          done < "${selected_jsonl}"
+        fi
+
+        {
+          echo "mode=${mode}"
+          echo "target_count=${target_count}"
+          echo "artifact_name=${artifact_name}"
+          echo "fatal_count=${fatal_count}"
+          echo "unobservable_count=${unobservable_count}"
+          echo "target_matrix<<__JSON__"
+          echo "${target_matrix}"
+          echo "__JSON__"
+        } >> "${GITHUB_OUTPUT}"
+
+        {
+          echo "## Inspect"
+          echo
+          echo "- Mode: \`${mode}\`"
+          echo "- Targets: ${target_count}"
+          echo "- Fatal inspect results: ${fatal_count}"
+          echo "- Unobservable registry results: ${unobservable_count}"
+          echo "- Published metadata: \`imagetools inspect --raw\` + \`--format '{{json .}}'\` + declared-platform image config"
+          echo "- Registry login during inspect: NONE"
+          echo "- Hash calculations: NONE"
+        } >> "${GITHUB_STEP_SUMMARY}"
+    - name: Upload inspect metadata
+      if: steps.inspect.outputs.mode == 'auto' || steps.inspect.outputs.mode == 'build' || steps.inspect.outputs.mode == 'smoke-target'
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ steps.inspect.outputs.artifact_name }}
+        path: ${{ runner.temp }}/inspect-data
+        if-no-files-found: error
+        retention-days: 1
+    - name: Enforce inspect result
+      if: steps.inspect.outputs.fatal_count != '0'
+      run: |
+        echo "Fatal published-image inspection results: ${{ steps.inspect.outputs.fatal_count }}" >&2
+        exit 1
+  dev-build:
+    name: ${{ matrix.target_id }}
+    needs:
+    - runner-image
+    - plan
+    - dev-inspect
+    if: ${{ false }}
+    runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
+    concurrency:
+      group: docker-allinone-dev-${{ matrix.app_branch }}
+      cancel-in-progress: false
+      queue: max
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include: ${{ fromJSON(needs.dev-inspect.outputs.target_matrix).include }}
+    env:
+      MODE: ${{ needs.dev-inspect.outputs.mode }}
+      TARGET_ID: ${{ matrix.target_id }}
+      APP_BRANCH: ${{ matrix.app_branch }}
+      TAG_REPO: ${{ matrix.tag_repo }}
+      BUILD_ARG: ${{ matrix.build_arg }}
+      LEGACY_TAG_POLICY: ${{ matrix.legacy_tag_policy }}
+      BASE_IMAGE: ${{ matrix.base_image }}
+      ARCH_BRANCH: ${{ matrix.arch_branch }}
+      REPO_DOCKERHUB: ${{ matrix.repo_dockerhub }}
+      GHCR_REPO: ${{ matrix.ghcr_repo }}
+      DOCKERFILE: ${{ matrix.dockerfile }}
+      VERSION: ${{ matrix.version }}
+      VERSION_ASSERTION: ${{ matrix.version_assertion }}
+      REVISION: ${{ matrix.revision }}
+    steps:
+    - name: Checkout ${{ github.repository }}
+      uses: actions/checkout@main
+      with:
+        fetch-depth: 1
+    - name: Enable emulated platforms
+      uses: docker/setup-qemu-action@master
+      with:
+        cache-image: false
+    - name: Configure Buildx
+      uses: docker/setup-buildx-action@master
+    - name: Download inspect metadata
+      if: env.MODE == 'auto' || env.MODE == 'build'
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ needs.dev-inspect.outputs.artifact_name }}
+        path: ${{ runner.temp }}/inspect-baseline
+    - name: Build, test, compare and archive locally
+      id: build-release
+      if: env.MODE == 'auto' || env.MODE == 'build'
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+
+        dir_app="application/${APP_BRANCH}"
+        state_dir="${RUNNER_TEMP}/docker-pipeline/${TARGET_ID}"
+        tar_dir="${state_dir}/tar"
+        candidate_dir="${state_dir}/candidate"
+        comparison_dir="${state_dir}/comparison"
+        state_file="${state_dir}/build.tsv"
+        decision_file="${state_dir}/decision.env"
+        baseline_file="${RUNNER_TEMP}/inspect-baseline/${TARGET_ID}.json"
+        mkdir -p "${tar_dir}" "${candidate_dir}" "${comparison_dir}"
+        : > "${state_file}"
+
+        if [[ ! -f "${baseline_file}" ]]; then
+          echo "Missing inspect baseline: ${baseline_file}" >&2
+          exit 1
+        fi
+
+        # Phase 1: typed configuration arrives directly from the inspected matrix.
+
+        normalize_version() {
+          local value="${1#v}"
+          printf '%s' "${value}" | sed -E 's/[^A-Za-z0-9_.-]+/-/g; s/^-+//; s/-+$//'
+        }
+
+        platform_label() {
+          printf '%s' "$1" | sed -E 's#^linux/##; s#/#-#g'
+        }
+
+        cleanup_local_images() {
+          if [[ -f "${state_file}" ]]; then
+            awk -F '\t' '$4 != "" {print $4}' "${state_file}" | while IFS= read -r ref; do
+              docker image rm "${ref}" >/dev/null 2>&1 || true
+            done
+          fi
+        }
+        trap cleanup_local_images EXIT
+
+        arch_branch="${ARCH_BRANCH}"
+        base_image="${BASE_IMAGE}"
+        repo_dockerhub="${REPO_DOCKERHUB}"
+        dockerfile="${DOCKERFILE}"
+        build_arg="${BUILD_ARG:-}"
+        : "${arch_branch:=${ARCH_BRANCH:-linux/amd64}}"
+        : "${base_image:=${BASE_IMAGE:-ubuntu:latest}}"
+        : "${repo_dockerhub:=${REPO_DOCKERHUB:-grinch27/${APP_BRANCH}}}"
+        : "${dockerfile:=${DOCKERFILE:-Dockerfile}}"
+
+        resolved_dockerfile=$(find "${dir_app}/build" -maxdepth 1 -type f -iname "${dockerfile}" -print -quit)
+        if [[ -z "${resolved_dockerfile}" ]]; then
+          echo "Dockerfile not found: ${dir_app}/build/${dockerfile}" >&2
+          exit 1
+        fi
+
+        python3 scripts/ci/materialize_test_hooks.py --app "${APP_BRANCH}"
+        shopt -s nullglob
+        test_scripts=("${dir_app}"/test/*.sh)
+        if ((${#test_scripts[@]} == 0)); then
+          echo "No test/version probe script found for ${TARGET_ID}." >&2
+          exit 1
+        fi
+
+        IFS=',' read -r -a platforms <<< "${arch_branch}"
+        declared_count=0
+        overall_fail=0
+
+        for platform in "${platforms[@]}"; do
+          platform="${platform//[[:space:]]/}"
+          [[ -n "${platform}" ]] || continue
+          declared_count=$((declared_count + 1))
+          arch_label=$(platform_label "${platform}")
+          local_ref="${TARGET_ID}:${REVISION}-${arch_label}"
+          status=success
+          reason=ok
+          cid=""
+          actual_version=""
+          test_log="${candidate_dir}/${arch_label}.test.log"
+          image_file="${candidate_dir}/${arch_label}.image.json"
+          history_file="${candidate_dir}/${arch_label}.history.json"
+          snapshot_file="${candidate_dir}/${arch_label}.snapshot.json"
+          comparison_file="${comparison_dir}/${arch_label}.json"
+          : > "${test_log}"
+
+          printf '\n=== %s %s ===\n' "${TARGET_ID}" "${platform}"
+
+          if ! (
+            cd "${dir_app}/build"
+            arch_branch="${platform}" base_image="${base_image}" \
+              dockerfile="${dockerfile}" build_arg="${build_arg:-}" \
+              build_output=load image_ref="${local_ref}" \
+              bash "${GITHUB_WORKSPACE}/scripts/ci/build-image.sh"
+          ); then
+            status=failed
+            reason=build_failed
+          fi
+
+          if [[ "${status}" == success ]]; then
+            if ! cid=$(docker run --detach \
+                --platform "${platform}" \
+                --entrypoint /bin/sh \
+                "${local_ref}" \
+                -c 'sleep infinity'); then
+              status=failed
+              reason=test_container_failed
+            fi
+          fi
+
+          if [[ "${status}" == success ]]; then
+            for script in "${test_scripts[@]}"; do
+              name=$(basename "${script}")
+              script_log="${candidate_dir}/${arch_label}.${name}.log"
+              if ! docker cp "${script}" "${cid}:/tmp/${name}" >/dev/null; then
+                status=failed
+                reason=test_copy_failed
+                break
+              fi
+              if ! docker exec --user 0 "${cid}" /bin/sh "/tmp/${name}" > "${script_log}" 2>&1; then
+                cat "${script_log}"
+                cat "${script_log}" >> "${test_log}"
+                status=failed
+                reason=test_failed
+                break
+              fi
+              cat "${script_log}"
+              cat "${script_log}" >> "${test_log}"
+            done
+          fi
+
+          if [[ "${status}" == success ]]; then
+            actual_version=$(awk -F= '/^version=/{sub(/^[^=]*=/, ""); value=$0} END{print value}' "${test_log}")
+            if [[ -z "${actual_version}" ]]; then
+              status=failed
+              reason=actual_version_missing
+            fi
+          fi
+
+          if [[ -n "${cid}" ]]; then
+            docker rm --force "${cid}" >/dev/null 2>&1 || true
+          fi
+
+          if [[ "${status}" == success ]]; then
+            if ! docker image inspect "${local_ref}" > "${image_file}"; then
+              status=failed
+              reason=image_inspect_failed
+            fi
+          fi
+
+          if [[ "${status}" == success ]]; then
+            if ! docker image history --no-trunc --human=false --format '{{json .}}' "${local_ref}" |
+                 jq -s '.' > "${history_file}"; then
+              status=failed
+              reason=image_history_failed
+            fi
+          fi
+
+          if [[ "${status}" == success ]]; then
+            jq -cn \
+              --arg platform "${platform}" \
+              --arg actual_version "${actual_version}" \
+              --arg test_result success \
+              --argjson image_inspect "$(cat "${image_file}")" \
+              --argjson image_history "$(cat "${history_file}")" '
+                {
+                  platform: $platform,
+                  actual_version: $actual_version,
+                  test_result: $test_result,
+                  source: {
+                    image_inspect: $image_inspect,
+                    image_history: $image_history
+                  }
+                }' > "${snapshot_file}"
+
+            python3 - "${baseline_file}" "${snapshot_file}" "${platform}" "${MODE}" "${comparison_file}" <<'PY'
+        import json
+        import sys
+        from pathlib import Path
+
+        baseline_path, candidate_path, platform, mode, out_path = sys.argv[1:]
+        baseline = json.loads(Path(baseline_path).read_text(encoding="utf-8"))
+        candidate = json.loads(Path(candidate_path).read_text(encoding="utf-8"))
+
+        config_fields = (
+            "Env",
+            "Entrypoint",
+            "Cmd",
+            "User",
+            "WorkingDir",
+            "ExposedPorts",
+            "Volumes",
+            "StopSignal",
+            "Healthcheck",
+            "Shell",
+        )
+        ignored_labels = set()
+
+        def first_mapping(value):
+            if isinstance(value, list) and value and isinstance(value[0], dict):
+                return value[0]
+            return value if isinstance(value, dict) else {}
+
+        def image_config(image):
+            if not isinstance(image, dict):
+                return {}
+            value = image.get("config")
+            if isinstance(value, dict):
+                return value
+            value = image.get("Config")
+            return value if isinstance(value, dict) else {}
+
+        def platform_view(image):
+            image = first_mapping(image)
+            os_value = image.get("os", image.get("Os", ""))
+            arch_value = image.get("architecture", image.get("Architecture", ""))
+            variant = image.get("variant", image.get("Variant", "")) or ""
+            return {"os": os_value or "", "architecture": arch_value or "", "variant": variant}
+
+        def normalized_config(image):
+            cfg = image_config(first_mapping(image))
+            out = {field: cfg.get(field) for field in config_fields}
+            labels = cfg.get("Labels")
+            if labels is None:
+                labels = cfg.get("labels")
+            if not isinstance(labels, dict):
+                labels = {}
+            out["Labels"] = {
+                str(k): labels[k]
+                for k in sorted(labels)
+                if str(k) not in ignored_labels
+            }
+            return out
+
+        def image_version_label(image):
+            cfg = image_config(first_mapping(image))
+            labels = cfg.get("Labels")
+            if labels is None:
+                labels = cfg.get("labels")
+            if not isinstance(labels, dict):
+                return ""
+            for key in ("org.opencontainers.image.version", "version"):
+                value = labels.get(key)
+                if isinstance(value, (str, int, float)) and str(value).strip():
+                    return str(value).strip()
+            return ""
+
+        def recursive_oci_version(value):
+            if isinstance(value, dict):
+                candidate_value = value.get("org.opencontainers.image.version")
+                if isinstance(candidate_value, (str, int, float)) and str(candidate_value).strip():
+                    return str(candidate_value).strip()
+                for child in value.values():
+                    found = recursive_oci_version(child)
+                    if found:
+                        return found
+            elif isinstance(value, list):
+                for child in value:
+                    found = recursive_oci_version(child)
+                    if found:
+                        return found
+            return ""
+
+        candidate_image = first_mapping(candidate.get("source", {}).get("image_inspect", {}))
+        candidate_view = {
+            "platform": platform_view(candidate_image),
+            "actual_version": str(candidate.get("actual_version", "")).strip(),
+            "config": normalized_config(candidate_image),
+        }
+
+        registries = {}
+        any_changed = False
+        any_unknown = False
+        has_observable_baseline = False
+
+        for registry_name in ("dockerhub", "ghcr"):
+            registry = baseline.get("registries", {}).get(registry_name, {})
+            registry_status = registry.get("status", "inspect_failed")
+            result = "UNKNOWN"
+            promotion_required = False
+            published_view = None
+            reasons = []
+
+            if registry_status == "missing":
+                result = "MISSING"
+                promotion_required = True
+            elif registry_status == "unobservable":
+                result = "UNOBSERVABLE"
+                reasons.append("anonymous_inspect_not_authorized")
+            elif registry_status != "present":
+                result = "UNKNOWN"
+                any_unknown = True
+                reasons.append(f"registry_status={registry_status}")
+            else:
+                platform_data = registry.get("source", {}).get("platforms", {}).get(platform, {})
+                if platform_data.get("status") != "present" or not isinstance(platform_data.get("image"), dict):
+                    result = "MISSING"
+                    promotion_required = True
+                else:
+                    published_image = platform_data["image"]
+                    remote_version = image_version_label(published_image)
+                    if not remote_version:
+                        remote_version = recursive_oci_version(registry.get("source", {}).get("parsed", {}))
+                    published_view = {
+                        "platform": platform_view(published_image),
+                        "actual_version": remote_version,
+                        "config": normalized_config(published_image),
+                    }
+                    if not remote_version:
+                        result = "UNKNOWN"
+                        any_unknown = True
+                        reasons.append("published_actual_version_missing")
+                    elif published_view == candidate_view:
+                        has_observable_baseline = True
+                        result = "SAME"
+                    else:
+                        has_observable_baseline = True
+                        result = "CHANGED"
+                        promotion_required = True
+                        any_changed = True
+                        if published_view["platform"] != candidate_view["platform"]:
+                            reasons.append("platform")
+                        if published_view["actual_version"] != candidate_view["actual_version"]:
+                            reasons.append("actual_version")
+                        if published_view["config"] != candidate_view["config"]:
+                            reasons.append("runtime_config_or_labels")
+
+            registries[registry_name] = {
+                "inspect_status": registry_status,
+                "result": result,
+                "promotion_required": promotion_required,
+                "published_view": published_view,
+                "reasons": reasons,
+            }
+
+        all_missing = all(registry["result"] == "MISSING" for registry in registries.values())
+        explicit_missing_repair = (
+            mode == "build"
+            and any(registry["result"] == "MISSING" for registry in registries.values())
+            and all(
+                registry["result"] in {"MISSING", "UNOBSERVABLE"}
+                for registry in registries.values()
+            )
+        )
+        if not has_observable_baseline and not all_missing and not explicit_missing_repair:
+            any_unknown = True
+        if any_changed:
+            for registry in registries.values():
+                registry["promotion_required"] = True
+
+        overall = (
+            "UNKNOWN"
+            if any_unknown
+            else "CHANGED"
+            if any_changed
+            else "REPAIR"
+            if explicit_missing_repair
+            else "SAME"
+        )
+        result = {
+            "schema_version": 1,
+            "platform": platform,
+            "candidate_view": candidate_view,
+            "comparison": {
+                "result": overall,
+                "candidate_changed": any_changed,
+            },
+            "registries": registries,
+        }
+        Path(out_path).write_text(
+            json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        PY
+
+            if [[ "$(jq -r '.comparison.result' "${comparison_file}")" == UNKNOWN ]]; then
+              status=failed
+              reason=comparison_unknown
+            fi
+          fi
+
+          if [[ "${status}" != success ]]; then
+            overall_fail=1
+          fi
+
+          printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+            "${platform}" "${arch_label}" "${actual_version}" "${local_ref}" "${status}" "${reason}" \
+            >> "${state_file}"
+        done
+
+        cat "${state_file}"
+        if [[ "${declared_count}" -eq 0 || "${overall_fail}" -ne 0 ]]; then
+          exit 1
+        fi
+
+        version_count=$(awk -F '\t' '$5 == "success" {print $3}' "${state_file}" | sort -u | sed '/^$/d' | wc -l)
+        if [[ "${version_count}" -ne 1 ]]; then
+          echo 'Declared platforms produced different or missing actual_version values.' >&2
+          exit 1
+        fi
+        actual_version=$(awk -F '\t' '$5 == "success" {print $3; exit}' "${state_file}")
+
+        if [[ -n "${VERSION_ASSERTION:-}" && "${actual_version#v}" != "${VERSION_ASSERTION#v}" ]]; then
+          printf 'actual_version assertion mismatch: detected=%s requested=%s\n' \
+            "${actual_version}" "${VERSION_ASSERTION}" >&2
+          exit 1
+        fi
+
+        version_tag=$(normalize_version "${actual_version}")
+        if [[ -z "${version_tag}" ]]; then
+          echo 'Normalized actual_version is empty.' >&2
+          exit 1
+        fi
+
+        dockerhub_need=false
+        ghcr_need=false
+        candidate_changed=false
+        comparison_result=SAME
+        if jq -e -s 'any(.[]; .registries.dockerhub.promotion_required == true)' "${comparison_dir}"/*.json >/dev/null; then
+          dockerhub_need=true
+        fi
+        if jq -e -s 'any(.[]; .registries.ghcr.promotion_required == true)' "${comparison_dir}"/*.json >/dev/null; then
+          ghcr_need=true
+        fi
+        if jq -e -s 'any(.[]; .comparison.candidate_changed == true)' "${comparison_dir}"/*.json >/dev/null; then
+          candidate_changed=true
+        fi
+        if jq -e -s 'any(.[]; .comparison.result == "CHANGED")' "${comparison_dir}"/*.json >/dev/null; then
+          comparison_result=CHANGED
+        elif jq -e -s 'any(.[]; .comparison.result == "REPAIR")' "${comparison_dir}"/*.json >/dev/null; then
+          comparison_result=REPAIR
+        fi
+
+        need_archive=false
+        if [[ "${dockerhub_need}" == true || "${ghcr_need}" == true ]]; then
+          need_archive=true
+        fi
+
+        {
+          printf 'actual_version=%q\n' "${actual_version}"
+          printf 'version_tag=%q\n' "${version_tag}"
+          printf 'comparison_result=%q\n' "${comparison_result}"
+          printf 'candidate_changed=%q\n' "${candidate_changed}"
+          printf 'dockerhub_need=%q\n' "${dockerhub_need}"
+          printf 'ghcr_need=%q\n' "${ghcr_need}"
+          printf 'need_archive=%q\n' "${need_archive}"
+        } > "${decision_file}"
+
+        if [[ "${need_archive}" == false ]]; then
+          {
+            echo "## ${TARGET_ID} ${actual_version}"
+            echo
+            echo "- Comparison: \`SAME\`"
+            echo "- Candidate changed: false"
+            echo "- Docker Hub promotion required: false"
+            echo "- GHCR promotion required: false"
+            echo "- docker save: 0"
+            echo "- GitHub Release upload: 0"
+            echo "- Registry login/push: 0"
+            echo "- Hash calculations: NONE"
+          } >> "${GITHUB_STEP_SUMMARY}"
+          exit 0
+        fi
+
+        release_tag="${APP_BRANCH}"
+        if ! gh release view "${release_tag}" >/dev/null 2>&1; then
+          gh release create "${release_tag}" \
+            --title "${repo_dockerhub}" \
+            --notes "Neutral Docker image archives for ${APP_BRANCH}. Versions, channels, build revisions and platforms are encoded in asset filenames."
+        fi
+
+        : > "${state_dir}/release.tsv"
+        while IFS=$'\t' read -r platform arch_label platform_version local_ref status reason; do
+          [[ "${status}" == success ]] || continue
+          asset_name="${TARGET_ID}-v${version_tag}-${REVISION}-linux-${arch_label}.tar"
+          asset_path="${tar_dir}/${asset_name}"
+
+          if ! docker save --output "${asset_path}" "${local_ref}"; then
+            echo "docker save failed for ${platform}" >&2
+            exit 1
+          fi
+
+          if gh release view "${release_tag}" --json assets --jq '.assets[].name' |
+               grep -Fxq "${asset_name}"; then
+            printf 'Release asset already exists and will not be overwritten: %s\n' "${asset_name}" >&2
+            exit 1
+          fi
+
+          gh release upload "${release_tag}" "${asset_path}"
+          printf '%s\t%s\t%s\t%s\t%s\n' \
+            "${platform}" "${arch_label}" "${asset_name}" success ok \
+            >> "${state_dir}/release.tsv"
+          docker image rm "${local_ref}" >/dev/null 2>&1 || true
+        done < "${state_file}"
+
+        trap - EXIT
+
+        {
+          echo "## ${TARGET_ID} ${actual_version}"
+          echo
+          echo "- Comparison: \`${comparison_result}\`"
+          echo "- Candidate changed: ${candidate_changed}"
+          echo "- Docker Hub promotion required: ${dockerhub_need}"
+          echo "- GHCR promotion required: ${ghcr_need}"
+          echo "- Archive format: raw Docker \`.tar\`"
+          echo "- Revision: \`${REVISION}\`"
+          echo "- Hash calculations: NONE"
+        } >> "${GITHUB_STEP_SUMMARY}"
+    - name: Promote archived images
+      id: promote
+      env:
+        GH_TOKEN: ${{ github.token }}
+        DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+        DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+      run: |
+        set -euo pipefail
+
+        dir_app="application/${APP_BRANCH}"
+        state_dir="${RUNNER_TEMP}/docker-pipeline/${TARGET_ID}"
+        tar_dir="${state_dir}/tar"
+        state_file="${state_dir}/release.tsv"
+        decision_file="${state_dir}/decision.env"
+        promotion_file="${state_dir}/promotion.tsv"
+        mkdir -p "${tar_dir}"
+        : > "${promotion_file}"
+
+        # Phase 1: typed configuration arrives directly from the inspected matrix.
+
+        normalize_version() {
+          local value="${1#v}"
+          printf '%s' "${value}" | sed -E 's/[^A-Za-z0-9_.-]+/-/g; s/^-+//; s/-+$//'
+        }
+
+        platform_label() {
+          printf '%s' "$1" | sed -E 's#^linux/##; s#/#-#g'
+        }
+
+        arch_branch="${ARCH_BRANCH}"
+        base_image="${BASE_IMAGE}"
+        repo_dockerhub="${REPO_DOCKERHUB}"
+        dockerfile="${DOCKERFILE}"
+        build_arg="${BUILD_ARG:-}"
+        : "${arch_branch:=${ARCH_BRANCH:-linux/amd64}}"
+        : "${repo_dockerhub:=${REPO_DOCKERHUB:-grinch27/${APP_BRANCH}}}"
+
+        want_dockerhub=false
+        want_ghcr=false
+        actual_version="${VERSION:-}"
+        version_tag=""
+
+        case "${MODE}" in
+          auto|build)
+            if [[ ! -f "${decision_file}" ]]; then
+              echo "Missing build decision: ${decision_file}" >&2
+              exit 1
+            fi
+            # shellcheck disable=SC1090
+            . "${decision_file}"
+            want_dockerhub="${dockerhub_need}"
+            want_ghcr="${ghcr_need}"
+            if [[ "${need_archive}" == false ]]; then
+              echo 'No registry promotion required.'
+              rm -rf "${tar_dir}"
+              exit 0
+            fi
+            ;;
+          promote-dockerhub)
+            want_dockerhub=true
+            ;;
+          promote-ghcr)
+            want_ghcr=true
+            ;;
+          promote-all)
+            want_dockerhub=true
+            want_ghcr=true
+            ;;
+        esac
+
+        if [[ "${MODE}" == promote-* ]]; then
+          if [[ -z "${actual_version}" ]]; then
+            echo 'Promotion-only mode requires VERSION.' >&2
+            exit 2
+          fi
+          version_tag=$(normalize_version "${actual_version}")
+        fi
+
+        release_tag="${APP_BRANCH}"
+        repo_name="${repo_dockerhub##*/}"
+        dockerhub_repo="${repo_dockerhub}"
+        ghcr_repo="${GHCR_REPO}"
+
+        docker_config="${state_dir}/docker-config"
+        rm -rf "${docker_config}"
+        mkdir -p "${docker_config}"
+        export DOCKER_CONFIG="${docker_config}"
+
+        dockerhub_login=false
+        dockerhub_login_attempted=false
+        ghcr_login=false
+        ghcr_login_attempted=false
+
+        login_dockerhub() {
+          if [[ "${dockerhub_login}" == true ]]; then
+            return 0
+          fi
+          if [[ "${dockerhub_login_attempted}" == true ]]; then
+            return 1
+          fi
+          dockerhub_login_attempted=true
+
+          if [[ -z "${DOCKER_USERNAME}" || -z "${DOCKER_PASSWORD}" ]]; then
+            echo 'Docker Hub credentials are missing.' >&2
+            return 1
+          fi
+
+          local login_log="${state_dir}/dockerhub-login.log"
+          if printf '%s' "${DOCKER_PASSWORD}" |
+               docker login --username "${DOCKER_USERNAME}" --password-stdin docker.io > "${login_log}" 2>&1; then
+            dockerhub_login=true
+            rm -f "${login_log}"
+            return 0
+          fi
+
+          cat "${login_log}" >&2
+          rm -f "${login_log}"
+          return 1
+        }
+
+        login_ghcr() {
+          if [[ "${ghcr_login}" == true ]]; then
+            return 0
+          fi
+          if [[ "${ghcr_login_attempted}" == true ]]; then
+            return 1
+          fi
+          ghcr_login_attempted=true
+
+          local login_log="${state_dir}/ghcr-login.log"
+          if printf '%s' "${GH_TOKEN}" |
+               docker login ghcr.io --username "${GITHUB_ACTOR}" --password-stdin > "${login_log}" 2>&1; then
+            ghcr_login=true
+            rm -f "${login_log}"
+            return 0
+          fi
+
+          cat "${login_log}" >&2
+          rm -f "${login_log}"
+          return 1
+        }
+
+        IFS=',' read -r -a platforms <<< "${arch_branch}"
+        declared_count=0
+        dockerhub_ok=0
+        ghcr_ok=0
+        archive_ok=0
+        overall_fail=0
+        dockerhub_refs=()
+        ghcr_refs=()
+
+        for platform in "${platforms[@]}"; do
+          platform="${platform//[[:space:]]/}"
+          [[ -n "${platform}" ]] || continue
+          declared_count=$((declared_count + 1))
+          arch_label=$(platform_label "${platform}")
+          asset_name="${TARGET_ID}-v${version_tag}-${REVISION}-linux-${arch_label}.tar"
+          asset_path="${tar_dir}/${asset_name}"
+          local_ref="${TARGET_ID}:${REVISION}-${arch_label}"
+
+          if [[ "${MODE}" == auto || "${MODE}" == build ]]; then
+            release_status=$(awk -F '\t' -v p="${platform}" '$1 == p {print $4; exit}' "${state_file}" 2>/dev/null || true)
+            if [[ "${release_status}" != success || ! -f "${asset_path}" ]]; then
+              printf '%s\tarchive\tfailed\n' "${platform}" >> "${promotion_file}"
+              overall_fail=1
+              continue
+            fi
+          else
+            rm -f "${asset_path}"
+            if ! gh release download "${release_tag}" \
+                --pattern "${asset_name}" \
+                --dir "${tar_dir}"; then
+              printf '%s\tarchive\tfailed\n' "${platform}" >> "${promotion_file}"
+              overall_fail=1
+              continue
+            fi
+          fi
+
+          archive_ok=$((archive_ok + 1))
+          if ! docker load --input "${asset_path}" >/dev/null; then
+            printf '%s\tload\tfailed\n' "${platform}" >> "${promotion_file}"
+            overall_fail=1
+            continue
+          fi
+
+          loaded_ref=$(docker image ls --format '{{.Repository}}:{{.Tag}}' | grep -Fx "${local_ref}" | head -n1 || true)
+          if [[ -z "${loaded_ref}" ]]; then
+            legacy_ref="${TARGET_ID}:${version_tag}"
+            loaded_ref=$(docker image ls --format '{{.Repository}}:{{.Tag}}' | grep -Fx "${legacy_ref}" | head -n1 || true)
+            if [[ -n "${loaded_ref}" ]]; then
+              local_ref="${legacy_ref}"
+            fi
+          fi
+          if [[ -z "${loaded_ref}" ]]; then
+            echo "Expected loaded image not found: ${TARGET_ID}:${REVISION}-${arch_label} or ${TARGET_ID}:${version_tag}" >&2
+            printf '%s\tload\tfailed\n' "${platform}" >> "${promotion_file}"
+            overall_fail=1
+            continue
+          fi
+
+          if [[ "${TAG_REPO}" == latest ]]; then
+            platform_tag="${version_tag}-${arch_label}"
+            version_manifest_tag="${version_tag}"
+            channel_tag=latest
+          else
+            platform_tag="${version_tag}-${TAG_REPO}-${arch_label}"
+            version_manifest_tag="${version_tag}-${TAG_REPO}"
+            channel_tag="${TAG_REPO}"
+          fi
+
+          if [[ "${want_dockerhub}" == true ]]; then
+            remote="${dockerhub_repo}:${platform_tag}"
+            if login_dockerhub &&
+               docker tag "${local_ref}" "${remote}" &&
+               docker push "${remote}"; then
+              dockerhub_ok=$((dockerhub_ok + 1))
+              dockerhub_refs+=("${remote}")
+              printf '%s\tdockerhub\tsuccess\n' "${platform}" >> "${promotion_file}"
+            else
+              printf '%s\tdockerhub\tfailed\n' "${platform}" >> "${promotion_file}"
+              overall_fail=1
+            fi
+            docker image rm "${remote}" >/dev/null 2>&1 || true
+          fi
+
+          if [[ "${want_ghcr}" == true ]]; then
+            remote="${ghcr_repo}:${platform_tag}"
+            if login_ghcr &&
+               docker tag "${local_ref}" "${remote}" &&
+               docker push "${remote}"; then
+              ghcr_ok=$((ghcr_ok + 1))
+              ghcr_refs+=("${remote}")
+              printf '%s\tghcr\tsuccess\n' "${platform}" >> "${promotion_file}"
+            else
+              printf '%s\tghcr\tfailed\n' "${platform}" >> "${promotion_file}"
+              overall_fail=1
+            fi
+            docker image rm "${remote}" >/dev/null 2>&1 || true
+          fi
+
+          docker image rm "${local_ref}" >/dev/null 2>&1 || true
+        done
+
+        dockerhub_manifest=skipped
+        ghcr_manifest=skipped
+
+        if [[ "${want_dockerhub}" == true ]]; then
+          if [[ "${dockerhub_login}" == true && "${dockerhub_ok}" -eq "${declared_count}" ]]; then
+            if docker buildx imagetools create \
+                 --annotation "index:org.opencontainers.image.version=${actual_version}" \
+                 --tag "${dockerhub_repo}:${version_manifest_tag}" \
+                 "${dockerhub_refs[@]}" &&
+               docker buildx imagetools create \
+                 --annotation "index:org.opencontainers.image.version=${actual_version}" \
+                 --tag "${dockerhub_repo}:${channel_tag}" \
+                 "${dockerhub_refs[@]}"; then
+              dockerhub_manifest=success
+            else
+              dockerhub_manifest=failed
+              overall_fail=1
+            fi
+          else
+            dockerhub_manifest=incomplete
+            overall_fail=1
+          fi
+        fi
+
+        if [[ "${want_ghcr}" == true ]]; then
+          if [[ "${ghcr_login}" == true && "${ghcr_ok}" -eq "${declared_count}" ]]; then
+            if docker buildx imagetools create \
+                 --annotation "index:org.opencontainers.image.version=${actual_version}" \
+                 --tag "${ghcr_repo}:${version_manifest_tag}" \
+                 "${ghcr_refs[@]}" &&
+               docker buildx imagetools create \
+                 --annotation "index:org.opencontainers.image.version=${actual_version}" \
+                 --tag "${ghcr_repo}:${channel_tag}" \
+                 "${ghcr_refs[@]}"; then
+              ghcr_manifest=success
+            else
+              ghcr_manifest=failed
+              overall_fail=1
+            fi
+          else
+            ghcr_manifest=incomplete
+            overall_fail=1
+          fi
+        fi
+
+        {
+          echo "## ${TARGET_ID} ${actual_version}"
+          echo
+          echo "- Mode: \`${MODE}\`"
+          echo "- Revision: \`${REVISION}\`"
+          echo "- Release: \`${release_tag}\`"
+          echo "- Declared platforms: ${declared_count}"
+          echo "- Archived platforms available: ${archive_ok}"
+          if [[ "${want_dockerhub}" == true ]]; then
+            echo "- Docker Hub platforms: ${dockerhub_ok}/${declared_count}"
+            echo "- Docker Hub manifest: ${dockerhub_manifest}"
+          fi
+          if [[ "${want_ghcr}" == true ]]; then
+            echo "- GHCR platforms: ${ghcr_ok}/${declared_count}"
+            echo "- GHCR manifest: ${ghcr_manifest}"
+          fi
+          echo "- Registry login is lazy and occurs only before a required push."
+          echo "- Hash calculations: NONE"
+        } >> "${GITHUB_STEP_SUMMARY}"
+
+        rm -rf "${tar_dir}" "${docker_config}"
+
+        if [[ "${overall_fail}" -ne 0 ]]; then
+          exit 1
+        fi
+  smoke:
+    name: Smoke ${{ matrix.target_id }} (local only)
+    needs:
+    - runner-image
+    - plan
+    - dev-inspect
+    if: ${{ needs.plan.outputs.route == 'smoke' && needs.dev-inspect.result == 'success' && needs.dev-inspect.outputs.target_count == '1' }}
+    runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
+    timeout-minutes: 75
+    concurrency:
+      group: docker-gpt-smoke-${{ matrix.target_id }}
+      cancel-in-progress: false
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include: ${{ fromJSON(needs.dev-inspect.outputs.target_matrix).include }}
+    env:
+      TARGET_ID: ${{ matrix.target_id }}
+      APP_BRANCH: ${{ matrix.app_branch }}
+      TAG_REPO: ${{ matrix.tag_repo }}
+      REPO_DOCKERHUB: ${{ matrix.repo_dockerhub }}
+      BASE_IMAGE: ${{ matrix.base_image }}
+      ARCH_BRANCH: ${{ matrix.arch_branch }}
+      DOCKERFILE: ${{ matrix.dockerfile }}
+      BUILD_ARG: ${{ matrix.build_arg }}
+      LEGACY_TAG_POLICY: ${{ matrix.legacy_tag_policy }}
+      REVISION: ${{ matrix.revision }}
+      MODE: smoke-target
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@main
+    - name: QEMU platform emulation
+      uses: docker/setup-qemu-action@master
+      with:
+        cache-image: false
+    - name: Configure Buildx
+      uses: docker/setup-buildx-action@master
+    - name: Download published-image inspection (read only)
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ needs.dev-inspect.outputs.artifact_name }}
+        path: ${{ runner.temp }}/inspect-baseline
+    - name: Sequential Buildx / test.sh / compare / archive / tag simulation
+      shell: bash
+      run: |
+        set -euo pipefail
+        dir_app="application/$APP_BRANCH"
+        build_dir="$dir_app/build"
+        dockerfile="$build_dir/$DOCKERFILE"
+        baseline_file="$RUNNER_TEMP/inspect-baseline/$TARGET_ID.json"
+        out="$RUNNER_TEMP/smoke-$TARGET_ID"
+        mkdir -p "$out"
+        [[ -f "$dockerfile" && -f "$baseline_file" ]] || { echo "::error::Dockerfile or baseline missing"; exit 1; }
+        python3 scripts/ci/materialize_test_hooks.py --app "${APP_BRANCH}"
+        shopt -s nullglob
+        test_scripts=("$dir_app"/test/*.sh)
+        if (( ${#test_scripts[@]} == 0 )); then
+          echo "::error::No test.sh found for $TARGET_ID"
+          exit 1
+        fi
+        cid=""
+        image_ref=""
+        cleanup() {
+          if [[ -n "$cid" ]]; then docker rm -f "$cid" >/dev/null 2>&1 || true; fi
+          if [[ -n "$image_ref" ]]; then docker image rm "$image_ref" >/dev/null 2>&1 || true; fi
+        }
+        trap cleanup EXIT
+        normalize_version() {
+          printf '%s' "${1#v}" | sed -E 's/[^A-Za-z0-9_.-]+/-/g; s/^-+//; s/-+$//'
+        }
+        IFS=',' read -r -a platforms <<< "$ARCH_BRANCH"
+        versions=()
+        for platform in "${platforms[@]}"; do
+          platform="${platform//[[:space:]]/}"
+          [[ -n "$platform" ]] || continue
+          arch="${platform#linux/}"
+          arch="${arch//\//-}"
+          image_ref="smoke-$TARGET_ID:$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$arch"
+          cid=""
+          echo "=== Build $TARGET_ID $platform ==="
+          build_args=(
+            docker buildx build
+            --platform "$platform"
+            --file "$dockerfile"
+            --tag "$image_ref"
+            --build-arg "base_image=$BASE_IMAGE"
+            --load
+          )
+          if [[ -n "$BUILD_ARG" ]]; then
+            build_args+=(--build-arg "build_arg=$BUILD_ARG")
+          fi
+          build_args+=("$build_dir")
+          "${build_args[@]}"
+          cid=$(docker run --detach --platform "$platform" --entrypoint /bin/sh "$image_ref" -c 'sleep infinity')
+          : > "$out/$arch.test.log"
+          for test_script in "${test_scripts[@]}"; do
+            name=$(basename "$test_script")
+            docker cp "$test_script" "$cid:/tmp/$name"
+            docker exec --user 0 "$cid" /bin/sh "/tmp/$name" | tee -a "$out/$arch.test.log"
+          done
+          actual_version=$(awk -F= '/^version=/{sub(/^[^=]*=/,""); v=$0} END{print v}' "$out/$arch.test.log")
+          if [[ -z "$actual_version" ]]; then
+            echo "::error::$TARGET_ID $platform: no actual version from test.sh"
+            exit 1
+          fi
+          versions+=("$actual_version")
+          docker rm -f "$cid" >/dev/null
+          cid=""
+          docker image inspect "$image_ref" > "$out/$arch.image.json"
+          docker image history --no-trunc --human=false --format '{{json .}}' "$image_ref" |
+            jq -s '.' > "$out/$arch.history.json"
+          jq -cn \
+            --arg platform "$platform" \
+            --arg actual_version "$actual_version" \
+            --argjson image_inspect "$(cat "$out/$arch.image.json")" \
+            --argjson image_history "$(cat "$out/$arch.history.json")" \
+            '{platform:$platform,actual_version:$actual_version,test_result:"success",source:{image_inspect:$image_inspect,image_history:$image_history}}' > "$out/$arch.snapshot.json"
+          snapshot_file="$out/$arch.snapshot.json"
+          comparison_file="$out/$arch.comparison.json"
+            python3 - "${baseline_file}" "${snapshot_file}" "${platform}" "${MODE}" "${comparison_file}" <<'PY'
+        import json
+        import sys
+        from pathlib import Path
+
+        baseline_path, candidate_path, platform, mode, out_path = sys.argv[1:]
+        baseline = json.loads(Path(baseline_path).read_text(encoding="utf-8"))
+        candidate = json.loads(Path(candidate_path).read_text(encoding="utf-8"))
+
+        config_fields = (
+            "Env",
+            "Entrypoint",
+            "Cmd",
+            "User",
+            "WorkingDir",
+            "ExposedPorts",
+            "Volumes",
+            "StopSignal",
+            "Healthcheck",
+            "Shell",
+        )
+        ignored_labels = set()
+
+        def first_mapping(value):
+            if isinstance(value, list) and value and isinstance(value[0], dict):
+                return value[0]
+            return value if isinstance(value, dict) else {}
+
+        def image_config(image):
+            if not isinstance(image, dict):
+                return {}
+            value = image.get("config")
+            if isinstance(value, dict):
+                return value
+            value = image.get("Config")
+            return value if isinstance(value, dict) else {}
+
+        def platform_view(image):
+            image = first_mapping(image)
+            os_value = image.get("os", image.get("Os", ""))
+            arch_value = image.get("architecture", image.get("Architecture", ""))
+            variant = image.get("variant", image.get("Variant", "")) or ""
+            return {"os": os_value or "", "architecture": arch_value or "", "variant": variant}
+
+        def normalized_config(image):
+            cfg = image_config(first_mapping(image))
+            out = {field: cfg.get(field) for field in config_fields}
+            labels = cfg.get("Labels")
+            if labels is None:
+                labels = cfg.get("labels")
+            if not isinstance(labels, dict):
+                labels = {}
+            out["Labels"] = {
+                str(k): labels[k]
+                for k in sorted(labels)
+                if str(k) not in ignored_labels
+            }
+            return out
+
+        def image_version_label(image):
+            cfg = image_config(first_mapping(image))
+            labels = cfg.get("Labels")
+            if labels is None:
+                labels = cfg.get("labels")
+            if not isinstance(labels, dict):
+                return ""
+            for key in ("org.opencontainers.image.version", "version"):
+                value = labels.get(key)
+                if isinstance(value, (str, int, float)) and str(value).strip():
+                    return str(value).strip()
+            return ""
+
+        def recursive_oci_version(value):
+            if isinstance(value, dict):
+                candidate_value = value.get("org.opencontainers.image.version")
+                if isinstance(candidate_value, (str, int, float)) and str(candidate_value).strip():
+                    return str(candidate_value).strip()
+                for child in value.values():
+                    found = recursive_oci_version(child)
+                    if found:
+                        return found
+            elif isinstance(value, list):
+                for child in value:
+                    found = recursive_oci_version(child)
+                    if found:
+                        return found
+            return ""
+
+        candidate_image = first_mapping(candidate.get("source", {}).get("image_inspect", {}))
+        candidate_view = {
+            "platform": platform_view(candidate_image),
+            "actual_version": str(candidate.get("actual_version", "")).strip(),
+            "config": normalized_config(candidate_image),
+        }
+
+        registries = {}
+        any_changed = False
+        any_unknown = False
+        has_observable_baseline = False
+
+        for registry_name in ("dockerhub", "ghcr"):
+            registry = baseline.get("registries", {}).get(registry_name, {})
+            registry_status = registry.get("status", "inspect_failed")
+            result = "UNKNOWN"
+            promotion_required = False
+            published_view = None
+            reasons = []
+
+            if registry_status == "missing":
+                result = "MISSING"
+                promotion_required = True
+            elif registry_status == "unobservable":
+                result = "UNOBSERVABLE"
+                reasons.append("anonymous_inspect_not_authorized")
+            elif registry_status != "present":
+                result = "UNKNOWN"
+                any_unknown = True
+                reasons.append(f"registry_status={registry_status}")
+            else:
+                platform_data = registry.get("source", {}).get("platforms", {}).get(platform, {})
+                if platform_data.get("status") != "present" or not isinstance(platform_data.get("image"), dict):
+                    result = "MISSING"
+                    promotion_required = True
+                else:
+                    published_image = platform_data["image"]
+                    remote_version = image_version_label(published_image)
+                    if not remote_version:
+                        remote_version = recursive_oci_version(registry.get("source", {}).get("parsed", {}))
+                    published_view = {
+                        "platform": platform_view(published_image),
+                        "actual_version": remote_version,
+                        "config": normalized_config(published_image),
+                    }
+                    if not remote_version:
+                        result = "UNKNOWN"
+                        any_unknown = True
+                        reasons.append("published_actual_version_missing")
+                    elif published_view == candidate_view:
+                        has_observable_baseline = True
+                        result = "SAME"
+                    else:
+                        has_observable_baseline = True
+                        result = "CHANGED"
+                        promotion_required = True
+                        any_changed = True
+                        if published_view["platform"] != candidate_view["platform"]:
+                            reasons.append("platform")
+                        if published_view["actual_version"] != candidate_view["actual_version"]:
+                            reasons.append("actual_version")
+                        if published_view["config"] != candidate_view["config"]:
+                            reasons.append("runtime_config_or_labels")
+
+            registries[registry_name] = {
+                "inspect_status": registry_status,
+                "result": result,
+                "promotion_required": promotion_required,
+                "published_view": published_view,
+                "reasons": reasons,
+            }
+
+        all_missing = all(registry["result"] == "MISSING" for registry in registries.values())
+        explicit_missing_repair = (
+            mode == "build"
+            and any(registry["result"] == "MISSING" for registry in registries.values())
+            and all(
+                registry["result"] in {"MISSING", "UNOBSERVABLE"}
+                for registry in registries.values()
+            )
+        )
+        if not has_observable_baseline and not all_missing and not explicit_missing_repair:
+            any_unknown = True
+        if any_changed:
+            for registry in registries.values():
+                registry["promotion_required"] = True
+
+        overall = (
+            "UNKNOWN"
+            if any_unknown
+            else "CHANGED"
+            if any_changed
+            else "REPAIR"
+            if explicit_missing_repair
+            else "SAME"
+        )
+        result = {
+            "schema_version": 1,
+            "platform": platform,
+            "candidate_view": candidate_view,
+            "comparison": {
+                "result": overall,
+                "candidate_changed": any_changed,
+            },
+            "registries": registries,
+        }
+        Path(out_path).write_text(
+            json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        PY
+          result=$(jq -r '.comparison.result' "$comparison_file")
+          echo "Read-only candidate comparison $platform: $result"
+          normalized=$(normalize_version "$actual_version")
+          [[ -n "$normalized" ]] || exit 1
+          channel_tag="$TAG_REPO"
+          if [[ "$TAG_REPO" == latest ]]; then
+            version_manifest_tag="$normalized"
+            platform_tag="$normalized-$arch"
+          else
+            version_manifest_tag="$normalized-$TAG_REPO"
+            platform_tag="$normalized-$TAG_REPO-$arch"
+          fi
+          legacy="$TAG_REPO-$actual_version"
+          case "$LEGACY_TAG_POLICY" in
+            strip_channel) legacy="${legacy#*-}" ;;
+            strip_channel_and_spaces) legacy="${legacy#*-}"; legacy="${legacy// /-}" ;;
+            none) legacy="" ;;
+            keep|default) ;;
+            *) echo "::error::Unknown tag policy"; exit 2 ;;
+          esac
+          jq -cn \
+            --arg target "$TARGET_ID" --arg platform "$platform" \
+            --arg version "$actual_version" --arg remote_comparison "$result" \
+            --arg legacy_version_tag "$legacy" \
+            --arg dev_platform_tag "$platform_tag" \
+            --arg dev_version_manifest_tag "$version_manifest_tag" \
+            --arg dev_channel_tag "$channel_tag" \
+            '{target:$target,platform:$platform,version:$version,remote_comparison:$remote_comparison,legacy_version_tag:$legacy_version_tag,dev_platform_tag:$dev_platform_tag,dev_version_manifest_tag:$dev_version_manifest_tag,dev_channel_tag:$dev_channel_tag}' > "$out/$arch.tags.json"
+          asset="$out/$TARGET_ID-v$normalized-$REVISION-linux-$arch.tar"
+          docker save --output "$asset" "$image_ref"
+          tar tf "$asset" | grep -Fxq 'manifest.json'
+          xz -T2 -6 "$asset"
+          xz -t "$asset.xz"
+          sha256sum "$asset.xz" > "$asset.xz.sha256"
+          (cd "$out" && sha256sum --check "$(basename "$asset.xz.sha256")")
+          docker image rm "$image_ref" >/dev/null || true
+          image_ref=""
+          echo "| $platform | $actual_version | $result | $version_manifest_tag |" >> "$GITHUB_STEP_SUMMARY"
+        done
+        unique_versions=$(printf '%s\n' "${versions[@]}" | sort -u | wc -l)
+        if [[ "$unique_versions" -ne 1 ]]; then
+          echo "::error::Version differs across declared platforms"
+          exit 1
+        fi
+        echo "Smoke success: $TARGET_ID, ${#versions[@]} declared platforms; NO registry push / NO GitHub Release." >> "$GITHUB_STEP_SUMMARY"
+    - name: Upload smoke evidence (Actions Artifact ONLY)
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: smoke-${{ matrix.target_id }}-${{ github.run_id }}
+        path: ${{ runner.temp }}/smoke-${{ matrix.target_id }}
+        if-no-files-found: warn
+        retention-days: 5
+  test-images:
+    name: Build and test ${{ matrix.app }}:${{ matrix.tag }} / ${{ matrix.platform }} (no publish)
+    needs:
+    - runner-image
+    - plan
+    if: ${{ needs.plan.outputs.route == 'verification' || (needs.plan.outputs.route == 'test') }}
+    runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix: ${{ fromJSON(needs.plan.outputs.test_matrix) }}
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    - name: Enable cross-platform emulation
+      uses: docker/setup-qemu-action@v3
+    - name: Setup Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    - name: Build image, execute README Test, and inspect result
+      shell: bash
+      env:
+        APP: ${{ matrix.app }}
+        TARGET_TAG: ${{ matrix.tag }}
+        TARGET_PLATFORM: ${{ matrix.platform }}
+        PROBE_PARITY: ${{ needs.plan.outputs.probe }}
+      run: |
+        set -euo pipefail
+        target="$(python3 scripts/ci/catalog.py get --app "$APP" --tag "$TARGET_TAG")"
+        base_image="$(jq -er .base_image <<<"$target")"
+        dockerfile="$(jq -er .dockerfile <<<"$target")"
+        build_arg="$(jq -r .build_arg <<<"$target")"
+        arch_branch="$TARGET_PLATFORM"
+        image_ref="full-check-${APP}:${TARGET_TAG}-${TARGET_PLATFORM//\//-}"
+        export base_image dockerfile build_arg arch_branch image_ref
+        export build_output=load
+        (
+          cd "application/${APP}/build"
+          bash "$GITHUB_WORKSPACE/scripts/ci/build-image.sh"
+        )
+        docker image inspect "$image_ref" >/dev/null
+        python3 scripts/ci/materialize_test_hooks.py --app "$APP"
+        cid=""
+        cleanup() {
+          if [[ -n "$cid" ]]; then docker rm -f "$cid" >/dev/null 2>&1 || true; fi
+          docker image rm -f "$image_ref" >/dev/null 2>&1 || true
+        }
+        trap cleanup EXIT
+        cid="$(docker run --detach --platform "$TARGET_PLATFORM" --entrypoint /bin/sh "$image_ref" -c 'sleep 600')"
+        docker cp "application/${APP}/test/test.sh" "$cid:/tmp/test.sh"
+        docker exec --user 0 "$cid" /bin/sh /tmp/test.sh | tee "$RUNNER_TEMP/actual-version.log"
+        if [[ "$PROBE_PARITY" == true ]]; then
+          docker cp scripts/ci/probe-image.sh "$cid:/tmp/probe-image.sh"
+          reference_app="$APP"
+          if [[ "$APP" == doh-nosni ]]; then reference_app=dnscrypt-proxy; fi
+          docker exec --user 0 "$cid" /bin/sh /tmp/probe-image.sh "$reference_app" > "$RUNNER_TEMP/shared-version.log"
+          v_actual=$(awk -F= '/^version=/{sub(/^[^=]*=/,""); v=$0} END{print v}' "$RUNNER_TEMP/actual-version.log")
+          v_shared=$(awk -F= '/^version=/{sub(/^[^=]*=/,""); v=$0} END{print v}' "$RUNNER_TEMP/shared-version.log")
+          test -n "$v_actual" && test "$v_actual" = "$v_shared"
+        fi
+        printf 'PASS app=%s tag=%s platform=%s (local only)\n' "$APP" "$TARGET_TAG" "$TARGET_PLATFORM" | tee -a "$GITHUB_STEP_SUMMARY"
+  registry-smoke:
+    name: Buildx ${{ matrix.app }}:${{ matrix.tag }} (local registry only)
+    if: ${{ needs.plan.outputs.route == 'verification' || (needs.plan.outputs.route == 'registry-smoke') }}
+    runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+        - app: vlmcsd
+          tag: latest
+        - app: aria2
+          tag: latest
+        - app: samba
+          tag: alpine
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@main
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@master
+      with:
+        driver-opts: network=host
+    - name: Build and test target without public registry access
+      env:
+        APP: ${{ matrix.app }}
+        TAG: ${{ matrix.tag }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        docker run -d --name catalog-test-registry --network host registry:2
+        for attempt in $(seq 1 20); do
+          if curl -fsS http://127.0.0.1:5000/v2/ >/dev/null; then break; fi
+          sleep 1
+        done
+        curl -fsS http://127.0.0.1:5000/v2/ >/dev/null
+        target=$(python3 scripts/ci/catalog.py get --app "${APP}" --tag "${TAG}")
+        base_image=$(jq -r '.base_image' <<< "${target}")
+        dockerfile=$(jq -r '.dockerfile' <<< "${target}")
+        repo_dockerhub=$(jq -r '.repo_dockerhub' <<< "${target}")
+        build_arg=$(jq -r '.build_arg' <<< "${target}")
+        if [[ "${APP}" == "samba" ]]; then
+          [[ "${base_image}" == "alpine:latest" ]]
+          [[ "${dockerfile}" == "alpine.Dockerfile" ]]
+        fi
+        export base_image dockerfile repo_dockerhub build_arg
+        export arch_branch=linux/amd64 tag_repo="${TAG}"
+        export registry_local=localhost:5000 version=catalog-smoke
+        cd "application/${APP}/build"
+        bash "${GITHUB_WORKSPACE}/scripts/ci/build-image.sh"
+        image_ref="localhost:5000/${repo_dockerhub}:${tag_repo}"
+        docker pull --platform linux/amd64 "${image_ref}"
+        cid=$(docker run --detach --entrypoint /bin/sh "${image_ref}" -c 'sleep 120')
+        trap 'docker rm -f "${cid}" >/dev/null 2>&1 || true' EXIT
+        python3 "${GITHUB_WORKSPACE}/scripts/ci/materialize_test_hooks.py" --app "${APP}"
+        docker cp ../test/test.sh "${cid}:/tmp/test.sh"
+        docker exec "${cid}" /bin/sh /tmp/test.sh
+        echo "Local-registry Buildx and application test: PASS (${APP}:${TAG}, amd64)"
+    needs:
+    - runner-image
+    - plan
+  diagnostic-layers:
+    name: OCI layers ${{ matrix.image_name }}
+    needs:
+    - runner-image
+    - plan
+    runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
+    env:
+      OS: linux
+    steps:
+    - name: Setup environment
+      run: |
+        sudo apt-get -qq update
+        sudo apt-get -qq install -y ca-certificates curl gpg skopeo jq
+    - name: Fetch Layer Info
+      id: fetch
+      run: |
+        repo="${{ matrix.image_name }}"
+        echo "Inspecting image (all linux platforms): $repo"
+
+        raw=$(skopeo inspect --raw docker://docker.io/"${repo}" || true)
+
+        # 提取 multi-arch manifest 中的 linux 平台
+        platforms=$(echo "$raw" | jq -r '
+            (.manifests? // [])
+            | map(select(.platform.os=="${{ env.OS }}"))
+            | .[]
+            | "\(.platform.architecture) \(.platform.variant // "")"
+          ' | sort -u)
+
+        if [ -z "$platforms" ]; then
+          echo "No manifest list entries, fallback single inspect."
+          single_json=$(skopeo inspect docker://docker.io/"${repo}")
+          arch=$(echo "$single_json" | jq -r '.Architecture')
+          os=$(echo "$single_json" | jq -r '.Os')
+          if [ "$os" != "${{ env.OS }}" ]; then
+            echo "Image OS ($os) 不是 ${{ env.OS }}，退出." >&2
+            exit 1
+          fi
+          platforms="$arch "
+        fi
+
+        echo "Found ${{ env.OS }} platform variants:"
+        echo "$platforms"
+
+        # 仅生成文件/制品命名所需的清洗名
+        file_base=$(echo "${{ matrix.image_name }}" | sed 's#[/: ]#-#g')
+        echo "file_base=${file_base}" >> $GITHUB_OUTPUT
+
+        # 聚合所有架构层到单一数组
+        aggregated_layers='[]'
+        while read -r arch variant; do
+          [ -z "$arch" ] && continue
+          echo "Processing ${{ env.OS }}/$arch${variant:+/$variant}"
+          data_json=$(skopeo inspect \
+            --override-os="${{ env.OS }}" \
+            --override-arch="$arch" \
+            ${variant:+--override-variant="$variant"} \
+            --format=json \
+            docker://docker.io/"${repo}")
+          layers_array=$(echo "$data_json" | jq -r '.Layers[]' | jq -R -s 'split("\n")|map(select(length>0))')
+          aggregated_layers=$(echo "$aggregated_layers" | jq --argjson new "$layers_array" '. + $new')
+        done <<< "$platforms"
+
+        # 平台列表输出（保留）
+        echo "platforms_json<<EOF" >> $GITHUB_OUTPUT
+        echo "$platforms" | awk '{print "${{ env.OS }}/" $1 (length($2)?"/"$2:"")}' | jq -R -s 'split("\n")|map(select(length>0))' >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+
+        # 去重并生成最终结构
+        unique_layers=$(echo "$aggregated_layers" | jq 'unique')
+        final_json=$(jq -n --arg name "${{ matrix.image_name }}" --argjson layers "$unique_layers" '{image_name:$name, Layers:$layers}')
+
+        # 写聚合文件 (仅文件名使用清洗)
+        layer_file="/tmp/layer-${file_base}.json"
+        echo "$final_json" | jq '.' > "$layer_file"
+        ls -l /tmp/layer-*.json || true
+    - name: Upload layer info
+      uses: actions/upload-artifact@main
+      with:
+        name: layers-${{ steps.fetch.outputs.file_base }}
+        path: /tmp/layer-*.json
+        retention-days: 1
+        if-no-files-found: warn
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        image_name: ${{ fromJSON(needs.plan.outputs.images) }}
+    if: ${{ needs.plan.outputs.route == 'verification' || (needs.plan.outputs.route == 'diagnostics' && (needs.plan.outputs.diagnostic_mode == 'layers' || needs.plan.outputs.diagnostic_mode == 'both')) }}
+  diagnostic-platforms:
+    name: Detailed OCI inspect ${{ matrix.image_name }} / ${{ matrix.arch }}
+    needs:
+    - runner-image
+    - plan
+    if: ${{ needs.plan.outputs.route == 'verification' || (needs.plan.outputs.route == 'diagnostics' && (needs.plan.outputs.diagnostic_mode == 'layers' || needs.plan.outputs.diagnostic_mode == 'both')) }}
+    runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.image_platforms) }}
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@main
+    - name: Install Skopeo
+      shell: bash
+      run: |
+        set -euo pipefail
+        sudo apt-get -qq update
+        sudo apt-get -qq install -y skopeo jq
+    - name: Inspect immutable platform selector
+      id: inspect
+      env:
+        IMAGE_NAME: ${{ matrix.image_name }}
+        ARCH: ${{ matrix.arch }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        bash scripts/ci/inspect-image-platform.sh "${IMAGE_NAME}" "${ARCH}"
+    - name: Upload original stable layer list artifact
+      uses: actions/upload-artifact@main
+      with:
+        name: layers-${{ steps.inspect.outputs.stable_name }}-${{ matrix.arch }}
+        path: ${{ runner.temp }}/diagnostics/layers.json
+        if-no-files-found: error
+        retention-days: 1
+    - name: Upload original baseimage raw-data artifact
+      uses: actions/upload-artifact@main
+      with:
+        name: layer-info-${{ steps.inspect.outputs.base_name }}-${{ matrix.arch }}
+        path: ${{ runner.temp }}/diagnostics/image_*.json
+        if-no-files-found: error
+        retention-days: 1
+  diagnostic-collect:
+    name: Aggregate OCI Layers
+    needs:
+    - runner-image
+    - plan
+    - diagnostic-layers
+    if: ${{ needs.plan.outputs.route == 'verification' || (needs.plan.outputs.route == 'diagnostics' && (needs.plan.outputs.diagnostic_mode == 'layers' || needs.plan.outputs.diagnostic_mode == 'both')) }}
+    runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@main
+    - name: Download per-image layer artifacts
+      uses: actions/download-artifact@main
+      with:
+        pattern: layers-*
+        path: ${{ runner.temp }}/layer-artifacts
+    - name: Produce JSON summary
+      env:
+        LAYER_ARTIFACT_ROOT: ${{ runner.temp }}/layer-artifacts
+      run: |
+        set -euo pipefail
+        python3 scripts/ci/aggregate-layer-artifacts.py "${LAYER_ARTIFACT_ROOT}" "${RUNNER_TEMP}/layer-reports"
+    - name: Upload merged layers and status report
+      uses: actions/upload-artifact@main
+      with:
+        name: diagnostics-layer-summary
+        path: ${{ runner.temp }}/layer-reports/*.json
+        retention-days: 1
+        if-no-files-found: error
+  diagnostic-meta-platforms:
+    name: Test meta-app
+    needs:
+    - runner-image
+    - plan
+    runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
+    steps:
+    - name: Checkout ${{ github.repository }}
+      uses: actions/checkout@main
+    - name: Initialize environment - ${{ env.app_branch }} - ${{ env.tag_repo }}
+      id: init
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      working-directory: /
+      run: |
+        echo -e "Current working directory: $(pwd)"
+        packages_install=(
+          "curl"
+        )
+        packages_extra=(
+          "skopeo"
+          "jq"
+        )
+        sudo -E apt-get -qq -y update
+        sudo -E apt-get -y install "${packages_install[@]}"
+        sudo -E apt-get -y install "${packages_extra[@]}"
+        sudo -E apt-get -qq -y autoremove --purge
+        sudo -E apt-get -qq clean
+        echo "status=success" | tee -a ${GITHUB_OUTPUT}
+    - name: Load Env
+      id: env-app
+      run: |
+        set -euo pipefail
+        python3 scripts/ci/catalog.py env --app "${app_branch}" --app-only --output "${GITHUB_ENV}"
+        echo "status=success" >> "${GITHUB_OUTPUT}"
+    - name: Load Custom Environment Variables
+      id: env-custom
+      if: ${{ env.custom_env != '' }}
+      env:
+        flag_split: ;
+      run: |
+        echo "${{ env.custom_env }}" | tr "${flag_split}" '\n' | tee -a $GITHUB_ENV
+    - name: Setup Docker
+      id: docker
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      working-directory: /
+      run: |
+        # https://docs.docker.com/engine/install/ubuntu/
+
+        # ===== 1. Set up Docker's apt repository =====
+        # Add Docker's official GPG key:
+        sudo apt-get update
+        sudo apt-get install ca-certificates curl
+        sudo install -m 0755 -d /etc/apt/keyrings
+        sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+        sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+        # Add the repository to Apt sources:
+        echo \
+          "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+          $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+          sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+        sudo apt-get update
+
+        # ===== 2. Install the Docker packages =====
+        sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+        docker --version
+        echo "status=success" | tee -a ${GITHUB_OUTPUT}
+    - name: Setup QEMU
+      id: qemu
+      uses: docker/setup-qemu-action@master
+      with:
+        platforms: ${{ env.arch_branch }}
+    - name: (MetaData) ${{ env.app_branch }} in Container
+      id: meta-app
+      if: always() && !cancelled()
+      env:
+        container_name: container-test
+        category: platforms
+        dir_container: /tmp
+      working-directory: ${{ github.workspace }}/${{ env.dir_app }}
+      run: |
+        echo "Current working directory: $(pwd)"
+
+        metadata='{"${{ env.category }}":[]}'
+        IFS=',' read -ra platforms <<< "${{ env.arch_branch }}"
+        for platform in "${platforms[@]}"; do
+          echo "===== Testing Base Image for platform: $platform ====="
+          docker pull --platform $platform ${{ env.base_image }}
+          docker run \
+            --name ${{ env.container_name }} \
+            --rm \
+            --detach \
+            --platform $platform \
+            ${{ env.base_image }} \
+            /bin/sh -c "uname -a && sleep infinity"
+
+          log_container=$(mktemp)
+          docker exec ${{ env.container_name }} mkdir -p ${{ env.dir_container }}
+
+          python3 "${GITHUB_WORKSPACE}/scripts/ci/materialize_test_hooks.py" --app "$(basename "$PWD")" --kind meta
+          dir_step="meta-app"
+          dir_original=$(pwd)
+          if [ -d "${dir_step}" ]; then
+            cd ./${dir_step}
+            echo "Changed to directory: $(pwd)"
+
+            env_temp=$(mktemp)
+            if [ ${{ env.custom_env != '' }} ]; then
+              flag_split=";"
+              # | sed "s|='|=\"|g" | sed "s|'$|\"|g" | sed "s|^|export '|" | sed "s|$|'|"
+              echo "${{ env.custom_env }}" | tr "${flag_split}" '\n' | tee -a ${env_temp}
+              docker cp ${env_temp} ${{ env.container_name }}:/tmp/build.env
+            fi
+
+            for script_file in ./*.sh; do
+              container_script="${{ env.dir_container }}/$(basename ${script_file})"
+              script_temp=$(mktemp)
+              {
+                echo "#!/bin/sh"
+                printenv | awk -F= '/^[a-zA-Z_][a-zA-Z0-9_]*=/ {printf "%s=\"%s\"\n", $1, $2}'
+                cat "${script_file}"
+              } >> ${script_temp}
+
+              docker cp ${script_temp} ${{ env.container_name }}:${container_script}
+              docker exec ${{ env.container_name }} chmod +x ${container_script}
+              docker exec ${{ env.container_name }} sh -c "${container_script}" | tee -a ${log_container}
+            done
+
+            cd "${dir_original}"
+            echo "Changed back to original directory: $(pwd)"
+          else
+            echo "No directory found"
+          fi
+
+          docker stop ${{ env.container_name }}
+
+          metadata=$(jq \
+            --arg platform "${platform}" \
+            --arg version "$(awk -F= '/^version=/ {print $2}' ${log_container})" \
+            '.${{ env.category }} += [{platform: $platform, version: $version}]' <<< "${metadata}")
+        done
+        echo "metadata=${metadata}"
+        # echo "${metadata}" | jq . > ${{ env.metadata_app_path }}
+        echo "status=success" | tee -a ${GITHUB_OUTPUT}
+    if: ${{ needs.plan.outputs.route == 'diagnostics' && needs.plan.outputs.diagnostic_mode == 'all-platforms' }}
+    env:
+      app_branch: ${{ fromJSON(needs.plan.outputs.version_matrix).include[0].app_branch }}
+      tag_repo: ${{ fromJSON(needs.plan.outputs.version_matrix).include[0].tag_repo }}
+      custom_env: ${{ needs.plan.outputs.custom_env }}
+      dir_app: application/${{ fromJSON(needs.plan.outputs.version_matrix).include[0].app_branch }}
+  diagnostic-validate:
+    name: Validate diagnostic Artifact contracts
+    needs:
+    - runner-image
+    - plan
+    - fetch-versions
+    - diagnostic-layers
+    - diagnostic-platforms
+    - diagnostic-collect
+    runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
+    if: ${{ always() && !cancelled() && needs.plan.result == 'success' && (needs.plan.outputs.route == 'diagnostics' || needs.plan.outputs.route == 'verification') && needs.plan.outputs.diagnostic_mode != 'all-platforms' }}
+    steps:
+    - name: Download diagnostic evidence
+      uses: actions/download-artifact@v4
+      with:
+        path: ${{ runner.temp }}/diagnostic-contracts
+    - name: Check selected diagnostic contracts
+      env:
+        DIAGNOSTIC_MODE: ${{ needs.plan.outputs.diagnostic_mode }}
+        JOB_RESULTS: ${{ toJSON(needs) }}
+      run: |
+        set -euo pipefail
+        python3 - <<'PYTHON'
+        import json
+        import os
+        from pathlib import Path
+        mode = os.environ['DIAGNOSTIC_MODE']
+        needs = json.loads(os.environ['JOB_RESULTS'])
+        root = Path(os.environ['RUNNER_TEMP']) / 'diagnostic-contracts'
+        if mode in {'version', 'both'}:
+            assert needs['fetch-versions']['result'] == 'success', 'Version Job failed'
+            files = list(root.glob('app-version-*/version-*.json'))
+            assert files, 'Version artifact missing'
+            for path in files:
+                row = json.loads(path.read_text())
+                assert row.get('app_branch') and row.get('status') and row.get('version'), path
+        if mode in {'layers', 'both'}:
+            for job in ['diagnostic-layers', 'diagnostic-platforms', 'diagnostic-collect']:
+                assert needs[job]['result'] == 'success', job + ' failed'
+            summary = root / 'diagnostics-layer-summary/aggregated_layers.json'
+            assert json.loads(summary.read_text())['Layers'], 'Empty aggregate layers'
+            layers = list(root.glob('layers-*/layers.json'))
+            details = list(root.glob('layer-info-*/image_*.json'))
+            assert layers and len(layers) == len(details), 'Per-platform artifacts missing'
+            for path in layers:
+                assert json.loads(path.read_text()), path
+            for path in details:
+                assert json.loads(path.read_text())['raw_data']['Layers'], path
+        print('Selected diagnostic Artifact contracts: PASS')
+        PYTHON
+  container-build:
+    name: Container build ${{ matrix.app_branch }}:${{ matrix.tag_repo }}
+    needs:
+    - runner-image
+    - plan
+    runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
+    defaults:
+      run:
+        shell: bash
+    container:
+      image: ubuntu:devel
+      options: --privileged --user=0:0 --pid=host --ipc=host --uts=host --cgroupns=host --cap-add=ALL --security-opt apparmor=unconfined --security-opt seccomp=unconfined --init --pids-limit=-1 --shm-size=12g --ulimit nofile=1048576:1048576
+      volumes:
+      - /dev:/dev
+      - /sys:/sys:rw
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+      - /run/udev:/run/udev:ro
+      - /lib/modules:/lib/modules:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      FORCE_UNSAFE_CONFIGURE: '1'
+      gcc_purge: 'false'
+      gcc_install: 'false'
+      gcc_switch: 'false'
+      gcc_version: ''
+      gcc_aarch64: 'false'
+      clang_purge: 'false'
+      clang_install: 'false'
+      clang_switch: 'false'
+      clang_version: ''
+      jdk_purge: 'false'
+      jdk_install: 'false'
+      jdk_switch: 'false'
+      jdk_version: ''
+      docker_install: 'true'
+      qemu_install: 'false'
+      app_branch: ${{ matrix.app_branch }}
+      tag_repo: ${{ matrix.tag_repo }}
+      force_push: ${{ needs.plan.outputs.force_build }}
+      registry_push: docker.io
+      registry_local: 127.0.0.1:5000
+      registry_local_probe: http://127.0.0.1:5000/v2/
+      registry_container_name: registry-local
+      registry_network_name: host
+      buildkit_network: host
+      compress: 'true'
+      dir_app: application/${{ matrix.app_branch }}
+      REPO_self: https://github.com/${{ github.repository }}
+      REPO_self_branch: ${{ github.ref_name || 'main' }}
+      PATH_build: /builder
+      PATH_output: /builder/output
+      PATH_backup: /builder/backup
+      PATH_self: /builder/self
+      PATH_metadata: /builder/metadata
+      PATH_app: /builder/self/application/${{ matrix.app_branch }}
+      PATH_metadata_image: /builder/metadata/metadata_image.json
+      PATH_metadata_app: /builder/metadata/metadata_app.json
+      PATH_metadata_sum: /builder/metadata/metadata_sum.json
+      PATH_docker_data: /builder/docker-data
+      PATH_release: /builder/release.md
+      custom_env: ${{ matrix.custom_env }}
+    steps:
+    - name: (Var) environment variable setup
+      id: var-setup
+      working-directory: /
+      run: |
+        echo -e "Current working directory: $(pwd)"
+
+        env_vars=(
+          "app_branch"
+          "tag_repo"
+          "registry_local"
+          "registry_local_probe"
+          "registry_container_name"
+          "registry_network_name"
+          "buildkit_network"
+          "dir_app"
+          "PATH_app"
+          "PATH_build"
+          "PATH_output"
+          "PATH_backup"
+          "PATH_self"
+          "PATH_metadata"
+          "PATH_metadata_image"
+          "PATH_metadata_app"
+          "PATH_metadata_sum"
+          "PATH_docker_data"
+          "PATH_release"
+        )
+        for var in "${env_vars[@]}"; do
+          echo "${var}=${!var}" | tee -a "$GITHUB_ENV"
+        done
+    - name: Docker Workspace All in One
+      id: docker-workspace
+      uses: Grinch27/github-actions/.github/actions/env-indocker@main
+    - name: (Setup) Workspace directories
+      id: setup-paths
+      working-directory: /
+      run: |
+        echo -e "Current working directory: $(pwd)"
+
+        dirs=(
+          "${PATH_build}"
+          "${PATH_output}"
+          "${PATH_backup}"
+          "${PATH_metadata}"
+          "${PATH_docker_data}"
+          "$(dirname "${PATH_release}")"
+        )
+        for dir in "${dirs[@]}"; do
+          mkdir -p "${dir}"
+        done
+
+        ls -ld "${dirs[@]}"
+    - name: Clone self
+      id: clone-self
+      working-directory: /
+      run: |
+        echo -e "Current working directory: $(pwd)"
+
+        rm -rf "${PATH_self}"
+        mkdir -p "${PATH_self}"
+
+        git init "${PATH_self}"
+        git -C "${PATH_self}" remote add origin "${REPO_self}"
+        git -C "${PATH_self}" fetch --depth=1 origin "$GITHUB_SHA"
+        git -C "${PATH_self}" checkout --detach FETCH_HEAD
+        echo -e "REPO_self: [ ${REPO_self} ]\nBRANCH: [ ${REPO_self_branch} ]"
+
+        df -hT "${PWD}"
+    - name: (Env) Load .env files
+      id: env-app
+      working-directory: /
+      run: |
+        set -euo pipefail
+        if ! command -v python3 >/dev/null 2>&1; then
+          apt-get -yqq update
+          apt-get -yqq install python3
+        fi
+        python3 "${PATH_self}/scripts/ci/catalog.py" env --readme "${PATH_self}/README.md" --app "${app_branch}" --tag "${tag_repo}" --output "${GITHUB_ENV}"
+    - name: (Env) Validate app settings
+      id: env-validate
+      working-directory: /
+      run: |
+        echo -e "Current working directory: $(pwd)"
+
+        required_vars=(
+          "repo_dockerhub"
+          "base_image"
+          "arch_branch"
+          "registry_local"
+        )
+        for var in "${required_vars[@]}"; do
+          if [[ -z "${!var:-}" ]]; then
+            echo "::error::Missing required environment variable: ${var}"
+            exit 1
+          fi
+        done
+
+        compress_value=$(echo "${compress:-true}" | tr '[:upper:]' '[:lower:]')
+        if [[ "${compress_value}" != "true" ]]; then
+          compress_value="false"
+        fi
+        time_sleep_value="${time_sleep:-3}"
+        registry_local_probe_value="http://${registry_local}/v2/"
+
+        echo "compress=${compress_value}" | tee -a "$GITHUB_ENV"
+        echo "time_sleep=${time_sleep_value}" | tee -a "$GITHUB_ENV"
+        echo "registry_local_probe=${registry_local_probe_value}" | tee -a "$GITHUB_ENV"
+
+        echo "arch_branch=${arch_branch}" | tee -a "$GITHUB_OUTPUT"
+        echo "repo_dockerhub=${repo_dockerhub}" | tee -a "$GITHUB_OUTPUT"
+        echo "base_image=${base_image}" | tee -a "$GITHUB_OUTPUT"
+        echo "compress=${compress_value}" | tee -a "$GITHUB_OUTPUT"
+    - name: (Apt) install packages - Docker
+      id: apt-docker
+      working-directory: /
+      run: |
+        echo -e "Current working directory: $(pwd)"
+
+        packages_install=(
+          "jq"
+          "skopeo"
+          "xz-utils"
+        )
+        apt-get -yqq update
+        set +e
+        for pkg in "${packages_install[@]}"; do
+          apt-get -yqq install "$pkg" || echo "Skip missing package: $pkg"
+        done
+        set -e
+        apt-get -yqq autoremove --purge
+        apt-get -yqq clean
+        systemctl daemon-reload || true
+    - name: (Setup) Docker Data Root
+      id: setup-docker-root
+      working-directory: /
+      run: |
+        echo "Current working directory: $(pwd)"
+
+        mkdir -p "${PATH_docker_data}"
+        registry_loopback="127.0.0.1:5000"
+        registry_alias="localhost:5000"
+        registry_container_host="${registry_container_name}:5000"
+
+        daemon_file="/etc/docker/daemon.json"
+        temp_file=$(mktemp)
+        if test -s "${daemon_file}"; then
+          jq \
+            --arg root "${PATH_docker_data}" \
+            --arg registry_local "${registry_local}" \
+            --arg registry_loopback "${registry_loopback}" \
+            --arg registry_alias "${registry_alias}" \
+            --arg registry_container_host "${registry_container_host}" \
+            '. + {"data-root": $root}
+            | .["insecure-registries"] = (((.["insecure-registries"] // []) + [$registry_local, $registry_alias, $registry_loopback, $registry_container_host]) | unique)' \
+            "${daemon_file}" > "${temp_file}"
+        else
+          jq -n \
+            --arg root "${PATH_docker_data}" \
+            --arg registry_local "${registry_local}" \
+            --arg registry_loopback "${registry_loopback}" \
+            --arg registry_alias "${registry_alias}" \
+            --arg registry_container_host "${registry_container_host}" \
+            '{"data-root": $root, "insecure-registries": ([$registry_local, $registry_alias, $registry_loopback, $registry_container_host] | unique)}' > "${temp_file}"
+        fi
+        cp "${temp_file}" "${daemon_file}"
+
+        service docker restart || service docker start || true
+        if ! docker info >/dev/null 2>&1; then
+          nohup dockerd --host=unix:///var/run/docker.sock >/tmp/dockerd.log 2>&1 &
+        fi
+
+        for _ in $(seq 1 30); do
+          if docker info >/dev/null 2>&1; then
+            break
+          fi
+          echo "Waiting for Docker daemon..."
+          sleep 2
+        done
+
+        docker info --format 'DockerRootDir={{ .DockerRootDir }}'
+    - name: (Setup) Local registry route
+      id: registry-route
+      working-directory: /
+      run: |
+        echo "Current working directory: $(pwd)"
+
+        echo "Use host-network route for daemon-facing local registry access."
+        echo "registry_local=${registry_local}" | tee -a "${GITHUB_ENV}"
+        echo "registry_local_probe=${registry_local_probe}" | tee -a "${GITHUB_ENV}"
+        echo "registry_network_name=host" | tee -a "${GITHUB_ENV}"
+        echo "buildkit_network=host" | tee -a "${GITHUB_ENV}"
+        echo "registry_container_name=${registry_container_name}" | tee -a "${GITHUB_ENV}"
+
+        echo "registry_network_name=host" | tee -a "${GITHUB_OUTPUT}"
+        echo "buildkit_network=host" | tee -a "${GITHUB_OUTPUT}"
+        echo "registry_local=${registry_local}" | tee -a "${GITHUB_OUTPUT}"
+        echo "registry_local_probe=${registry_local_probe}" | tee -a "${GITHUB_OUTPUT}"
+    - name: (Setup) QEMU
+      id: setup-qemu
+      if: ${{ steps.env-validate.outputs.arch_branch != 'linux/amd64' }}
+      working-directory: /
+      run: |
+        echo "Current working directory: $(pwd)"
+
+        docker run --privileged --rm tonistiigi/binfmt --install all
+        docker buildx version
+    - name: (MetaData) from DockerHub
+      id: meta-image
+      env:
+        category: repository
+      working-directory: /
+      run: |
+        echo "Current working directory: $(pwd)"
+
+        inspect_image() {
+          local repo="$1"
+          local platform="$2"
+          local os arch variant
+          local -a inspect_cmd
+
+          os=$(echo "${platform}" | cut -d'/' -f1)
+          arch=$(echo "${platform}" | cut -d'/' -f2-)
+          variant=""
+          if echo "${arch}" | grep -q 'arm/v'; then
+            variant=$(echo "${arch}" | cut -d'/' -f2)
+            arch=$(echo "${arch}" | cut -d'/' -f1)
+          fi
+
+          inspect_cmd=(
+            skopeo inspect
+            --override-os="${os}"
+            --override-arch="${arch}"
+            --format=json
+          )
+          if [[ -n "${variant}" ]]; then
+            inspect_cmd+=(--override-variant="${variant}")
+          fi
+          inspect_cmd+=("docker://docker.io/${repo}")
+
+          if ! "${inspect_cmd[@]}" > /tmp/skopeo-inspect.json 2>/tmp/skopeo-inspect.log; then
+            echo "::warning::Failed to inspect docker.io/${repo} for ${platform}"
+            jq -n --arg name "${repo}" '{"Name": $name, "Layers": [], "Labels": {}}'
+            return 0
+          fi
+
+          jq '.' /tmp/skopeo-inspect.json
+        }
+
+        metadata='{"${{ env.category }}":[]}'
+        declare -a repo_array=("${base_image}" "${repo_dockerhub}:${tag_repo}")
+        IFS=',' read -ra platforms <<< "${arch_branch}"
+        for repo in "${repo_array[@]}"; do
+          for platform in "${platforms[@]}"; do
+            data_json=$(inspect_image "${repo}" "${platform}")
+            metadata=$(jq \
+              --argjson data "${data_json}" \
+              --arg platform "${platform}" \
+              --arg repo "${repo}" \
+              '.${{ env.category }} += [{name: $repo, platform: $platform, data: $data}]' <<< "${metadata}")
+          done
+        done
+
+        echo "${metadata}" | jq . > "${PATH_metadata_image}"
+        echo "status=success" | tee -a "${GITHUB_OUTPUT}"
+    - name: (Check) Layer MetaData ${{ steps.env-validate.outputs.base_image }} in ${{ steps.env-validate.outputs.repo_dockerhub }}:${{ env.tag_repo }}
+      id: check-layer
+      if: steps.meta-image.outputs.status == 'success' && !cancelled()
+      env:
+        category_image: repository
+      working-directory: /
+      run: |
+        changed=false
+        metadata_image=$(cat "${PATH_metadata_image}")
+        IFS=',' read -ra platforms <<< "${arch_branch}"
+        for platform in "${platforms[@]}"; do
+          base_json=$(echo "${metadata_image}" | jq --arg platform "${platform}" --arg repo "${base_image}" '
+            .${{ env.category_image }}[] | select(.platform == $platform and .name == $repo) | .data
+          ')
+          repo_json=$(echo "${metadata_image}" | jq --arg platform "${platform}" --arg repo "${repo_dockerhub}:${tag_repo}" '
+            .${{ env.category_image }}[] | select(.platform == $platform and .name == $repo) | .data
+          ')
+
+          echo -e "========== Base image: ${base_image} ${platform} ==========\n${base_json}"
+          echo -e "========== Repo image: ${repo_dockerhub}:${tag_repo} ${platform} ==========\n${repo_json}"
+
+          base_layers=$(jq '.Layers // []' <<< "${base_json}")
+          repo_layers=$(jq '.Layers // []' <<< "${repo_json}")
+          missing_layers=$(jq -n --argjson base "${base_layers}" --argjson repo "${repo_layers}" '$base - $repo')
+
+          if [[ "$(echo "${missing_layers}" | jq 'length')" -eq 0 ]]; then
+            echo "----- All layers are present in ${platform} -----"
+          else
+            echo -e "----- missing layers in ${platform} -----\n${missing_layers}"
+            changed=true
+            break
+          fi
+        done
+
+        echo "changed=${changed}" | tee -a "${GITHUB_OUTPUT}"
+        echo "status=success" | tee -a "${GITHUB_OUTPUT}"
+    - name: (MetaData) ${{ env.app_branch }} in Container
+      id: meta-app
+      if: always() && !cancelled()
+      env:
+        container_name: container-test
+        category: platforms
+        dir_container: /tmp
+      working-directory: ${{ env.PATH_app }}
+      run: |
+        echo "Current working directory: $(pwd)"
+
+        metadata='{"${{ env.category }}":[]}'
+        IFS=',' read -ra platforms <<< "${arch_branch}"
+        for platform in "${platforms[@]}"; do
+          echo "===== Testing Base Image for platform: ${platform} ====="
+          docker pull --platform "${platform}" "${base_image}"
+          docker rm -f "${container_name}" >/dev/null 2>&1 || true
+          docker run \
+            --name "${container_name}" \
+            --rm \
+            --detach \
+            --platform "${platform}" \
+            "${base_image}" \
+            /bin/sh -c "uname -a && sleep infinity"
+
+          log_container=$(mktemp)
+          docker exec -u 0 "${container_name}" mkdir -p "${dir_container}"
+
+          python3 "${GITHUB_WORKSPACE}/scripts/ci/materialize_test_hooks.py" --app "$(basename "$PWD")" --kind meta
+          dir_step="meta-app"
+          if [[ -d "${dir_step}" ]]; then
+            shopt -s nullglob
+
+            env_temp=$(mktemp)
+            if [[ -n "${custom_env}" ]]; then
+              echo "${custom_env}" | tr ';' '\n' | tee -a "${env_temp}"
+              docker cp "${env_temp}" "${container_name}:${dir_container}/build.env"
+            fi
+
+            for script_file in "${dir_step}"/*.sh; do
+              container_script="${dir_container}/$(basename "${script_file}")"
+              script_temp=$(mktemp)
+              {
+                echo "#!/bin/sh"
+                printenv | awk -F= '/^[a-zA-Z_][a-zA-Z0-9_]*=/ {printf "%s=\"%s\"\n", $1, $2}'
+                cat "${script_file}"
+              } > "${script_temp}"
+
+              docker cp "${script_temp}" "${container_name}:${container_script}"
+              docker exec -u 0 "${container_name}" chmod +x "${container_script}"
+              docker exec -u 0 "${container_name}" sh -c "${container_script}" | tee -a "${log_container}"
+            done
+          else
+            echo "No directory found"
+          fi
+
+          docker stop "${container_name}" || true
+
+          metadata=$(jq \
+            --arg platform "${platform}" \
+            --arg version "$(awk -F= '/^version=/ {print $2}' "${log_container}" | tail -n 1)" \
+            '.${{ env.category }} += [{platform: $platform, version: $version}]' <<< "${metadata}")
+        done
+
+        echo "${metadata}" | jq . > "${PATH_metadata_app}"
+        echo "status=success" | tee -a "${GITHUB_OUTPUT}"
+    - name: (Check) Version of app
+      id: check-version
+      if: steps.meta-app.outputs.status == 'success' && !cancelled()
+      env:
+        category_image: repository
+        category_app: platforms
+      working-directory: /
+      run: |
+        changed=false
+        metadata_image=$(cat "${PATH_metadata_image}")
+        metadata_app=$(cat "${PATH_metadata_app}")
+        IFS=',' read -ra platforms <<< "${arch_branch}"
+        for platform in "${platforms[@]}"; do
+          repo_json=$(echo "${metadata_image}" | jq --arg platform "${platform}" --arg repo "${repo_dockerhub}:${tag_repo}" '
+            .${{ env.category_image }}[]
+            | select(.platform == $platform and .name == $repo)
+            | .data
+          ')
+          app_json=$(echo "${metadata_app}" | jq --arg platform "${platform}" '
+            .${{ env.category_app }}[]
+            | select(.platform == $platform)
+          ')
+
+          echo "repo_json=${repo_json}"
+          echo "app_json=${app_json}"
+
+          repo_labels=$(echo "${repo_json}" | jq '.Labels // {}')
+          repo_version=$(echo "${repo_labels}" | jq -r '.version // empty')
+          app_version=$(echo "${app_json}" | jq -r '.version // empty')
+          if [[ -z "${repo_version}" || "${repo_version}" != "${app_version}" ]]; then
+            echo "${platform} Version mismatch: repo_version=${repo_version}, app_version=${app_version}"
+            changed=true
+          else
+            echo "${platform} Version match: repo_version=${repo_version}, app_version=${app_version}"
+          fi
+        done
+
+        echo "changed=${changed}" | tee -a "${GITHUB_OUTPUT}"
+        echo "status=success" | tee -a "${GITHUB_OUTPUT}"
+    - name: Summary
+      id: summary
+      if: always() && !cancelled()
+      env:
+        category_app: platforms
+        platform_prefer: amd64
+      working-directory: /
+      run: |
+        metadata_app=$(cat "${PATH_metadata_app}" 2>/dev/null || echo '{"platforms":[]}')
+        preferred_platform="linux/${platform_prefer}"
+
+        if [[ "$(jq -r ".${category_app}[] | select(.version != null and .version != \"\") | .version" <<< "${metadata_app}" | sort -u | wc -l)" -ne 1 ]]; then
+          version=$(jq -r ".${category_app}[] | select(.platform == \"${preferred_platform}\") | .version // empty" <<< "${metadata_app}" | head -n 1)
+          if [[ -z "${version}" ]]; then
+            version=$(jq -r ".${category_app}[] | .version // empty" <<< "${metadata_app}" | grep -m1 . || true)
+          fi
+          consistent=false
+          echo "Versions are not consistent across ${arch_branch}, using ${preferred_platform} version: ${version}"
+        else
+          version=$(jq -r ".${category_app}[].version" <<< "${metadata_app}" | sort -u)
+          consistent=true
+          echo "Versions are consistent across ${arch_branch}, using unified version: ${version}"
+        fi
+
+        echo "version=${version}" | tee -a "${GITHUB_ENV}" | tee -a "${GITHUB_OUTPUT}"
+        echo "consistent=${consistent}" | tee -a "${GITHUB_ENV}" | tee -a "${GITHUB_OUTPUT}"
+
+        if [[ "${{ steps.check-layer.outputs.changed || 'true' }}" != 'true' ]] && \
+          [[ "${{ steps.check-version.outputs.changed || 'true' }}" != 'true' ]] && \
+          [[ "${force_push}" != 'true' ]]; then
+          changed=false
+        else
+          changed=true
+        fi
+        echo "changed=${changed}" | tee -a "${GITHUB_OUTPUT}"
+    - name: (Setup) Docker Buildx
+      id: buildx
+      if: steps.summary.outputs.changed == 'true' && !cancelled()
+      working-directory: /
+      run: |
+        echo "Current working directory: $(pwd)"
+
+        buildkitd_config=$(mktemp)
+        declare -a registry_hosts=(
+          "${registry_local}"
+          "${registry_container_name}:5000"
+          "127.0.0.1:5000"
+          "localhost:5000"
+        )
+        seen_registry_hosts=$'\n'
+        : > "${buildkitd_config}"
+        for registry_host in "${registry_hosts[@]}"; do
+          if [[ -z "${registry_host}" ]]; then
+            continue
+          fi
+          if [[ "${seen_registry_hosts}" == *$'\n'"${registry_host}"$'\n'* ]]; then
+            continue
+          fi
+          seen_registry_hosts+="${registry_host}"$'\n'
+          printf '[registry."%s"]\n  http = true\n  insecure = true\n\n' "${registry_host}" >> "${buildkitd_config}"
+        done
+
+        docker buildx rm builder >/dev/null 2>&1 || true
+        docker buildx create \
+          --name builder \
+          --driver docker-container \
+          --driver-opt "network=${buildkit_network}" \
+          --buildkitd-config "${buildkitd_config}" \
+          --use
+        docker buildx inspect --bootstrap
+    - name: (Service) Local Registry
+      id: registry
+      if: steps.summary.outputs.changed == 'true' && !cancelled()
+      working-directory: /
+      run: |
+        echo "Current working directory: $(pwd)"
+
+        docker rm -f registry registry-local >/dev/null 2>&1 || true
+        docker pull registry:latest
+        docker pull curlimages/curl:8.12.1
+
+        docker_run_args=(
+          --name "${registry_container_name}"
+          --detach
+          --env REGISTRY_HTTP_ADDR=0.0.0.0:5000
+        )
+        if [[ "${registry_network_name}" == "host" ]]; then
+          docker_run_args+=(--network host)
+        else
+          docker_run_args+=(
+            --network "${registry_network_name}"
+            --network-alias "${registry_container_name}"
+          )
+        fi
+        docker run "${docker_run_args[@]}" registry:latest
+
+        docker ps --filter "name=^/${registry_container_name}$" --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
+
+        for _ in $(seq 1 30); do
+          if docker run --rm --network host curlimages/curl:8.12.1 -fsS --connect-timeout 2 "${registry_local_probe}" >/dev/null; then
+            echo "status=success" | tee -a "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          echo "Waiting for local registry at ${registry_local_probe}"
+          sleep 2
+        done
+
+        ss -lntp || true
+        docker inspect "${registry_container_name}" || true
+        docker logs "${registry_container_name}" || true
+        echo "::error::Local registry is not reachable at ${registry_local_probe}"
+        exit 1
+    - name: Build and push to local registry
+      id: build
+      if: steps.summary.outputs.changed == 'true' && !cancelled()
+      working-directory: ${{ env.PATH_app }}
+      run: |
+        set -euo pipefail
+        cd "${PATH_app}/build"
+        bash "${PATH_self}/scripts/ci/build-image.sh"
+        echo "status=success" >> "${GITHUB_OUTPUT}"
+    - name: (Inspect) Layers with skopeo
+      id: inspect
+      if: steps.build.outputs.status == 'success' && !cancelled()
+      working-directory: ${{ env.PATH_app }}
+      run: |
+        echo "Current working directory: $(pwd)"
+
+        registry_inspect_image="quay.io/skopeo/stable:latest"
+        docker pull "${registry_inspect_image}"
+
+        IFS=',' read -ra platforms <<< "${arch_branch}"
+        for platform in "${platforms[@]}"; do
+          os=$(echo "${platform}" | cut -d'/' -f1)
+          arch=$(echo "${platform}" | cut -d'/' -f2-)
+          variant=""
+          if echo "${arch}" | grep -q 'arm/v'; then
+            variant=$(echo "${arch}" | cut -d'/' -f2)
+            arch=$(echo "${arch}" | cut -d'/' -f1)
+          fi
+
+          inspect_cmd=(
+            docker run
+            --rm
+            --network host
+            "${registry_inspect_image}"
+            inspect
+            --override-os="${os}"
+            --override-arch="${arch}"
+            --format=json
+            --tls-verify=false
+          )
+          if [[ -n "${variant}" ]]; then
+            inspect_cmd+=(--override-variant="${variant}")
+          fi
+          inspect_cmd+=("docker://${registry_local}/${repo_dockerhub}:${tag_repo}")
+
+          "${inspect_cmd[@]}"
+        done
+
+        echo "status=success" | tee -a "${GITHUB_OUTPUT}"
+    - name: (Test) Docker image
+      id: test
+      if: steps.build.outputs.status == 'success' && !cancelled()
+      timeout-minutes: ${{ fromJSON('3') }}
+      env:
+        container_name: container-test
+        dir_container: /tmp
+      working-directory: ${{ env.PATH_app }}
+      run: |
+        set -euo pipefail
+        echo "Current working directory: $(pwd)"
+
+        IFS=',' read -ra platforms <<< "${arch_branch}"
+        for platform in "${platforms[@]}"; do
+          cd "${PATH_app}"
+          docker pull --platform "${platform}" "${registry_local}/${repo_dockerhub}:${tag_repo}"
+          docker rm -f "${container_name}" >/dev/null 2>&1 || true
+          docker run \
+            --name "${container_name}" \
+            --rm \
+            --detach \
+            --platform "${platform}" \
+            "${registry_local}/${repo_dockerhub}:${tag_repo}"
+
+          dir_step="test"
+          python3 "${PATH_self}/scripts/ci/materialize_test_hooks.py" --app "$(basename "$PWD")"
+          if [[ -d "${dir_step}" ]]; then
+            cd "${PATH_app}/${dir_step}"
+            echo "Changed to directory: $(pwd)"
+
+            set -euo pipefail
+            shopt -s nullglob
+            log_container=$(mktemp)
+            for script_file in ./*.sh; do
+              container_script="${dir_container}/$(basename "${script_file}")"
+              script_temp=$(mktemp)
+              {
+                echo "#!/bin/sh"
+                printenv | awk -F= '/^[a-zA-Z_][a-zA-Z0-9_]*=/ {printf "%s=\"%s\"\n", $1, $2}'
+                cat "${script_file}"
+              } > "${script_temp}"
+
+              docker cp "${script_temp}" "${container_name}:${container_script}"
+              docker exec -u 0 "${container_name}" chmod +x "${container_script}"
+              docker exec -u 0 "${container_name}" sh -c "${container_script}" | tee -a "${log_container}"
+            done
+            set -e
+          else
+            echo "No directory found"
+          fi
+
+          echo "Sleep for ${time_sleep} seconds"
+          sleep "${time_sleep}"
+          docker logs "${container_name}" || true
+          docker stop "${container_name}" || true
+        done
+
+        echo "status=success" | tee -a "${GITHUB_OUTPUT}"
+    - name: (Log in) to Docker Hub
+      id: login
+      if: success() && steps.test.outputs.status == 'success' && (steps.build.outputs.status == 'success' && !cancelled())
+      working-directory: /
+      run: |
+        echo "${{ secrets.DOCKER_PASSWORD }}" | docker login docker.io --username "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+        echo "status=success" | tee -a "${GITHUB_OUTPUT}"
+    - name: (Push) Image to ${{ env.registry_push }}
+      id: push
+      if: success() && steps.test.outputs.status == 'success' && (steps.login.outputs.status == 'success' && !cancelled())
+      working-directory: ${{ env.PATH_app }}
+      run: |
+        echo "Current working directory: $(pwd)"
+
+        set -euo pipefail
+        tags_json=$(
+
+          python3 "${PATH_self}/scripts/ci/catalog.py" tags --readme "${PATH_self}/README.md" \
+          --app "${app_branch}" --tag "${tag_repo}" --version "${version}" \
+          --consistent "${consistent}"
+        )
+        mapfile -t tag_array < <(jq -r '.[]' <<< "${tags_json}")
+        if [ "${#tag_array[@]}" -eq 0 ]; then
+          echo "::error::No publication tags returned" >&2
+          exit 1
+        fi
+
+        registry_copy_image="quay.io/skopeo/stable:latest"
+        docker pull "${registry_copy_image}"
+        if ! docker run --rm --network host curlimages/curl:8.12.1 -fsS --connect-timeout 2 "${registry_local_probe}" >/dev/null; then
+          echo "::error::Local registry is not reachable at ${registry_local_probe} from helper container"
+          exit 1
+        fi
+        source_ref="docker://${registry_local}/${repo_dockerhub}:${tag_repo}"
+
+        IFS=',' read -ra registries <<< "${registry_push}"
+        for registry_remote in "${registries[@]}"; do
+          for tag_each in "${tag_array[@]}"; do
+            dest_ref="docker://${registry_remote}/${repo_dockerhub}:${tag_each}"
+            copy_args=(
+              copy
+              --all
+              --retry-times 3
+              --src-tls-verify=false
+            )
+            if [[ "${registry_remote}" == "docker.io" ]]; then
+              copy_args+=(--dest-creds "${{ secrets.DOCKER_USERNAME }}:${{ secrets.DOCKER_PASSWORD }}")
+            fi
+
+            # buildx imagetools create 会在 job container 侧解析 127.0.0.1，这里改成 host-network helper 容器访问 daemon-facing local registry。
+            docker run --rm --network host "${registry_copy_image}" "${copy_args[@]}" "${source_ref}" "${dest_ref}"
+          done
+        done
+
+        echo "status=success" | tee -a "${GITHUB_OUTPUT}"
+    - name: (Output) Save
+      id: output
+      if: success() && steps.test.outputs.status == 'success' && (steps.build.outputs.status == 'success' && !cancelled())
+      working-directory: ${{ env.PATH_app }}
+      run: |
+        echo "Current working directory: $(pwd)"
+
+        mkdir -p "${PATH_output}"
+
+        target_ext="tar"
+        IFS=',' read -ra platforms <<< "${arch_branch}"
+        for platform in "${platforms[@]}"; do
+          target_file="${app_branch}_${tag_repo}_${version}_$(echo "${platform}" | tr '/' '_').${target_ext}"
+
+          docker pull --platform "${platform}" "${registry_local}/${repo_dockerhub}:${tag_repo}"
+          docker tag "${registry_local}/${repo_dockerhub}:${tag_repo}" "${repo_dockerhub}:${tag_repo}"
+          docker save --output "${PATH_output}/${target_file}" "${repo_dockerhub}:${tag_repo}"
+
+          echo "Exported ${platform} image to ${target_file}"
+        done
+        ls -lh "${PATH_output}"
+
+        echo "target_ext=${target_ext}" | tee -a "${GITHUB_OUTPUT}"
+        echo "status=success" | tee -a "${GITHUB_OUTPUT}"
+    - name: (Optimize) Free Disk Before Compress
+      id: optimize-disk
+      if: ${{ steps.output.outputs.status == 'success' && steps.env-validate.outputs.compress == 'true' && (env.app_branch == 'stable-diffusion-webui-amdgpu' || env.app_branch == 'sdnext') }}
+      working-directory: /
+      run: |
+        echo "Current working directory: $(pwd)"
+        docker system df || true
+        docker image prune --all --force || true
+        docker builder prune --all --force || true
+        docker system df || true
+        df -hT
+    - name: (Output) Compress
+      id: output-compress
+      if: steps.output.outputs.status == 'success' && steps.env-validate.outputs.compress == 'true' && !cancelled()
+      uses: Grinch27/github-actions/.github/actions/compress-xz@main
+      with:
+        path_target: ${{ env.PATH_output }}
+        pattern_match: ^\./.*\.${{ steps.output.outputs.target_ext }}$
+    - name: (Output) Split
+      id: output-split
+      if: steps.output.outputs.status == 'success' && steps.env-validate.outputs.compress == 'true' && !cancelled()
+      uses: Grinch27/github-actions/.github/actions/file-split@main
+      with:
+        path_target: ${{ env.PATH_output }}
+        pattern_match: ^\./.*\.${{ steps.output.outputs.target_ext }}\.xz$
+        split_size: 1900M
+    - name: (Output) Check
+      id: output-check
+      if: steps.output.outputs.status == 'success' && !cancelled()
+      env:
+        category: files
+        compress_enabled: ${{ steps.env-validate.outputs.compress }}
+      working-directory: ${{ env.PATH_output }}
+      run: |
+        echo -e "Current working directory: $(pwd)"
+        ls -lh ./
+
+        metadata='{"${{ env.category }}":[]}'
+        while IFS= read -r -d '' file; do
+          relative_path="${file#./}"
+          checksum=$(sha256sum "${relative_path}" | awk '{print $1}')
+          filename=$(basename "${relative_path}")
+          metadata=$(jq \
+            --arg filename "${filename}" \
+            --arg checksum "${checksum}" \
+            '.${{ env.category }} += [{filename: $filename, checksum: $checksum}]' <<< "${metadata}")
+        done < <(
+          if [[ "${compress_enabled}" == 'true' ]]; then
+            find . -maxdepth 2 -type f \( -name '*.xz' -o -name '*.xz.part*' \) -print0 | sort -z
+          else
+            find . -maxdepth 1 -type f -name '*.tar*' -print0 | sort -z
+          fi
+        )
+        echo "${metadata}" | jq . > "${PATH_metadata_sum}"
+
+        echo "timestamp=$(date +"%y%mw%V")" | tee -a "${GITHUB_OUTPUT}"
+        echo "PATH_metadata_sum=${PATH_metadata_sum}" | tee -a "${GITHUB_OUTPUT}"
+        echo "status=success" | tee -a "${GITHUB_OUTPUT}"
+    - name: '[release.md] Record release.md'
+      id: release-md
+      if: success() && steps.test.outputs.status == 'success' && (steps.output-check.outputs.status == 'success' && !cancelled())
+      working-directory: ${{ env.PATH_app }}
+      run: |
+        printf "Current working directory: %s\n" "$(pwd)"
+
+        PATH_release_dir=$(dirname "${PATH_release}")
+        mkdir -p "${PATH_release_dir}"
+        : > "${PATH_release}"
+
+        set +e
+        record_to_markdown() {
+          local title="$1"
+          local content="$2"
+          local code_block="${3:-}"
+          local format="\n### %s\n%s\n"
+
+          if [[ -n "${code_block}" ]]; then
+            format="\n### %s\n\n<details>\n<summary>%s</summary>\n\n\`\`\`%s\n%s\n\`\`\`\n\n</details>\n"
+            printf "${format}" "${title}" "${title}" "${code_block}" "${content}" | tee -a "${PATH_release}"
+          else
+            printf "${format}" "${title}" "${content}" | tee -a "${PATH_release}"
+          fi
+        }
+
+        record_to_markdown "Target" "- [x] ${app_branch} - ${tag_repo}"
+        record_to_markdown "Version" "- [x] ${version}"
+        record_to_markdown "Repository" "- [x] ${repo_dockerhub}"
+        record_to_markdown "Base Image" "- [x] ${base_image}"
+        record_to_markdown "Timestamp" "- [x] $(date +"%Y-%m-%d %H:%M:%S %z")"
+
+        IFS=',' read -ra registries <<< "${registry_push}"
+        for registry_remote in "${registries[@]}"; do
+          info_content=$(printf '%s\n%s\n%s\n%s\n%s\n' \
+            "- [x] Registry: ${registry_remote}" \
+            "- [x] Repository: ${repo_dockerhub}" \
+            "- [x] Pull: docker pull ${registry_remote}/${repo_dockerhub}:*" \
+            "- [x] Load xz: xz --decompress --verbose *.xz && docker load < *.tar" \
+            "- [x] Load tar: docker load < *.tar")
+          record_to_markdown "Info (${registry_remote})" "${info_content}"
+        done
+
+        split_content=$(printf '%s\n%s\n%s\n' \
+          'cat file-split/image.tar.xz.part* > image.tar.xz' \
+          'xz --decompress --verbose image.tar.xz' \
+          'docker load < image.tar')
+        record_to_markdown "Split Assets" "${split_content}" "bash"
+
+        sum_json_content=$(jq '.' "${PATH_metadata_sum}")
+        record_to_markdown "sha256sum" "${sum_json_content}" "json"
+
+        cat "${PATH_release}"
+        set -e
+
+        echo "status=success" | tee -a "${GITHUB_OUTPUT}"
+    - name: (Upload) to Release
+      id: upload-release
+      if: success() && steps.test.outputs.status == 'success' && (steps.release-md.outputs.status == 'success' && !cancelled())
+      uses: ncipollo/release-action@main
+      with:
+        name: ${{ steps.env-validate.outputs.repo_dockerhub }}
+        tag: ${{ env.app_branch }}
+        artifacts: ${{ env.PATH_output }}/**
+        allowUpdates: true
+        removeArtifacts: false
+        replacesArtifacts: true
+        token: ${{ secrets.GITHUB_TOKEN }}
+        bodyFile: ${{ env.PATH_release }}
+    if: ${{ false }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.build_targets).include }}

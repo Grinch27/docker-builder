@@ -5,7 +5,7 @@ from pathlib import Path
 
 root=Path(__file__).resolve().parents[2]
 flow=root/".github"/"workflows"
-files={p.name for p in flow.glob("*.yml")}
+files={p.name for p in flow.glob("*.yml")} - {"gpt_dev.yml"}
 protected={"docker_allinone.yml","docker_allinone_dev.yml","docker_allinone_gpt.yml",
            "monitor-images.yml","call-build_dev.yml",
            "pull_artifact-dev.yml","download_artifact.yml"}
