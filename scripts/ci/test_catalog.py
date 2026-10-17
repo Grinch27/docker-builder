@@ -449,6 +449,17 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(source.count('config.guess'),4)
         self.assertEqual(source.count('config.sub'),4)
 
+    def test_ffmpeg_mesa_llvm_spirv_translator_versions_are_paired(self):
+        source=(ROOT/'application'/'ffmpeg'/'build'/'Dockerfile').read_text(encoding='utf-8')
+        self.assertIn('llvm-18-dev',source)
+        self.assertIn('llvm-spirv-18',source)
+        self.assertIn('libllvmspirvlib-18-dev',source)
+        mesa=source.split('**** compiling mesa ****',1)[1].split('**** grabbing gmmlib ****',1)[0]
+        self.assertIn('test -x /usr/bin/llvm-config-18',mesa)
+        self.assertIn('llvm-config = "/usr/bin/llvm-config-18"',mesa)
+        self.assertIn('--native-file /tmp/mesa-llvm.ini',mesa)
+        self.assertIn('-Dvideo-codecs=all',mesa)
+
     def test_shared_buildx_registry_and_load_contracts(self):
         builder=ROOT/'scripts/ci/build-image.sh'
         with tempfile.TemporaryDirectory() as dirname:
