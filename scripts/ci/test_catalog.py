@@ -246,7 +246,10 @@ class CatalogTests(unittest.TestCase):
             self.assertEqual(catalog.update(path,copy.deepcopy(self.config),'samba','base_image',
                 'alpine:edge',scope='target',tag='alpine'),'updated')
             after=path.read_text(encoding='utf-8')
-            self.assertIn('`alpine: alpine:edge`',after)
+            updated=catalog.catalog_from_readme(path)['apps']['samba']
+            self.assertEqual(next(t['base_image'] for t in updated['targets']
+                                  if t['tag']=='alpine'),'alpine:edge')
+            self.assertIn('--build-arg base_image=alpine:edge',after)
             self.assertTrue(catalog.check_summary(path,catalog.catalog_from_readme(path)))
             assert_unrelated_readme_content_preserved(self, old, after)
             self.assertEqual(catalog.write_summary(path,catalog.catalog_from_readme(path)),'unchanged')
