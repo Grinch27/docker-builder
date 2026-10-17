@@ -16,6 +16,7 @@ run-name: GPT Dev - ${{ github.event_name }} - ${{ inputs.execution_route || git
     - scripts/ci/test_workflow_contracts.py
     - scripts/ci/verify_image_archive.py
     - scripts/ci/test_verify_image_archive.py
+    - application/**/build/**
   workflow_dispatch:
     inputs:
       execution_route:
