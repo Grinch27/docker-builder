@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+# Requirement: assert the compact five-column README table.
+# Unknown: external consumers of the former display columns.
+# Research: stricter, cell-level HTML script preservation tests.
+# Risk: confusing display-only removals with deleted canonical data.
+# Verify: header/row shape, unchanged embedded JSON and Shell sources.
 """Offline regression tests for the README catalog. No Docker or network access."""
 from __future__ import annotations
 
@@ -352,7 +357,17 @@ class CatalogTests(unittest.TestCase):
         self.assertIn('<!-- app-meta:ffmpeg:missing -->—',text)
         self.assertEqual(len(catalog.embedded_meta_from_text(text)),23)
         self.assertNotIn('<!-- app-version-table:start -->',text)
-        self.assertIn('Detected version',text)
+        header='| Application | JSON | Build | Meta-app | Test |'
+        self.assertEqual(text.count(header),1)
+        region=text.split(catalog.SUMMARY_START,1)[1].split(catalog.SUMMARY_END,1)[0]
+        self.assertIn('|---|---|---|---|---|',region)
+        rows=[line for line in region.splitlines() if line.startswith('| [')]
+        self.assertEqual(len(rows),24)
+        for row in rows:
+            self.assertEqual(len(row[2:-2].split(' | ')),5)
+        for obsolete in ('Registry repository','Tags','Platforms','Base image',
+                         'Dockerfiles','Detected version','Probe status'):
+            self.assertNotIn(' | '+obsolete+' | ',header)
         self.assertEqual(text.split(catalog.SUMMARY_START,1)[1].split(catalog.SUMMARY_END,1)[0].count('](application/'),24)
 
     def test_v2_combines_config_and_historical_monitor_records(self):

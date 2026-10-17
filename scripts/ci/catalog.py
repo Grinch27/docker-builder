@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+# Requirement: render Application/JSON/Build/Meta-app/Test only.
+# Unknown: external readers of the historical 12-column summary.
+# Research: potential reduction of large monitor and script diffs.
+# Risk: breaking marker parsing or reproducible Build previews.
+# Verify: catalog validation, 24/30/52 invariants, and unit regressions.
 """Read or update the application catalog embedded in README.md.
 
 The application table contains canonical per-row config and monitor JSON.
@@ -336,29 +341,15 @@ def render_build_preview(name, app):
     return '\n'.join(commands)
 
 def render_summary(c, records=None, scripts=None, meta_scripts=None):
-    observed={r['app_branch']:r for r in (records or [])}
     n=sum(len(a['targets']) for a in c['apps'].values())
     rows=[f'**{len(c["apps"])} applications / {n} build targets** (generated from the JSON column).',
-          '', '| Application | Registry repository | Tags | Platforms | Base image | Dockerfiles | Detected version | Probe status | JSON | Build | Meta-app | Test |',
-          '|---|---|---|---|---|---|---|---|---|---|---|---|']
+          '', '| Application | JSON | Build | Meta-app | Test |',
+          '|---|---|---|---|---|']
     if scripts is None or set(scripts)!=set(c['apps']):
         raise ValueError('Application test scripts must cover configured apps')
     if meta_scripts is None or not set(meta_scripts).issubset(c['apps']):
         raise ValueError('Meta-app scripts must belong to configured apps')
-    bt=chr(96)
     for name,a in sorted(c['apps'].items()):
-        tags=', '.join(bt+t['tag']+bt for t in a['targets'])
-        platforms=', '.join(bt+p.replace('linux/','',1)+bt for p in a['platforms'])
-        overrides=[bt+t['tag']+': '+t['base_image']+bt for t in a['targets']
-                   if t.get('base_image') and t['base_image']!=a['base_image']]
-        base=bt+a['base_image']+bt+(' + '+', '.join(overrides) if overrides else '')
-        files=', '.join(bt+f+bt for f in dict.fromkeys(
-            t.get('dockerfile','Dockerfile') for t in a['targets']))
-        record=observed.get(name)
-        version=(bt+str(record.get('version') or 'unknown').replace('|','\\|').replace('\n',' ')+bt
-                 if record else '—')
-        status=(bt+str(record.get('status') or 'unknown').replace('|','\\|')+bt
-                if record else '—')
         json_cell=('<!-- app-json:'+name+':start --><details><summary>JSON</summary><pre><code>'+
                    encode_embedded_test(json.dumps({'app':name,'config':a,'monitor':[r for r in (records or []) if r['app_branch']==name]},ensure_ascii=False,sort_keys=True,separators=(',',':')))+
                    '</code></pre></details><!-- app-json:'+name+':end -->')
@@ -369,9 +360,8 @@ def render_summary(c, records=None, scripts=None, meta_scripts=None):
                    encode_embedded_test(meta_scripts[name])+
                    '</code></pre></details><!-- app-meta:'+name+':end -->'
                    if name in meta_scripts else '<!-- app-meta:'+name+':missing -->—')
-        rows.append('| ['+name+'](application/'+name+'/) | '+bt+a['repository']+bt+' | '+
-                    tags+' | '+platforms+' | '+base+' | '+files+' | '+version+' | '+status+' | '+json_cell+' | '+build_cell+' | '+meta_cell+' | '+
-                    '<!-- app-test:'+name+':start --><details><summary>Test</summary><pre><code>'+ 
+        rows.append('| ['+name+'](application/'+name+'/) | '+json_cell+' | '+build_cell+' | '+meta_cell+' | '+
+                    '<!-- app-test:'+name+':start --><details><summary>Test</summary><pre><code>'+
                     encode_embedded_test(scripts[name])+
                     '</code></pre></details><!-- app-test:'+name+':end --> |')
     return '\n'.join(rows)
