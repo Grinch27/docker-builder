@@ -16,7 +16,7 @@ ARG FFMPEG_VERSION
 ENV \
   DEBIAN_FRONTEND="noninteractive" \
   MAKEFLAGS="-j4" \
-  PATH="/root/.cargo/bin:${PATH}"
+  PATH="/lsiopy/bin:/root/.cargo/bin:${PATH}"
 
 # versions
 ENV \
