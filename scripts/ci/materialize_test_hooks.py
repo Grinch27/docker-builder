@@ -26,6 +26,10 @@ def materialize(root,app,kind='test'):
     script=scripts(root,kind).get(app)
     directory,filename=('meta-app','meta-app.sh') if kind=='meta' else ('test','test.sh')
     target=root/'application'/app/directory/filename
+    # Reject symlinked ancestors before any path read or write.
+    for ancestor in (root/'application', root/'application'/app, target.parent):
+        if ancestor.is_symlink():
+            raise ValueError('Symlink in generated script path: '+str(ancestor))
     if script is None:
         if kind!='meta':
             raise ValueError('No embedded README test for '+app)

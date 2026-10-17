@@ -55,6 +55,26 @@ class EmbeddedTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'differs'):
                 hooks.materialize(root,'openwrt')
 
+    def test_reject_symlinked_script_ancestors(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=self.make_temp(d)
+            outside=root/'outside'
+            outside.mkdir()
+            app_dir=root/'application'/'aria2'
+            app_dir.mkdir(parents=True)
+            for kind, subdir in (('test','test'), ('meta','meta-app')):
+                generated_dir=app_dir/subdir
+                generated_dir.symlink_to(outside,target_is_directory=True)
+                with self.assertRaisesRegex(ValueError,'Symlink in generated script path'):
+                    hooks.materialize(root,'aria2',kind)
+                self.assertEqual(list(outside.iterdir()),[])
+                generated_dir.unlink()
+            app_dir.rmdir()
+            app_dir.symlink_to(outside,target_is_directory=True)
+            with self.assertRaisesRegex(ValueError,'Symlink in generated script path'):
+                hooks.materialize(root,'aria2')
+            self.assertEqual(list(outside.iterdir()),[])
+
     def test_reject_bad_markers_and_unknown_app(self):
         text=(ROOT/'README.md').read_text(encoding='utf-8')
         with self.assertRaisesRegex(ValueError,'Malformed'):
