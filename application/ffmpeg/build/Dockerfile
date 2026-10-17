@@ -151,11 +151,11 @@ RUN \
   ./install.sh && \
   cargo install cargo-c cbindgen && \
   python3 -m venv /lsiopy && \
-  pip install -U --no-cache-dir \
+  /lsiopy/bin/python -m pip install -U --no-cache-dir \
     pip \
     setuptools \
     wheel && \
-  pip install --no-cache-dir cmake mako meson ninja packaging ply pyyaml
+  /lsiopy/bin/python -m pip install --no-cache-dir cmake mako meson ninja packaging ply pyyaml
 
 # compile 3rd party libs
 RUN \
