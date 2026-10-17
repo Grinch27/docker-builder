@@ -4,11 +4,11 @@
 
 ## 当前状态
 
-截至 2026-10-17，初始代表性验收提交为 [`95bb3fa`](https://github.com/Grinch27/docker-builder/commit/95bb3fac6a42409192c15f942d5212c5369943f1)，后续全量与定向结果见下表。当前有 **15 个工作流文件：原 14 个 + `gpt_dev.yml` 合并候选**。核心能力已并入候选的 18 个普通 Jobs，无嵌套工作流调用；正式入口尚未替换，因此文件数量精简尚未落地。目标是一个核心工作流，另保留两个独立 Artifact 工具。
+截至 2026-10-17，初始代表性验收提交为 [`95bb3fa`](https://github.com/Grinch27/docker-builder/commit/95bb3fac6a42409192c15f942d5212c5369943f1)，后续全量与定向结果见下表。当前有 **15 个工作流文件：原 14 个 + `gpt_dev.yml` 合并候选**。核心能力已并入候选的 17 个普通 Jobs（校验已并入规划），无嵌套工作流调用；正式入口尚未替换，因此文件数量精简尚未落地。目标是一个核心工作流，另保留两个独立 Artifact 工具。
 
 | 入口 | 当前职责 |
 |---|---|
-| `.github/workflows/gpt_dev.yml` | 合并候选，默认 `verification`；`acceptance` 为完整矩阵及 Dev/Container 非发布验收 |
+| `.github/workflows/gpt_dev.yml` | 合并候选，普通 push 默认 `validate`，手动默认 `verification`；`acceptance` 为完整矩阵及 Dev/Container 非发布验收 |
 | `.github/workflows/docker_allinone.yml` | 正式定时检查、构建、发布；手动 Dev 路由 |
 | `.github/workflows/docker_allinone_dev.yml` | Dev 预检、构建、晋升；部分模式会发布 |
 | `.github/workflows/docker_allinone_gpt.yml` | 原非发布回归入口 |
@@ -61,9 +61,19 @@
 | stable-diffusion-webui-amdgpu | amd64 | Python 3.12 构建 scikit-image 0.21.0 时 Pythran/C++ 标准不兼容。`3893ab4` 已对该源码构建设置 C++17 并增加实际导入检查；[39033539487](https://github.com/Grinch27/docker-builder/actions/runs/39033539487) 重测仍在运行，尚未计为通过。 |
 | ttrss | amd64、arm64 | 缺少 Dockerfile 的 COPY 输入：`docker-entrypoint.sh`、`src/wait-for.sh`、`src/ttrss.nginx.conf`、`src/initialize.php`、`src/s6`。后续恢复并审查匹配版本的构建资源；本轮暂缓。 |
 
-已启动的三项重测保留运行；本轮不再因这些应用追加修复或新一轮构建。后续处理时先读取对应 Run 的最终结论及日志，再更新本表，不把已提交修复等同于构建成功。状态是本次记录时的快照，不是自动更新的实时结果。
+已启动的三项重测保留运行；截至 2026-10-17 21:03（Asia/Shanghai）仍在运行。本轮不再因这些应用追加修复或新一轮构建。后续处理时先读取对应 Run 的最终结论及日志，再更新本表，不把已提交修复等同于构建成功。状态是本次记录时的快照，不是自动更新的实时结果。
 
-本地回归为 95 项测试通过，含实际平台门禁、Meson 文件生成及定向多目标筛选；最新已完成 CI 基线 `5a7ef20` 为 94 项通过。actionlint 仅精确忽略前述 queue / false 两类提示，shellcheck / pyflakes 未执行。Dev/Container 实测仅证明代表性 vlmcsd 目标，未验证所有应用、真实 Registry/Release 晋升、VPN 联网、GUI 或 GPU 运行。跨 SHA 的定向通过不得汇总成同一 SHA 的 52/52。
+当前本地与 CI 为 106 项测试通过，含实际平台门禁、Meson 文件生成、目标筛选、规划失败门禁和镜像比较边界；最新轻量验收见下节。actionlint 仅精确忽略前述 queue / false 两类提示，shellcheck / pyflakes 未执行。Dev/Container 实测仅证明代表性 vlmcsd 目标，未验证所有应用、真实 Registry/Release 晋升、VPN 联网、GUI 或 GPU 运行。跨 SHA 的定向通过不得汇总成同一 SHA 的 52/52。
+
+### 工作流精简验收（2026-10-17）
+
+- `b5f71d3` / [39034643008](https://github.com/Grinch27/docker-builder/actions/runs/39034643008)：校验与规划合并，18 → 17 个 Jobs；普通 push 默认只运行 Runner 解析和校验/规划，实测 **2 成功、15 跳过**，99 项测试通过，`route=validate`、发布标志均为 `false`。
+- `8474dac` / [39034967939](https://github.com/Grinch27/docker-builder/actions/runs/39034967939)：Dev/smoke 两份完全相同的 197 行比较代码提取为 `compare_image_snapshot.py`；实测 **2 成功、15 跳过、106 项测试通过**。原算法 AST 保持一致，本地 9 组固定输入的完整 JSON 输出与提取前逐字节相同。
+- 候选 YAML 本轮由 **4,442 → 4,006 行**、178,539 → 161,053 字节。提取共享逻辑用于减少重复维护，不把转移到辅助脚本的代码计为业务逻辑删除；未据此声称运行时间提升百分比。
+- 两段完全相同的 Docker 数据目录/压缩前清理脚本使用 [YAML Anchor/Alias](https://docs.github.com/en/actions/reference/workflows-and-actions/reusing-workflow-configurations#yaml-anchors-and-aliases) 复用。解析后确认所有原始执行步骤保留，校验先于规划运行；失效校验不能被忽略。
+- 候选 Dev/smoke 并发组改用 `gpt-dev-<ref>-<app>`、`gpt-smoke-<ref>-<target>`，与原入口隔离。push 路径覆盖 README 配置及全部 `scripts/ci/**`，普通变更不再启动镜像构建；未知、格式错误或重复的候选选择标记直接失败。
+
+本轮两次 CI 只证明轻量路由和比较器的固定输入回归；没有重新执行镜像构建或 Dev/Container 全链路，不增加上表应用通过数量。剩余研究按收益排序：Dev/smoke 的构建、快照与归档重复；正式切换时的旧入口/重复定时任务收敛；候选内约 401 行禁用发布 Shell 的最终归属。层诊断枚举全部 Linux 平台，详细诊断仅检查 amd64/arm64，不能作为相同覆盖直接合并。缓存与预装工具镜像需先确认上游更新语义并测量收益，暂不新增维护面。
 
 ## 配置、脚本与目录
 
@@ -98,6 +108,7 @@ python3 scripts/ci/materialize_test_hooks.py --app APP --kind test
 | `scripts/ci/gpt_workflow_graph.py` | 候选普通 Jobs 的依赖、循环、嵌套调用检查 |
 | `scripts/ci/test-workflow-graph.py` | 原 14 个工作流依赖保护；仅排除候选，不可据此宣称仅有 14 个文件 |
 | `scripts/ci/verify_image_archive.py` | 不解压、不执行归档；验证唯一 manifest、平台配置和层文件 |
+| `scripts/ci/compare_image_snapshot.py` | Dev/smoke 共用的纯 JSON 比较器；保留 UNKNOWN、缺失/不可观察及版本/配置差异语义，不访问 Registry、不执行发布 |
 
 强制构建用显式布尔比较合并 matrix 与 plan 值，避免字符串 `"false"` 被 `||` 视为真值而覆盖强制请求。运行时门禁必须确认强制标志没有丢失。
 
@@ -138,7 +149,7 @@ README 改写需比较全部 JSON 配置、监控记录、应用行和 Meta-app 
 
 候选 `WORKFLOW_READ_ONLY=true` 拒绝生产、容器发布和 Dev 晋升路由。Dev 仅运行本地构建、比较及归档，Release 创建/上传已从该构建步骤移除；晋升、外部 Registry 登录/推送、README 推送及 Release 发布步骤硬禁用。Container 构建启用后同样保留逐步骤发布禁用。这里描述的是执行门禁，候选 YAML 的全局 token 权限仍为用户既定的 `write-all`；验收 Jobs 仅请求 `contents: read`。
 
-定向重测标记为 `[gpt-retest:APP:TAG]`、`[gpt-dev:APP:TAG]`、`[gpt-container:APP:TAG]`，每次 push 仅接受一个标记。retest 支持逗号分隔的多个 `APP:TAG`，逐项从配置验证，拒绝重复或未知目标。全量验收拒绝目标筛选，不能用子集冒充全部。每个组合上传含 SHA、平台、阶段和退出码的证据；Dev/Container 归档只上传 Actions Artifact。定向重测不同 SHA 的历史成功不能替代同一 SHA 的全量通过。
+普通 push 默认 `validate`，也可显式使用 `[gpt-validate]`；代表性完整验证需手动选 `verification` 或使用 `[gpt-verification]`，全量仍为 `[gpt-acceptance]`。保留 `[gpt-retest:APP:TAG]`、`[gpt-dev:APP:TAG]`、`[gpt-container:APP:TAG]` 等既有定向路由，每次 push 仅接受一个标记。retest 支持逗号分隔的多个 `APP:TAG`，逐项从配置验证，拒绝重复或未知目标。全量验收拒绝目标筛选，不能用子集冒充全部。每个组合上传含 SHA、平台、阶段和退出码的证据；Dev/Container 归档只上传 Actions Artifact。定向重测不同 SHA 的历史成功不能替代同一 SHA 的全量通过。
 
 正式 Dev 仅 `execution_route=dev` + `dev_mode=preflight` 是已验收的非发布预检；`auto` / `build` / `promote-*` 可能创建 Release 或推送 Docker Hub/GHCR，不能当作 dry run。检查、构建、镜像内测试、发布是不同验收等级；报告必须给出 Commit、Run、实际范围、跳过项及限制。
 
