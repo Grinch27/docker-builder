@@ -289,10 +289,10 @@ RUN \
   echo "**** compiling lame ****" && \
   cd /tmp/lame && \
   cp \
-    /usr/share/automake-1.16/config.guess \
+    "$(automake --print-ac-dir)/config.guess" \
     config.guess && \
   cp \
-    /usr/share/automake-1.16/config.sub \
+    "$(automake --print-ac-dir)/config.sub" \
     config.sub && \
   ./configure \
     --disable-frontend \
@@ -710,10 +710,10 @@ RUN \
   echo "**** compiling theora ****" && \
   cd /tmp/theora && \
   cp \
-    /usr/share/automake-1.16/config.guess \
+    "$(automake --print-ac-dir)/config.guess" \
     config.guess && \
   cp \
-    /usr/share/automake-1.16/config.sub \
+    "$(automake --print-ac-dir)/config.sub" \
     config.sub && \
   curl -fL \
     'https://gitlab.xiph.org/xiph/theora/-/commit/7288b539c52e99168488dc3a343845c9365617c8.diff' \
