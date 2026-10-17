@@ -315,7 +315,7 @@ def render_summary(c, records=None, scripts=None, meta_scripts=None):
     n=sum(len(a['targets']) for a in c['apps'].values())
     rows=[f'**{len(c["apps"])} applications / {n} build targets** (generated from configuration above).',
           '', '| Application | Registry repository | Tags | Platforms | Base image | Dockerfiles | Detected version | Probe status | JSON | Build | Meta-app | Test |',
-          '|---|---|---|---|---|---|---|---|---|---|---|']
+          '|---|---|---|---|---|---|---|---|---|---|---|---|']
     if scripts is None or set(scripts)!=set(c['apps']):
         raise ValueError('Application test scripts must cover configured apps')
     if meta_scripts is None or not set(meta_scripts).issubset(c['apps']):
