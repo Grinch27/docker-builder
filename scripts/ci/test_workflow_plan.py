@@ -29,7 +29,7 @@ class WorkflowPlanTests(unittest.TestCase):
     def test_all_push_requests_remain_nonpublishing(self):
         messages = ["ordinary update", "[full-build]", "[full-retest:runner:actions]",
                     "[smoke-vlmcsd]", "[probe-smoke]", "[smoke-target:samba-alpine]",
-                    "[diagnostics-full]", "ci: smoke catalog build"]
+                    "[diagnostics-full]"]
         for route in workflow_plan.ROUTES:
             for message in messages:
                 with self.subTest(route=route, message=message):
@@ -219,6 +219,23 @@ class WorkflowPlanTests(unittest.TestCase):
         self.assertEqual(result["force_build"], "true")
         self.assertEqual(result["may_publish"], "false")
         self.assertEqual(len(result["build_targets"]["include"]), 1)
+
+    def test_manual_single_target_build_replaces_fixed_registry_smoke(self):
+        for app, tag in [("samba", "alpine"), ("aria2", "latest"), ("runner", "actions")]:
+            with self.subTest(app=app, tag=tag):
+                result = workflow_plan.staging_plan(
+                    self.config, "workflow_dispatch", {},
+                    {"execution_route": "build", "app_branch": app, "tag_repo": tag}, "runner")
+                self.assertEqual(result["route"], "build")
+                self.assertEqual(result["force_build"], "true")
+                self.assertEqual(result["fetch_versions"], "true")
+                self.assertEqual(result["publish"], "false")
+                self.assertEqual(result["may_publish"], "false")
+                self.assertEqual([(t["app_branch"], t["tag_repo"]) for t in
+                                  result["build_targets"]["include"]], [(app, tag)])
+        with self.assertRaises(ValueError):
+            workflow_plan.staging_plan(self.config, "workflow_dispatch", {},
+                                       {"execution_route": "registry-smoke"}, "runner")
 
     def test_full_acceptance_covers_catalog_and_isolates_compatibility_jobs(self):
         result = workflow_plan.staging_plan(self.config, "push",

@@ -16,7 +16,7 @@ import catalog
 
 
 ROUTES = {"validate", "production", "monitor", "build", "test", "smoke", "dev",
-          "diagnostics", "container", "registry-smoke"}
+          "diagnostics", "container"}
 DEV_MODES = {"preflight", "auto", "build", "promote-dockerhub", "promote-ghcr", "promote-all"}
 # This is the former Dev auto-selection policy, not another application catalog.
 DEV_EXCLUDED = {"baidunetdisk", "cloudflare-warp", "expressvpn", "ffmpeg", "novnc",
@@ -67,8 +67,6 @@ def plan(config: dict, event_name: str, event: dict, inputs: dict, runner: str) 
             route, app = "test", "vlmcsd"
         elif "[probe-smoke]" in message:
             route, probe = "test", True
-        elif message.startswith("ci: smoke catalog build"):
-            route = "registry-smoke"
         elif "[diagnostics-full]" in message:
             route = "diagnostics"
     elif event_name == "schedule":
@@ -234,7 +232,7 @@ def staging_plan(config: dict, event_name: str, event: dict, inputs: dict, runne
         raise ValueError("Core accepts push/schedule/workflow_dispatch only")
     if route not in {"verification", "acceptance", "dev-verify", "container-verify",
                      "validate", "monitor", "build", "test", "smoke",
-                     "diagnostics", "registry-smoke", "dev"}:
+                     "diagnostics", "dev"}:
         raise ValueError("Publishing routes are prohibited in gpt_dev.yml")
     if route == "dev" and selected.get("dev_mode", "preflight") != "preflight":
         raise ValueError("Dev build/promotion is prohibited in gpt_dev.yml")

@@ -6,7 +6,7 @@
 
 当前唯一保留的 Workflow 文件为 `.github/workflows/gpt_dev.yml` 与 `.github/workflows/download_artifact.yml`。
 此前 13 个工作流已从 main 树中移除，Git 历史保留其源码，非 Workflow 执行脚本继续保留。
-新核心仍使用 17 个普通 Jobs，不再引用旧的可复用 Workflow；独立工具提供 URL 下载以及指定平台 Docker 镜像拉取、校验、压缩和 Artifact 上传两种手动模式。
+新核心使用 16 个普通 Jobs，不再引用旧的可复用 Workflow；独立工具提供 URL 下载以及指定平台 Docker 镜像拉取、校验、压缩和 Artifact 上传两种手动模式。
 
 **发布边界：** 当前 `gpt_dev.yml` 仍是非发布实现。普通 Push 只作轻量验证；
 每日 01:00 UTC 的 schedule 只进行版本监控，不执行生产 Docker Hub/GHCR/Release 发布。
@@ -143,6 +143,12 @@ python3 scripts/ci/catalog.py set --scope app --app vlmcsd --field platforms --v
 README 改写需比较全部 JSON 配置、监控记录、应用行和 Meta-app / Test 源码，检查生成幂等及末尾标记；不得用 `summary --write` 掩盖源码丢失。工作流变更再运行 YAML / Actions 表达式检查、调用关系检查，并读取实际 Actions 日志和产物。
 
 验收环境使用 actionlint v1.7.12。它不识别 `concurrency.queue`，且对候选隔离用的 `if: false` 报常量提示；仅可精确忽略这两类已知提示。缺少 shellcheck / pyflakes 时应明确说明相应检查未执行，不把它们计为通过。不能为消除提示启用禁用的发布步骤。
+
+## 单应用非发布构建与已退役的 Registry Smoke
+
+`registry-smoke` 固定三应用 Job 及手动 Route 已退役，避免和现有的单目标构建重复。使用 `workflow_dispatch` 的 `execution_route=build`，并指定 `app_branch`、`tag_repo`（仅配置一个 Tag 的应用可省略 Tag），仅选中一个 Catalog Target，强制构建；`build` Job 使用本地 Registry `localhost:5000`，经过 Buildx 构建、Skopeo 检查、按平台 `docker pull`、README Test 和逐平台归档校验。此模式仍依赖版本采集、monitor 和 check，不等同于直接 `--load` 的快速构建。
+
+示例：`gh workflow run gpt_dev.yml --ref main -f execution_route=build -f app_branch=samba -f tag_repo=alpine`。如只要求按所选平台快速构建并运行 Test，可改用 `execution_route=test` 及可选的 `platform`，它采用 Buildx `--load`，**不测试 Registry 推拉**。`verification` 继续通过原有 `build` 路径验证本地 Registry；不另建固定应用名单。两条路径均禁止外部 Registry Push、Release 和晋升。历史 Registry Smoke 测试记录只作历史证据，不再代表当前仍有独立 Job。
 
 ## 发布边界与下一步
 

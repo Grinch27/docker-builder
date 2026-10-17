@@ -155,6 +155,16 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertNotIn("docker push ", manual)
         self.assertNotIn("gh release ", manual)
 
+    def test_single_target_build_replaces_registry_smoke_job(self):
+        jobs = graph.job_blocks(TEXT)
+        self.assertNotIn("registry-smoke", TEXT)
+        self.assertNotIn("registry-smoke", jobs)
+        self.assertIn("registry_local: localhost:5000", jobs["build"])
+        self.assertIn("Build and push to local registry", jobs["build"])
+        self.assertIn("docker pull --platform $platform", jobs["build"])
+        self.assertIn("scripts/ci/build-image.sh", jobs["build"])
+        self.assertIn("materialize_test_hooks.py", jobs["build"])
+
     def test_staging_publication_is_hard_disabled(self):
         jobs = graph.job_blocks(TEXT)
         self.assertIn("WORKFLOW_READ_ONLY: 'true'", jobs["plan"])

@@ -31,7 +31,7 @@ def validate(root):
     text = (flow / "gpt_dev.yml").read_text(encoding="utf-8")
     blocks = job_blocks(text)
     required = {"runner-image", "plan", "fetch-versions", "monitor", "check", "build",
-                "dev-inspect", "dev-build", "smoke", "test-images", "registry-smoke",
+                "dev-inspect", "dev-build", "smoke", "test-images",
                 "diagnostic-layers", "diagnostic-platforms", "diagnostic-collect",
                 "diagnostic-meta-platforms", "diagnostic-validate", "container-build"}
     assert required <= blocks.keys(), "Core capability Job missing"
