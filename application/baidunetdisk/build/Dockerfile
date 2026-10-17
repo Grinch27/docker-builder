@@ -1,6 +1,6 @@
 # Requirement: preserve the configured version and architectures while restoring official package download.
 # Unknown/research: official CDN availability varies by runner region; upstream package checksum is unpublished here.
-# Optimization: use Baidu's direct issue CDN instead of the failing port-19001 redirect.
+# Optimization: use Baidu's direct CDN and GitHub release redirects without anonymous API calls.
 # Risks/verification: keep package version/architecture unchanged; require real amd64/arm64 build and README Test.
 #==============================
 # Inpired by:
@@ -20,8 +20,17 @@ RUN set -x \
 		ca-certificates \
 		curl \
 		gpg \
+	&& latest_release_archive() { \
+        release_repo="$1"; \
+        release_url=$(curl --retry 3 -fsSL -o /dev/null -w '%{url_effective}' "https://github.com/${release_repo}/releases/latest") || return 1; \
+        case "${release_url}" in \
+            "https://github.com/${release_repo}/releases/tag/"*) ;; \
+            *) echo "Cannot resolve latest release: ${release_repo}" >&2; return 1 ;; \
+        esac; \
+        printf 'https://codeload.github.com/%s/tar.gz/refs/tags/%s' "${release_repo}" "${release_url##*/}"; \
+    } \
 	# ===== noVNC =====
-	&& URL_noVNC=$(curl -s https://api.github.com/repos/novnc/noVNC/releases/latest | grep 'tarball_url' | cut -d ':' -f 2- | cut -d '"' -f 2) \
+	&& URL_noVNC=$(latest_release_archive novnc/noVNC) \
     && FILE_noVNC="/noVNC-latest.tar.gz" \
 	# && PATH_noVNC="/opt/bin/noVNC" \
 	# ----- noVNC: Setup -----
@@ -36,7 +45,7 @@ RUN set -x \
 	&& rm -rf "${PATH_noVNC}/snap" \
 	&& rm -rf "${PATH_noVNC}/tests" \
 	# ===== websockify =====
-	&& URL_websockify=$(curl -s https://api.github.com/repos/novnc/websockify/releases/latest | grep 'tarball_url' | cut -d ':' -f 2- | cut -d '"' -f 2) \
+	&& URL_websockify=$(latest_release_archive novnc/websockify) \
     && FILE_websockify="/websockify.tar.gz" \
 	&& PATH_websockify="${PATH_noVNC}/utils/websockify" \
 	# ----- websockify: Setup -----
