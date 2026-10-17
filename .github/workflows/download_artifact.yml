@@ -341,7 +341,7 @@ jobs:
       IMAGE_REF: ${{ inputs.image_ref }}
       TARGET_PLATFORM: ${{ inputs.image_platform }}
       SPLIT_ARCHIVE: ${{ inputs.toggle_split }}
-      OUTPUT_DIR: ${{ runner.temp }}/pulled-image
+      OUTPUT_DIR: ${{ github.workspace }}/pulled-image
     steps:
       - name: Checkout archive verifier
         uses: actions/checkout@v4
@@ -381,6 +381,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: pulled-image-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/pulled-image/*
+          path: ${{ github.workspace }}/pulled-image/*
           if-no-files-found: error
           retention-days: 1
