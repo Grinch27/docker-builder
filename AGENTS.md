@@ -6,14 +6,14 @@
 
 ### 配置和脚本唯一来源
 
-- `README.md` 中 `app-config` 标记内的 schema-v2 JSON 是应用/构建 Target 配置与 `monitor.records` 的权威记录；`config` 经人工审核，监控工作流只在真实状态变化时更新 `monitor.records`。不要把 Markdown 应用清单当成 JSON 配置来源。
-- `README.md` 的 **Applications / 应用清单** 位于文末，`app-summary` 标记内的展示字段由配置和监控记录生成。**Meta-app / Test 两列例外：其中每个应用的完整 Shell 代码是脚本的唯一维护源。** `JSON` 列是从配置生成的只读影子视图，不参与 CI 或构建输入。`Build` 列由 JSON 为全部 30 个 Target 生成非发布 Buildx 验证命令，不是第三份可手工维护的脚本来源。 保留 `app-json:<app>`、`app-meta:<app>`、`app-test:<app>`、`app-summary`、`app-config` 及所有结束标记；勿手工批量重排、转义或删改源码。
+- `README.md` 文末 Applications 表格每行的 `app-json:<app>` 单元格是应用构建配置与监控记录的唯一权威数据源；不再使用独立 `app-config` JSON 块。人工维护 `JSON.config`，自动化仅更新 `JSON.monitor`，其他展示列由生成器同步。
+- `README.md` 的 **Applications / 应用清单** 位于文末，`app-summary` 标记内的展示字段由配置和监控记录生成。**Meta-app / Test 两列例外：其中每个应用的完整 Shell 代码是脚本的唯一维护源。** `JSON` 列承载应用配置和监控记录，CI 直接从该列解析。`Build` 列由 JSON 为全部 30 个 Target 生成非发布 Buildx 验证命令，不是第三份可手工维护的脚本来源。 保留 `app-json:<app>`、`app-meta:<app>`、`app-test:<app>`、`app-summary` 及所有结束标记；勿手工批量重排、转义或删改源码。
 - `scripts/ci/materialize_test_hooks.py --app APP --kind meta` 在 Actions checkout 中恢复 `application/APP/meta-app/meta-app.sh`；`--kind test`（默认）恢复 `application/APP/test/test.sh`。工作流必须先生成文件，再枚举/读取/执行对应路径。生成器不能覆盖不同内容或符号链接，不会在宿主上执行 Shell。当前基线：24 个应用、30 个 Target、23 份 Meta-app、24 份 Test；`ffmpeg` 不存在有效的 Meta-app 脚本，不应无依据制造版本探针。
 - 每个应用的 `application/APP/build/` 保留 Dockerfile 及其 `COPY`、`ADD`、构建步骤依赖。清理每应用文件之前要检查构建上下文、工作流与跨仓库引用；不要从文件名或重复 SHA 直接推定可以删除。具体目录及命令见本文件下方「应用目录与命令」章节。
 
 ### 应用目录与命令 / Application layout
 
-新增应用以 `application/<app>/build/` 为最小构建目录，保留 Dockerfile 和所有 `COPY`、`ADD` 及构建阶段使用的静态文件。可以存在多个 Dockerfile；每个 Target 应在 README `app-config` JSON 中声明对应 Dockerfile、平台、基础镜像和标签策略。
+新增应用以 `application/<app>/build/` 为最小构建目录，保留 Dockerfile 和所有 `COPY`、`ADD` 及构建阶段使用的静态文件。可以存在多个 Dockerfile；每个 Target 应在 README Applications 表格相应应用行的 `JSON.config` 中声明 Dockerfile、平台、基础镜像和标签策略。
 
 元数据与镜像内测试的 **源码只维护在 README Applications 表格**。工作流运行时按需生成 `application/<app>/meta-app/meta-app.sh`（`--kind meta`）和 `application/<app>/test/test.sh`（默认 `--kind test`），而不是重新向仓库加入两份重复的持久化脚本。`ffmpeg` 的 Meta-app 缺失状态要保留，除非另有经验证的探针实施决策。
 
@@ -27,7 +27,7 @@ python3 scripts/ci/catalog.py env --app runner --tag actions
 python3 scripts/ci/catalog.py tags --app runner --tag actions --version 1.0 --consistent true
 ```
 
-经明确授权的配置维护示例（只修改 `app-config` 以及其生成展示，不发布镜像）：
+经明确授权的配置维护示例（更新 Applications 表格 JSON.config 和展示列，不发布镜像）：
 
 ```bash
 python3 scripts/ci/catalog.py set --app runner --field base_image --value debian:testing-slim
@@ -58,7 +58,7 @@ python3 -m unittest discover -s scripts/ci -p 'test_*.py' -v
 python3 scripts/ci/test-workflow-graph.py
 ```
 
-- 若确实修改了 `config`，使用 `catalog.py set` 或先修改 JSON 再运行 `catalog.py summary --write`；不应使用 `summary --write` 来补救 Meta-app/Test 源码丢失或错误引用。
+- 修改 `config` 时使用 `catalog.py set`，或修改对应应用行 JSON.config 后运行 `catalog.py summary --write`；不得用 `summary --write` 掩盖 Meta-app/Test 源码丢失或错误引用。
 - 比较 README 重写前后的 `config`、`monitor.records`、24 个应用行及全部 Meta-app/Test 脚本源码；验证无损 HTML 编解码、幂等、不覆盖非生成文件、`ffmpeg` 缺失语义、文件末尾表格位置。工作流变更时再检查 YAML 语法和内部调用关系；非发布 Actions 的成功不能替代生产发布验收。
 
 ### 清理记录与可恢复资料 / Archived unused files

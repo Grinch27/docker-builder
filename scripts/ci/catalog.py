@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Read or update the application catalog embedded in README.md.
 
-The config block is human-maintained. Version-table and version-json remain
-generated run output; catalog writes never rewrite those other blocks.
+The application table contains canonical per-row config and monitor JSON.
+Meta-app and Test remain independent canonical Shell sources.
 """
 import argparse
 import html
@@ -26,12 +26,19 @@ APP_KEYS = {'repository', 'base_image', 'platforms', 'tag_policy', 'targets'}
 TARGET_KEYS = {'tag', 'dockerfile', 'build_arg', 'base_image', 'tag_policy'}
 
 def catalog_document_from_text(text):
-    if text.count(START)!=1 or text.count(END)!=1:
+    """Read the canonical table JSON or historical fenced configuration."""
+    if text.count(START)==1 and text.count(END)==1:
+        raw=text.split(START,1)[1].split(END,1)[0].strip()
+        if not raw.startswith(FENCE+'json\n') or not raw.endswith('\n'+FENCE):
+            raise ValueError('app-config must be a single fenced JSON block')
+        return json.loads(raw[len(FENCE)+5:-len(FENCE)-1])
+    if START in text or END in text:
         raise ValueError('Expected exactly one app-config marker pair')
-    raw=text.split(START,1)[1].split(END,1)[0].strip()
-    if not raw.startswith(FENCE+'json\n') or not raw.endswith('\n'+FENCE):
-        raise ValueError('app-config must be a single fenced JSON block')
-    return json.loads(raw[len(FENCE)+5:-len(FENCE)-1])
+    entries=embedded_json_from_text(text)
+    apps={name:entry['config'] for name,entry in entries.items()}
+    records=[record for entry in entries.values() for record in entry['monitor']]
+    return {'schema_version':2,'config':{'schema_version':1,'apps':apps},
+            'monitor':{'records':records}}
 
 def validate_document(document):
     if not isinstance(document,dict): raise ValueError('Catalog JSON must be an object')
@@ -61,13 +68,29 @@ def catalog_data_from_text(text):
     return document['config'] if document.get('schema_version')==2 else document
 
 def replace_catalog_document(text,document):
-    if text.count(START)!=1 or text.count(END)!=1:
+    """Rewrite per-row JSON without touching canonical Shell source cells."""
+    if text.count(START)==1 and text.count(END)==1:
+        before,rest=text.split(START,1)
+        middle,after=rest.split(END,1)
+        if END in middle: raise ValueError('Invalid app-config marker order')
+        content=json.dumps(document,indent=2,ensure_ascii=False)
+        return before+START+'\n'+FENCE+'json\n'+content+'\n'+FENCE+'\n'+END+after
+    if START in text or END in text:
         raise ValueError('Expected exactly one app-config marker pair')
-    before,rest=text.split(START,1)
-    middle,after=rest.split(END,1)
-    if END in middle: raise ValueError('Invalid app-config marker order')
-    content=json.dumps(document,indent=2,ensure_ascii=False)
-    return before+START+'\n'+FENCE+'json\n'+content+'\n'+FENCE+'\n'+END+after
+    validate_document(document)
+    if document.get('schema_version')!=2:
+        raise ValueError('Table storage requires schema v2')
+    if text.count(SUMMARY_START)!=1 or text.count(SUMMARY_END)!=1:
+        raise ValueError('Expected one application table')
+    if any(r['app_branch'] not in document['config']['apps']
+           for r in document['monitor']['records']):
+        raise ValueError('Monitor record has no application row')
+    left,rest=text.split(SUMMARY_START,1)
+    middle,right=rest.split(SUMMARY_END,1)
+    if SUMMARY_END in middle: raise ValueError('Out-of-order summary markers')
+    content=render_summary(document['config'],document['monitor']['records'],
+                           embedded_tests_from_text(text),embedded_meta_from_text(text))
+    return left+SUMMARY_START+'\n'+content+'\n'+SUMMARY_END+right
 def catalog_from_readme(path):
     catalog=catalog_data_from_text(path.read_text(encoding='utf-8'))
     validate(catalog, path.parent)
@@ -114,13 +137,13 @@ META_CELL = re.compile(
     r'<pre><code>(.*?)</code></pre></details><!-- app-meta:\1:end -->')
 META_MISSING = re.compile(r'<!-- app-meta:([a-z0-9_.-]+):missing -->—')
 
-# Generated, read-only JSON shadows. Never use these as build inputs.
+# Canonical per-application JSON containing config and monitor observations.
 JSON_CELL = re.compile(
     r'<!-- app-json:([a-z0-9_.-]+):start --><details><summary>JSON</summary>' +
     r'<pre><code>(.*?)</code></pre></details><!-- app-json:\1:end -->')
 
 def embedded_json_from_text(text):
-    """Decode canonical app shadows for parity checks, not configuration loading."""
+    """Decode canonical per-row JSON, verifying row ownership and escaping."""
     if text.count(SUMMARY_START)!=1 or text.count(SUMMARY_END)!=1:
         raise ValueError('Expected exactly one app-summary table')
     region=text.split(SUMMARY_START,1)[1].split(SUMMARY_END,1)[0]
@@ -133,8 +156,10 @@ def embedded_json_from_text(text):
         if not prefix.startswith('| ['+name+'](application/'+name+'/) |'):
             raise ValueError('JSON attached to wrong application: '+name)
         value=json.loads(html.unescape(encoded))
-        if not isinstance(value,dict) or set(value)!={'app','config'} or value['app']!=name or not isinstance(value['config'],dict):
+        if not isinstance(value,dict) or set(value)!={'app','config','monitor'} or value['app']!=name or not isinstance(value['config'],dict) or not isinstance(value['monitor'],list):
             raise ValueError('Invalid embedded JSON: '+name)
+        if any(not isinstance(r,dict) or r.get('app_branch')!=name for r in value['monitor']):
+            raise ValueError('JSON monitor attached to wrong application: '+name)
         canonical=json.dumps(value,ensure_ascii=False,sort_keys=True,separators=(',',':'))
         if encode_embedded_test(canonical)!=encoded:
             raise ValueError('Noncanonical embedded JSON: '+name)
@@ -313,7 +338,7 @@ def render_build_preview(name, app):
 def render_summary(c, records=None, scripts=None, meta_scripts=None):
     observed={r['app_branch']:r for r in (records or [])}
     n=sum(len(a['targets']) for a in c['apps'].values())
-    rows=[f'**{len(c["apps"])} applications / {n} build targets** (generated from configuration above).',
+    rows=[f'**{len(c["apps"])} applications / {n} build targets** (generated from the JSON column).',
           '', '| Application | Registry repository | Tags | Platforms | Base image | Dockerfiles | Detected version | Probe status | JSON | Build | Meta-app | Test |',
           '|---|---|---|---|---|---|---|---|---|---|---|---|']
     if scripts is None or set(scripts)!=set(c['apps']):
@@ -335,7 +360,7 @@ def render_summary(c, records=None, scripts=None, meta_scripts=None):
         status=(bt+str(record.get('status') or 'unknown').replace('|','\\|')+bt
                 if record else '—')
         json_cell=('<!-- app-json:'+name+':start --><details><summary>JSON</summary><pre><code>'+
-                   encode_embedded_test(json.dumps({'app':name,'config':a},ensure_ascii=False,sort_keys=True,separators=(',',':')))+
+                   encode_embedded_test(json.dumps({'app':name,'config':a,'monitor':[r for r in (records or []) if r['app_branch']==name]},ensure_ascii=False,sort_keys=True,separators=(',',':')))+
                    '</code></pre></details><!-- app-json:'+name+':end -->')
         build_cell=('<!-- app-build:'+name+':start --><details><summary>Build</summary><pre><code>'+
                     encode_embedded_test(render_build_preview(name,a))+
@@ -361,7 +386,7 @@ def updated_summary(text,c):
 
 def atomic_write(path,old,new):
     if new==old: return 'unchanged'
-    with tempfile.NamedTemporaryFile('w',encoding='utf-8',dir=path.parent,delete=False,prefix='.app-config-') as f:
+    with tempfile.NamedTemporaryFile('w',encoding='utf-8',dir=path.parent,delete=False,prefix='.app-table-') as f:
         f.write(new)
         name=f.name
     try:
@@ -392,7 +417,7 @@ def check_summary(readme,c):
         raise ValueError('README app-summary is stale; run catalog.py summary --write')
     return True
 def update(readme, c, app, field, value, *, scope='app', tag='latest'):
-    """Atomically change only the static README catalog JSON block."""
+    """Atomically edit the selected per-app table config and derived columns."""
     if app not in c['apps']:
         raise ValueError('Unknown app: '+app)
     if scope == 'app':

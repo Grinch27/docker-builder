@@ -19,11 +19,8 @@ import catalog  # noqa: E402
 
 def assert_unrelated_readme_content_preserved(test, before, after):
     """Catalog edits may refresh the table; not scripts, monitoring or prose."""
-    test.assertEqual(before.split(catalog.START, 1)[0],
-                     after.split(catalog.START, 1)[0])
-    test.assertEqual(
-        before.split(catalog.END, 1)[1].split(catalog.SUMMARY_START, 1)[0],
-        after.split(catalog.END, 1)[1].split(catalog.SUMMARY_START, 1)[0])
+    test.assertEqual(before.split(catalog.SUMMARY_START,1)[0],
+                     after.split(catalog.SUMMARY_START,1)[0])
     test.assertEqual(before.split(catalog.SUMMARY_END, 1)[1],
                      after.split(catalog.SUMMARY_END, 1)[1])
     test.assertEqual(catalog.snapshot_from_readme(before),
@@ -147,8 +144,8 @@ class CatalogTests(unittest.TestCase):
             path = directory / "README.md"
             shutil.copyfile(ROOT / "README.md", path)
             old = path.read_text(encoding="utf-8")
-            marker = "<!-- app-config:end -->"
-            self.assertIn(marker, old)
+            self.assertNotIn(catalog.START, old)
+            self.assertIn(catalog.SUMMARY_END, old)
             self.assertEqual(catalog.update(path, copy.deepcopy(self.config),
                                             "runner", "base_image", "debian:stable-slim"),
                              "updated")
@@ -166,8 +163,8 @@ class CatalogTests(unittest.TestCase):
             (directory / "application").symlink_to(ROOT / "application", target_is_directory=True)
             path = directory / "README.md"
             path.write_text((ROOT / "README.md").read_text().replace(
-                catalog.END, "", 1), encoding="utf-8")
-            with self.assertRaisesRegex(ValueError, "marker pair"):
+                "<!-- app-json:aria2:end -->", "<!-- missing -->", 1), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "Malformed|missing"):
                 catalog.catalog_from_readme(path)
 
     def test_target_setting_update_is_idempotent(self):
@@ -264,13 +261,14 @@ class CatalogTests(unittest.TestCase):
 
     def test_collapsible_markers_are_unchanged_for_actions(self):
         readme=(ROOT/'README.md').read_text(encoding='utf-8')
-        for marker in [catalog.START,catalog.END,catalog.SUMMARY_START,catalog.SUMMARY_END,
+        for marker in [catalog.SUMMARY_START,catalog.SUMMARY_END,
 ]:
             self.assertEqual(readme.count(marker),1,marker)
         self.assertEqual(catalog.catalog_from_readme(ROOT/'README.md'),self.config)
     def test_applications_table_is_last_section(self):
         text=(ROOT/'README.md').read_text(encoding='utf-8')
-        self.assertLess(text.index(catalog.END), text.index(catalog.SUMMARY_START))
+        self.assertNotIn(catalog.START,text)
+        self.assertNotIn(catalog.END,text)
         self.assertTrue(text.endswith(catalog.SUMMARY_END+'\n'))
         self.assertEqual(text.count('## Applications / 应用清单'), 1)
 
@@ -280,7 +278,8 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(set(entries),set(self.config['apps']))
         self.assertEqual(len(entries),24)
         for name,app in self.config['apps'].items():
-            self.assertEqual(entries[name],{'app':name,'config':app})
+            self.assertEqual(entries[name],{'app':name,'config':app,
+                'monitor':[r for r in catalog.snapshot_from_readme(source) if r['app_branch']==name]})
         self.assertEqual(source.count('<details><summary>JSON</summary>'),24)
         with self.assertRaisesRegex(ValueError,'Malformed'):
             catalog.embedded_json_from_text(source.replace('<!-- app-json:aria2:start -->','<!-- bad -->',1))
@@ -295,7 +294,10 @@ class CatalogTests(unittest.TestCase):
         changed=[dict(r) for r in monitor_state.parse_readme_versions(source)]
         changed[0]['version']='simulated-shadow-probe'
         refreshed=monitor_state.render_readme(source,changed,'monitor-images.yml')
-        self.assertEqual(catalog.embedded_json_from_text(refreshed),entries)
+        refreshed_entries=catalog.embedded_json_from_text(refreshed)
+        for name in entries:
+            self.assertEqual(refreshed_entries[name]['config'],entries[name]['config'])
+        self.assertNotEqual(refreshed_entries,entries)
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory)
             (root/'application').symlink_to(ROOT/'application',target_is_directory=True)
@@ -307,6 +309,38 @@ class CatalogTests(unittest.TestCase):
             self.assertEqual(catalog.embedded_tests_from_text(source),catalog.embedded_tests_from_text(new))
             self.assertEqual(catalog.embedded_meta_from_text(source),catalog.embedded_meta_from_text(new))
             self.assertTrue(catalog.check_summary(path,catalog.catalog_from_readme(path)))
+
+    def test_table_json_is_source_of_truth_and_monitor_records_stay_isolated(self):
+        import monitor_state
+        source=(ROOT/'README.md').read_text(encoding='utf-8')
+        self.assertNotIn(catalog.START,source)
+        initial=catalog.catalog_document_from_text(source)
+        self.assertEqual(set(initial['config']['apps']),set(self.config['apps']))
+        self.assertEqual(len(initial['monitor']['records']),24)
+        edited=copy.deepcopy(initial)
+        edited['config']['apps']['aria2']['base_image']='alpine:3.22'
+        rendered=catalog.replace_catalog_document(source,edited)
+        self.assertEqual(catalog.catalog_data_from_text(rendered)['apps']['aria2']['base_image'],'alpine:3.22')
+        self.assertEqual(catalog.snapshot_from_readme(rendered),initial['monitor']['records'])
+        self.assertEqual(catalog.embedded_tests_from_text(rendered),catalog.embedded_tests_from_text(source))
+        self.assertEqual(catalog.embedded_meta_from_text(rendered),catalog.embedded_meta_from_text(source))
+        self.assertEqual(catalog.updated_summary(rendered,edited['config']),rendered)
+        newer=copy.deepcopy(initial)
+        newer['monitor']['records'][0]['version']='monitor-table-test'
+        refresh=catalog.replace_catalog_document(source,newer)
+        self.assertEqual(catalog.catalog_data_from_text(refresh),self.config)
+        self.assertEqual(monitor_state.parse_readme_versions(refresh)[0]['version'],'monitor-table-test')
+        self.assertEqual(catalog.updated_summary(refresh,self.config),refresh)
+
+    def test_table_json_rejects_misplaced_monitor_record(self):
+        source=(ROOT/'README.md').read_text(encoding='utf-8')
+        cell=catalog.embedded_json_from_text(source)['aria2']
+        altered=copy.deepcopy(cell)
+        altered['monitor'][0]['app_branch']='curl'
+        encoded=catalog.encode_embedded_test(json.dumps(altered,ensure_ascii=False,sort_keys=True,separators=(',',':')))
+        original=catalog.encode_embedded_test(json.dumps(cell,ensure_ascii=False,sort_keys=True,separators=(',',':')))
+        with self.assertRaisesRegex(ValueError,'monitor attached to wrong'):
+            catalog.catalog_data_from_text(source.replace(original,encoded,1))
 
     def test_single_visible_table_contains_app_and_probe_data(self):
         text=(ROOT/'README.md').read_text(encoding='utf-8')
@@ -328,6 +362,7 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(set(document),{'schema_version','config','monitor'})
         self.assertEqual(document['config'],self.config)
         self.assertEqual(len(document['monitor']['records']),24)
+        self.assertNotIn(catalog.START,source)
         self.assertNotIn('<!-- app-version-json:start -->',source)
 
     def test_v2_monitor_only_update_preserves_config_and_is_idempotent(self):
@@ -357,7 +392,9 @@ class CatalogTests(unittest.TestCase):
     def test_v1_compatibility_reader(self):
         import monitor_state
         source=(ROOT/'README.md').read_text(encoding='utf-8')
-        old=catalog.replace_catalog_document(source,self.config)
+        old=source.replace(catalog.SUMMARY_START,
+            catalog.START+'\n'+chr(96)*3+'json\n'+json.dumps(self.config)+'\n'+chr(96)*3+'\n'+
+            catalog.END+'\n'+catalog.SUMMARY_START,1)
         records=catalog.snapshot_from_readme(source)
         fence=chr(96)*3
         legacy=(old+'\n<!-- app-version-json:start -->\n'+fence+'json\n'+
