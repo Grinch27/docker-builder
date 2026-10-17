@@ -9,6 +9,7 @@ run-name: GPT Dev - ${{ github.event_name }} - ${{ inputs.execution_route || git
   schedule:
   - cron: '0 1 * * *'
   # Push selectors require a path below to change; AGENTS-only commits do not start a run.
+  # Targeted nonpublishing acceptance also supports [gpt-container:APP:TAG].
   push:
     branches:
     - main
