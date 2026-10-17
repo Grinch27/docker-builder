@@ -111,6 +111,8 @@ python3 scripts/ci/materialize_test_hooks.py --app APP --kind test
 | `tests/ci/test_workflow_contracts.py` | 在单元测试中统一检查两工作流布局、依赖图、调用引用和非发布门禁 |
 | `scripts/ci/verify_image_archive.py` | 不解压、不执行归档；验证唯一 manifest、平台配置和层文件 |
 | `scripts/ci/compare_image_snapshot.py` | Dev/smoke 共用的纯 JSON 比较器；保留 UNKNOWN、缺失/不可观察及版本/配置差异语义，不访问 Registry、不执行发布 |
+| `scripts/ci/inspect-image-platform.sh` | Skopeo 平台元数据及兼容 Artifact 输出 |
+| `scripts/ci/aggregate-layer-artifacts.py` | 聚合已下载的 OCI 层证据，不访问 Registry |
 
 强制构建用显式布尔比较合并 matrix 与 plan 值，避免字符串 `"false"` 被 `||` 视为真值而覆盖强制请求。运行时门禁必须确认强制标志没有丢失。
 
@@ -248,3 +250,10 @@ P3 对每次 Catalog 加载只读取一个 README 快照，复用已经解码的
 P4 退休通用生产规划器和 fenced README 兼容读取。`workflow_plan.plan()` 是唯一入口，允许 push/schedule/workflow_dispatch 和现有 11 个非发布路由；保留全部现有选择器、16 个 Job 以及 Dev/Container 的内部构建参数。production/container 发布路由、promotion、PR/workflow_call/repository_dispatch 直接失败，环境变量不能恢复发布。旧 app-config/app-version-json 存储明确报错，不回退读取；内部 config 的 schema_version=1 保留，当前 README 行存储仍派生 schema_version=2 文档。
 
 本地验收：111 项测试通过；相对基线保存的 333 组当前入口规划夹具（退休 probe 输出除外）完全一致；README 配置、监控、24 份 Test、23 份 Meta-app、相同/变化监控渲染逐字节一致，68 个 application 文件哈希未变化。实验 codec 的 5 项和退休 probe 的 5 项专属测试移除；新增手动工作流引用保护、两项 README 真实脚本夹具、两项单快照/单次校验测试、一项环境变量不能恢复发布的测试，业务约束继续覆盖。没有运行全量 52 组合，也未重新检查冻结/耗时应用。
+
+### P1–P4 非发布验收记录
+
+- P1 `41319f6`、P2 `5b5eb4a`、P3 `17fb23a`、P4 `9b28b16` 已推送 main；远端每个树对象与本地已测试树完全一致。实现后的 `scripts/ci` 为 9 个业务脚本、`tests/ci` 为 8 个测试文件，总计 17 个文件；相对 `0f1ce52` 的 24 个文件，两个目录合计 3,426 → 3,044 行，净减少 382 行。移动的测试代码不计作删除。
+- 相对 `0f1ce52` 的 115 项单元测试，退休 codec/probe 各 5 项专属测试，新增 6 项对实际 README Shell、依赖图、单快照和非发布约束的验证，最终 111 项。现行路由仍全部接受相同的目标筛选及错误边界；注册表固定 Smoke 的退役作为并行基线变更保留。
+- [39079099089](https://github.com/Grinch27/docker-builder/actions/runs/39079099089) 对 `9b28b16` 执行代表性 verification；启动时尚未完成，不计为通过。该路线包含 8 个 Build/Test 组合、vlmcsd 本地 Registry 构建/测试/归档及诊断，Dev/Container 使用独立定向验收。
+- 本地 actionlint、Shell 语法、目录与引用检查通过；继续精确忽略 queue、常量 false 和独立手动工具原有的两个未使用 anchor 提示。未运行 shellcheck/pyflakes，不增加依赖或宣称 CI 时间提升。
