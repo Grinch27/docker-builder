@@ -133,6 +133,9 @@ class WorkflowPlanTests(unittest.TestCase):
         self.assertEqual(next(t["tag_repo"] for t in targets if t["app_branch"] == "novnc_alpine"), "alpine")
         production = self.make("production")["build_targets"]["include"]
         self.assertEqual(next(t["tag_repo"] for t in production if t["app_branch"] == "novnc_alpine"), "latest")
+        dev = next(t for t in targets if t['app_branch'] == 'novnc_alpine')
+        self.assertEqual(dev['build_tag'], 'latest')
+        self.assertEqual(dev['dockerfile'], 'latest.Dockerfile')
 
     def test_diagnostics_modes_do_not_run_monitor(self):
         for mode in ["version", "layers", "both", "all-platforms"]:

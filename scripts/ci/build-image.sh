@@ -1,14 +1,25 @@
 #!/usr/bin/env bash
-# Shared Buildx invocation: registry (production default) or load (isolated smoke).
+# Requirements: execute from application root; only the exact configured build Tag selects a Dockerfile.
+# Unknowns/research: public publication is outside the nonpublishing migration acceptance.
+# Optimization: share Catalog's filename resolver across registry and local-load modes.
+# Risks/verification: no shared/case-insensitive fallback; test missing files, overrides and full Buildx argv.
 set -euo pipefail
 : "${arch_branch:?missing arch_branch}"
 : "${base_image:?missing base_image}"
-dockerfile="${dockerfile:-Dockerfile}"
-[[ "${dockerfile}" =~ ^[a-zA-Z0-9_.-]+$ ]] || { echo "Unsafe Dockerfile name" >&2; exit 2; }
-mapfile -t candidates < <(find . -maxdepth 1 -type f -iname "${dockerfile}" -print)
-[[ "${#candidates[@]}" -eq 1 ]] || { echo "Expected one Dockerfile: ${dockerfile}" >&2; exit 2; }
+build_tag="${build_tag-${tag_repo-latest}}"
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+expected=$(python3 - "$script_dir" "$(basename -- "$PWD")" "$build_tag" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1])
+from catalog import dockerfile_name
+print(dockerfile_name(sys.argv[2], sys.argv[3]))
+PY
+)
+[[ ! ${dockerfile+x} || "$dockerfile" == "$expected" ]] || { echo "Dockerfile override forbidden for $build_tag: expected $expected" >&2; exit 2; }
+dockerfile="$expected"
+[[ -f "$dockerfile" && ! -L "$dockerfile" ]] || { echo "Missing independent Dockerfile for $build_tag: $PWD/$dockerfile" >&2; exit 2; }
 
-args=(docker buildx build --platform "${arch_branch}" --file "${candidates[0]}")
+args=(docker buildx build --platform "${arch_branch}" --file "$dockerfile")
 case "${build_output:-registry}" in
   registry)
     : "${repo_dockerhub:?missing repo_dockerhub}"

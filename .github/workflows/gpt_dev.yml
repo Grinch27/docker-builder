@@ -15,7 +15,7 @@ run-name: GPT Dev - ${{ github.event_name }} - ${{ inputs.execution_route || git
     - .github/workflows/gpt_dev.yml
     - README.md
     - scripts/ci/**
-    - application/**/build/**
+    - application/**
   workflow_dispatch:
     inputs:
       execution_route:
@@ -978,7 +978,7 @@ jobs:
     - name: Build and push to local registry
       if: ${{ steps.check-result.outputs.changed == 'true' }}
       id: build
-      working-directory: ${{ github.workspace }}/${{ env.dir_app }}/build
+      working-directory: ${{ github.workspace }}/${{ env.dir_app }}
       run: |
         set -euo pipefail
         bash "${GITHUB_WORKSPACE}/scripts/ci/build-image.sh"
@@ -1420,14 +1420,15 @@ jobs:
           arch_branch=$(jq -r '.arch_branch' <<< "${target}")
           repo_dockerhub=$(jq -r '.repo_dockerhub' <<< "${target}")
           dockerfile=$(jq -r '.dockerfile' <<< "${target}")
+          build_tag=$(jq -er '.build_tag' <<< "${target}")
           build_arg=$(jq -r '.build_arg' <<< "${target}")
           legacy_tag_policy=$(jq -r '.tag_policy' <<< "${target}")
           case "${legacy_tag_policy}" in
             strip_channel|strip_channel_and_spaces|none|keep|default) ;;
             *) echo "Unsupported tag_policy: ${legacy_tag_policy}" >&2; exit 2 ;;
           esac
-          [[ -f "${dir_app}/build/${dockerfile}" ]] || {
-            printf 'Missing Dockerfile: %s\n' "${dir_app}/build/${dockerfile}" >&2
+          [[ -f "${dir_app}/${dockerfile}" ]] || {
+            printf 'Missing Dockerfile: %s\n' "${dir_app}/${dockerfile}" >&2
             exit 1
           }
           repo_name="${repo_dockerhub##*/}"
@@ -1443,6 +1444,7 @@ jobs:
             --arg repo_dockerhub "${repo_dockerhub}" \
             --arg ghcr_repo "${ghcr_repo}" \
             --arg dockerfile "${dockerfile}" \
+            --arg build_tag "${build_tag}" \
             --arg build_arg "${build_arg}" \
             --arg legacy_tag_policy "${legacy_tag_policy}" \
             --arg revision "$([[ "${mode}" == promote-* ]] && printf '%s' "${revision_input}" || printf '%s' "${revision}")" \
@@ -1457,6 +1459,7 @@ jobs:
                 repo_dockerhub: $repo_dockerhub,
                 ghcr_repo: $ghcr_repo,
                 dockerfile: $dockerfile,
+                build_tag: $build_tag,
                 build_arg: $build_arg,
                 legacy_tag_policy: $legacy_tag_policy,
                 revision: $revision,
@@ -1730,6 +1733,7 @@ jobs:
       REPO_DOCKERHUB: ${{ matrix.repo_dockerhub }}
       GHCR_REPO: ${{ matrix.ghcr_repo }}
       DOCKERFILE: ${{ matrix.dockerfile }}
+      BUILD_TAG: ${{ matrix.build_tag }}
       VERSION: ${{ matrix.version }}
       VERSION_ASSERTION: ${{ matrix.version_assertion }}
       REVISION: ${{ matrix.revision }}
@@ -1800,11 +1804,10 @@ jobs:
         : "${arch_branch:=${ARCH_BRANCH:-linux/amd64}}"
         : "${base_image:=${BASE_IMAGE:-ubuntu:latest}}"
         : "${repo_dockerhub:=${REPO_DOCKERHUB:-grinch27/${APP_BRANCH}}}"
-        : "${dockerfile:=${DOCKERFILE:-Dockerfile}}"
 
-        resolved_dockerfile=$(find "${dir_app}/build" -maxdepth 1 -type f -iname "${dockerfile}" -print -quit)
-        if [[ -z "${resolved_dockerfile}" ]]; then
-          echo "Dockerfile not found: ${dir_app}/build/${dockerfile}" >&2
+        resolved_dockerfile="${dir_app}/${dockerfile}"
+        if [[ ! -f "${resolved_dockerfile}" || -L "${resolved_dockerfile}" ]]; then
+          echo "Dockerfile not found: ${dir_app}/${dockerfile}" >&2
           exit 1
         fi
 
@@ -1840,9 +1843,9 @@ jobs:
           printf '\n=== %s %s ===\n' "${TARGET_ID}" "${platform}"
 
           if ! (
-            cd "${dir_app}/build"
+            cd "${dir_app}"
             arch_branch="${platform}" base_image="${base_image}" \
-              dockerfile="${dockerfile}" build_arg="${build_arg:-}" \
+              dockerfile="${dockerfile}" build_tag="${BUILD_TAG}" build_arg="${build_arg:-}" \
               build_output=load image_ref="${local_ref}" \
               bash "${GITHUB_WORKSPACE}/scripts/ci/build-image.sh"
           ); then
@@ -2399,6 +2402,7 @@ jobs:
       BASE_IMAGE: ${{ matrix.base_image }}
       ARCH_BRANCH: ${{ matrix.arch_branch }}
       DOCKERFILE: ${{ matrix.dockerfile }}
+      BUILD_TAG: ${{ matrix.build_tag }}
       BUILD_ARG: ${{ matrix.build_arg }}
       LEGACY_TAG_POLICY: ${{ matrix.legacy_tag_policy }}
       REVISION: ${{ matrix.revision }}
@@ -2422,7 +2426,7 @@ jobs:
       run: |
         set -euo pipefail
         dir_app="application/$APP_BRANCH"
-        build_dir="$dir_app/build"
+        build_dir="$dir_app"
         dockerfile="$build_dir/$DOCKERFILE"
         baseline_file="$RUNNER_TEMP/inspect-baseline/$TARGET_ID.json"
         out="$RUNNER_TEMP/smoke-$TARGET_ID"
@@ -2621,10 +2625,10 @@ jobs:
         build_arg="$(jq -r .build_arg <<<"$target")"
         arch_branch="$TARGET_PLATFORM"
         export base_image dockerfile build_arg arch_branch image_ref
-        export build_output=load
+        export build_output=load build_tag="$TARGET_TAG"
         phase=build
         (
-          cd "application/${APP}/build"
+          cd "application/${APP}"
           bash "$GITHUB_WORKSPACE/scripts/ci/build-image.sh"
         ) 2>&1 | tee "$evidence/build.log"
         phase=platform
@@ -2704,14 +2708,14 @@ jobs:
         export base_image dockerfile repo_dockerhub build_arg
         export arch_branch=linux/amd64 tag_repo="${TAG}"
         export registry_local=localhost:5000 version=catalog-smoke
-        cd "application/${APP}/build"
+        cd "application/${APP}"
         bash "${GITHUB_WORKSPACE}/scripts/ci/build-image.sh"
         image_ref="localhost:5000/${repo_dockerhub}:${tag_repo}"
         docker pull --platform linux/amd64 "${image_ref}"
         cid=$(docker run --detach --entrypoint /bin/sh "${image_ref}" -c 'sleep 120')
         trap 'docker rm -f "${cid}" >/dev/null 2>&1 || true' EXIT
         python3 "${GITHUB_WORKSPACE}/scripts/ci/materialize_test_hooks.py" --app "${APP}"
-        docker cp ../test/test.sh "${cid}:/tmp/test.sh"
+        docker cp "$GITHUB_WORKSPACE/application/${APP}/test/test.sh" "${cid}:/tmp/test.sh"
         docker exec "${cid}" /bin/sh /tmp/test.sh
         echo "Local-registry Buildx and application test: PASS (${APP}:${TAG}, amd64)"
     needs:
@@ -3672,7 +3676,7 @@ jobs:
       working-directory: ${{ env.PATH_app }}
       run: |
         set -euo pipefail
-        cd "${PATH_app}/build"
+        cd "${PATH_app}"
         bash "${PATH_self}/scripts/ci/build-image.sh"
         echo "status=success" >> "${GITHUB_OUTPUT}"
     - name: (Inspect) Layers with skopeo

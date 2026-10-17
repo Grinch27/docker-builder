@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Requirements: experimental display derives Dockerfile from Tag; never stores a second selector.
+# Unknowns/research: this codec remains outside production workflow execution.
+# Risks/verification: reject a display filename that disagrees with the Tag; preserve lossless roundtrips.
 """Experimental Markdown-only catalog codec; never consumed by production Actions.
 
 This is a strict, deliberately wide, ONE-TABLE lossless roundtrip study.
@@ -7,6 +10,7 @@ No GitHub workflow, Docker build, or README write path imports this module.
 
 import json
 import re
+import catalog
 
 FIELDS = (
     'App', 'Repository', 'App base', 'Platforms', 'App tag policy',
@@ -55,7 +59,7 @@ def render(config, records):
         for target in settings['targets']:
             values=[app,settings['repository'],settings['base_image'],
                     ','.join(settings['platforms']),settings['tag_policy'],
-                    target['tag'],target.get('dockerfile','Dockerfile'),
+                    target['tag'],catalog.dockerfile_name(app,target['tag']),
                     target.get('base_image',''),target.get('build_arg',''),
                     target.get('tag_policy',''),r['tag_repo'],r['repo_dockerhub'],
                     r['base_image'],r['arch_branch'],r['platform_used'],
@@ -89,7 +93,9 @@ def parse(table):
         if app not in apps: apps[app]={**shared,'targets':[]}
         if set(apps[app]) - {'targets'} != set(shared) or any(apps[app][key]!=value for key,value in shared.items()):
             raise ValueError("Conflicting application settings")
-        target={'tag':tag,'dockerfile':doc}
+        if doc != catalog.dockerfile_name(app,tag):
+            raise ValueError('Dockerfile must be derived from Target tag')
+        target={'tag':tag}
         if override: target['base_image']=override
         if arg: target['build_arg']=arg
         if tag_policy: target['tag_policy']=tag_policy

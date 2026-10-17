@@ -47,25 +47,24 @@
 
 用户于 2026-10-17 调整标准：**约八成应用能成功构建即可，不再为个别应用持续追加修复；失败应用记录后留待以后处理。** 本阶段按此标准收尾，保留真实失败状态和现有测试门禁，不要求 52/52 全绿，也不通过删除矩阵项、忽略退出码或弱化 Test 提高成功率。
 
-截至本次记录，完整运行 `faefe3f` 加百度网盘定向重测 `5a7ef20` 的已完成证据如下。应用通过要求该应用全部配置目标及平台均通过；Target 通过要求其全部配置平台均通过。
+截至本次记录，完整运行 `faefe3f` 加百度网盘定向重测 `5a7ef20`、SD.Next 定向重测 `62dbd5a` 的已完成证据如下。应用通过要求该应用全部配置目标及平台均通过；Target 通过要求其全部配置平台均通过。
 
-| 统计口径 | 首轮完整运行 | 加入百度网盘重测后的累计证据 |
+| 统计口径 | 首轮完整运行 | 加入百度网盘及 SD.Next 重测后的累计证据 |
 |---|---|---|
-| 应用 | 18/24（75.0%） | 19/24（79.2%，约八成） |
-| Target | 24/30（80.0%） | 25/30（83.3%） |
-| Target/平台组合 | 41/52（78.8%） | 43/52（82.7%） |
+| 应用 | 18/24（75.0%） | 20/24（83.3%） |
+| Target | 24/30（80.0%） | 26/30（86.7%） |
+| Target/平台组合 | 41/52（78.8%） | 44/52（84.6%） |
 
-累计列跨不同 SHA，**不代表同一提交的全量通过，也不代表应用成功率严格超过 80%**。下面 5 个应用、9 个组合保留为后续待办，不阻塞本阶段工作流整合验收。百度网盘两架构已重测通过，不再列入失败待办。
+累计列跨不同 SHA，**不代表同一提交的全量通过**。下面 4 个应用、8 个组合保留为后续待办，不阻塞本阶段工作流整合验收。百度网盘两架构及 SD.Next amd64 已重测通过，不再列入失败待办；不代表 GPU 实机验收。
 
 | 待处理应用（均为 latest） | 首轮失败平台 | 已知原因与后续处理 |
 |---|---|---|
 | expressvpn | amd64、arm64、386、arm/v7 | 旧下载页未提供所需 `.deb` 链接，下载地址为空。后续核对官方包来源、CLI 迁移与 32 位兼容方案；本轮暂缓。 |
-| ffmpeg | amd64 | Meson native file 使用双引号。`62dbd5a` 已改为单引号，本地 Meson 解析验证通过；[39033385954](https://github.com/Grinch27/docker-builder/actions/runs/39033385954) 重测仍在运行，尚未计为通过。 |
-| sdnext | amd64 | Runner 根盘耗尽，Worker 日志也无法写入，根因已从 Check Run annotation 确认。`62dbd5a` 已给大型镜像 Job 增加仅限一次性 GitHub-hosted Runner 的空间清理；[39033385954](https://github.com/Grinch27/docker-builder/actions/runs/39033385954) 重测仍在运行，效果待确认。 |
-| stable-diffusion-webui-amdgpu | amd64 | Python 3.12 构建 scikit-image 0.21.0 时 Pythran/C++ 标准不兼容。`3893ab4` 已对该源码构建设置 C++17 并增加实际导入检查；[39033539487](https://github.com/Grinch27/docker-builder/actions/runs/39033539487) 重测仍在运行，尚未计为通过。 |
+| ffmpeg | amd64 | 原 Meson 引号已修复；`62dbd5a` / [39033385954](https://github.com/Grinch27/docker-builder/actions/runs/39033385954) 最终仍失败，现为 Mesa 构建中 once_flag/call_once 类型冲突。只记录，不追加修复。 |
+| stable-diffusion-webui-amdgpu | amd64 | 首轮为 Python 3.12/scikit-image/Pythran 编译错误；`3893ab4` / [39033539487](https://github.com/Grinch27/docker-builder/actions/runs/39033539487) 最终 failure，Job 日志下载返回 404，后续失败根因未确认。只记录，不追加修复。 |
 | ttrss | amd64、arm64 | 缺少 Dockerfile 的 COPY 输入：`docker-entrypoint.sh`、`src/wait-for.sh`、`src/ttrss.nginx.conf`、`src/initialize.php`、`src/s6`。后续恢复并审查匹配版本的构建资源；本轮暂缓。 |
 
-已启动的三项重测保留运行；截至 2026-10-17 21:03（Asia/Shanghai）仍在运行。本轮不再因这些应用追加修复或新一轮构建。后续处理时先读取对应 Run 的最终结论及日志，再更新本表，不把已提交修复等同于构建成功。状态是本次记录时的快照，不是自动更新的实时结果。
+历史三项重测已结束：SD.Next amd64 成功，日志确认 README Test 通过；FFmpeg 和 WebUI AMDGPU 失败，状态已更新。本轮不再追加这些应用的专项修复。历史结果不替代新目录 Commit 的测试结果。
 
 当前本地与 CI 为 106 项测试通过，含实际平台门禁、Meson 文件生成、目标筛选、规划失败门禁和镜像比较边界；最新轻量验收见下节。actionlint 仅精确忽略前述 queue / false 两类提示，shellcheck / pyflakes 未执行。Dev/Container 实测仅证明代表性 vlmcsd 目标，未验证所有应用、真实 Registry/Release 晋升、VPN 联网、GUI 或 GPU 运行。跨 SHA 的定向通过不得汇总成同一 SHA 的 52/52。
 
@@ -89,7 +88,9 @@
 
 当前基线：**24 个应用、30 个 Target、52 个 Target/平台组合、23 份 Meta-app、24 份 Test**。`ffmpeg` 没有有效的 Meta-app 探针，保留缺失语义。`app-summary`、`app-json`、`app-build`、`app-meta`、`app-test` 标记及表格位于文件末尾的约定必须保留。精简 README 说明时，不删除其中可执行配置和源码。
 
-新增应用保留 `application/<app>/build/` 中的 Dockerfile、`COPY` / `ADD` 文件及构建阶段依赖；每个 Target 在对应 JSON.config 中声明 Dockerfile、平台、基础镜像和标签策略。清理文件前检查构建上下文及跨仓库引用，不能只凭文件名或相同 SHA 判断可删除。
+新增应用固定使用 `application/<app>/<tag>.Dockerfile`，构建上下文为 `application/<app>/`。一个有效 Target 对应一个独立、非符号链接文件，禁止共享或回退到其他 Tag。仅缺失 Tag 时默认 `latest`；显式空值、null、非法 Tag 或缺失文件直接失败。README JSON.config 只维护 Tag、平台、基础镜像、build_arg 和标签策略，禁止 `dockerfile` 配置字段；运行时 `dockerfile` 由 Catalog 派生，不是第二份配置。清理文件前检查构建上下文及跨仓库引用。
+
+`build_tag` 表示 Catalog 中的原始构建 Target，`tag_repo` 可以承载既有的附加发布/Dev 标签语义；只有前者决定 Dockerfile。例如 novnc_alpine 构建仍使用 latest.Dockerfile，保留 Dev 的 alpine 目标标签。不要把版本号生成的发布标签当作新构建 Target。
 
 运行时恢复脚本，再扫描或执行对应目录：
 
@@ -110,7 +111,7 @@ python3 scripts/ci/materialize_test_hooks.py --app APP --kind test
 | `scripts/ci/workflow_plan.py` | 路由和矩阵选择；候选必须经过 `staging_plan` 的非发布限制 |
 | `scripts/ci/monitor_state.py` | 监控状态、变更矩阵及稳定 README 展示 |
 | `scripts/ci/gpt_workflow_graph.py` | 候选普通 Jobs 的依赖、循环、嵌套调用检查 |
-| `scripts/ci/test-workflow-graph.py` | 原 14 个工作流依赖保护；仅排除候选，不可据此宣称仅有 14 个文件 |
+| `scripts/ci/test-workflow-graph.py` | 严格保护 gpt_dev.yml 与 download_artifact.yml 两文件布局及调用引用 |
 | `scripts/ci/verify_image_archive.py` | 不解压、不执行归档；验证唯一 manifest、平台配置和层文件 |
 | `scripts/ci/compare_image_snapshot.py` | Dev/smoke 共用的纯 JSON 比较器；保留 UNKNOWN、缺失/不可观察及版本/配置差异语义，不访问 Registry、不执行发布 |
 
@@ -147,7 +148,7 @@ README 改写需比较全部 JSON 配置、监控记录、应用行和 Meta-app 
 
 ## 发布边界与下一步
 
-用户已授权候选推送、非发布测试、读取日志和迭代修正；尚未授权正式发布、密钥操作或旧入口退役。
+用户已授权两工作流收敛及本次 Tag 目录迁移、main 提交、非发布测试、读取日志和结构回归修正；未授权 Registry/Release 发布或密钥操作。
 
 用户本轮追加授权完整 52 组合及 Dev/Container 验收。`acceptance`（push 标记 `[gpt-acceptance]`）从配置生成全量矩阵，并以 `vlmcsd:latest` 三架构运行 Dev 和 Container 路径；`dev-verify` / `container-verify` 可定向选择一个配置目标。结果与未通过项见上表；不能预先计为通过。
 
@@ -157,9 +158,60 @@ README 改写需比较全部 JSON 配置、监控记录、应用行和 Meta-app 
 
 正式 Dev 仅 `execution_route=dev` + `dev_mode=preflight` 是已验收的非发布预检；`auto` / `build` / `promote-*` 可能创建 Release 或推送 Docker Hub/GHCR，不能当作 dry run。检查、构建、镜像内测试、发布是不同验收等级；报告必须给出 Commit、Run、实际范围、跳过项及限制。
 
-待办顺序：按约八成标准收尾非发布阶段，保留上表应用失败待办，优先推进工作流精简与可维护性；核对未选路由、外部调用方、触发器、权限和回滚方案；正式发布、Dev 晋升及旧入口退役仍须在相应授权后推进，再同步两个图检查器。Dev/Container 的代表性非发布验收已通过，不重复列为未完成；全量应用修复留待后续，不再要求先达到 52/52。当前生产与独立监控的重复定时触发仍存在。
+待办顺序：完成本次 Tag 目录迁移的同 SHA 非发布验收并按约八成标准收尾，历史失败只记录；继续核对外部调用方和未选路由。旧工作流已退役，不恢复重复定时任务。正式发布和 Dev 晋升须未来另行实现并验收；既有代表性 Dev/Container 成功不能代替新目录版本的实测。
 
-已知事项：`novnc` 与 `novnc_alpine` 共享 `grinch27/novnc:latest`，不可静默改标签。历史应用构建失败需重新读取对应 SHA 的最新日志，不沿用旧成功/失败数字。保留 `application/.example/build/` 两份模板及 `application/ffmpeg/build/docker-ffmpeg.dockerfile` 上游参考。
+已知事项：`novnc` 与 `novnc_alpine` 共享 `grinch27/novnc:latest`，不可静默改标签。历史应用构建失败需重新读取对应 SHA 的最新日志，不沿用旧成功/失败数字。两份模板改为 `application/.example/latest.Dockerfile`、`alpine.Dockerfile`；FFmpeg 非 Target 参考文件保留在 `application/ffmpeg/reference/`，不自动登记为 Tag。
+
+## Tag 目录迁移（2026-10-17）
+
+基线为 `f3a383aaeb7160de77889bde84fa8c93579f14bf`。用户已明确批准实施及提交。30 个 Target 的 Dockerfile、全部辅助文件与未注册参考文件均已迁移；Dockerfile/辅助文件内容哈希保持不变。AdGuardVPN 从同一初始内容建立三份独立文件，不使用符号链接、共享或回退。
+
+Catalog 严格解析与全部执行路径已更新，普通 Push 仍只轻量校验；完整矩阵显式选择。各应用 `.dockerignore` 排除恢复的 test/meta-app、参考文件、日志和输出归档；本地 COPY/ADD 审计仅保留 TT-RSS 已有的五项缺失，不补包或修复历史应用。
+
+本地 113 项测试通过，README 的全部 Meta-app、Test、监控记录及除 dockerfile 字段外的配置已逐项比较。actionlint 核心通过；未修改的手动工具存在两个既有未使用 Anchor 提示。shellcheck/pyflakes 不可用。迁移后的同 SHA 全量/Dev/Container 验收尚待实际 Run，不能引用旧累计 44/52 作为新版本成功率。
+
+下表路径均相对于仓库根目录；迁移前后映射覆盖全部 38 个原始移动文件，原本已在 test/ 的数据未移动。
+
+| 原路径 | 新路径 |
+|---|---|
+| `application/adguardvpn-cli/build/Dockerfile` | `application/adguardvpn-cli/nightly.Dockerfile`, `application/adguardvpn-cli/beta.Dockerfile`, `application/adguardvpn-cli/release.Dockerfile` |
+| `application/aria2/build/Dockerfile` | `application/aria2/latest.Dockerfile` |
+| `application/baidunetdisk/build/Dockerfile` | `application/baidunetdisk/dev.Dockerfile` |
+| `application/cloudflare-warp/build/Dockerfile` | `application/cloudflare-warp/latest.Dockerfile` |
+| `application/curl/build/Dockerfile` | `application/curl/latest.Dockerfile` |
+| `application/dnscrypt-proxy/build/Dockerfile` | `application/dnscrypt-proxy/latest.Dockerfile` |
+| `application/doh-nosni/build/Dockerfile` | `application/doh-nosni/latest.Dockerfile` |
+| `application/expressvpn/build/Dockerfile` | `application/expressvpn/latest.Dockerfile` |
+| `application/ffmpeg/build/Dockerfile` | `application/ffmpeg/latest.Dockerfile` |
+| `application/nordvpn/build/Dockerfile` | `application/nordvpn/latest.Dockerfile` |
+| `application/novnc/build/Dockerfile` | `application/novnc/latest.Dockerfile` |
+| `application/novnc_alpine/build/Dockerfile` | `application/novnc_alpine/latest.Dockerfile` |
+| `application/openwrt/build/Dockerfile` | `application/openwrt/main.Dockerfile` |
+| `application/privoxy/build/Dockerfile` | `application/privoxy/latest.Dockerfile` |
+| `application/protonvpn/build/Dockerfile` | `application/protonvpn/latest.Dockerfile` |
+| `application/runner/build/Dockerfile` | `application/runner/dev.Dockerfile` |
+| `application/runner/build/slim.Dockerfile` | `application/runner/slim.Dockerfile` |
+| `application/runner/build/actions.Dockerfile` | `application/runner/actions.Dockerfile` |
+| `application/runner/build/actions-slim.Dockerfile` | `application/runner/actions-slim.Dockerfile` |
+| `application/samba/build/Dockerfile` | `application/samba/latest.Dockerfile` |
+| `application/samba/build/alpine.Dockerfile` | `application/samba/alpine.Dockerfile` |
+| `application/sdnext/build/Dockerfile` | `application/sdnext/latest.Dockerfile` |
+| `application/sdnext-dev/build/Dockerfile` | `application/sdnext-dev/dev.Dockerfile` |
+| `application/squid/build/Dockerfile` | `application/squid/latest.Dockerfile` |
+| `application/stable-diffusion-webui-amdgpu/build/Dockerfile` | `application/stable-diffusion-webui-amdgpu/latest.Dockerfile` |
+| `application/steamcmd/build/Dockerfile` | `application/steamcmd/dev.Dockerfile` |
+| `application/ttrss/build/Dockerfile` | `application/ttrss/latest.Dockerfile` |
+| `application/vlmcsd/build/Dockerfile` | `application/vlmcsd/latest.Dockerfile` |
+| `application/.example/build/Dockerfile` | `application/.example/latest.Dockerfile` |
+| `application/.example/build/Dockerfile.alpine` | `application/.example/alpine.Dockerfile` |
+| `application/dnscrypt-proxy/build/dnscrypt-proxy.toml` | `application/dnscrypt-proxy/dnscrypt-proxy.toml` |
+| `application/ffmpeg/build/Dev.dockerfile` | `application/ffmpeg/reference/Dev.dockerfile` |
+| `application/ffmpeg/build/docker-ffmpeg.dockerfile` | `application/ffmpeg/reference/docker-ffmpeg.dockerfile` |
+| `application/ffmpeg/build/root/ffmpegwrapper.sh` | `application/ffmpeg/root/ffmpegwrapper.sh` |
+| `application/sdnext-dev/build/install_therock_deps.sh` | `application/sdnext-dev/install_therock_deps.sh` |
+| `application/sdnext-dev/build/install_therock_tarball.sh` | `application/sdnext-dev/install_therock_tarball.sh` |
+| `application/sdnext-dev/build/startup.sh` | `application/sdnext-dev/startup.sh` |
+| `application/sdnext/build/startup.sh` | `application/sdnext/startup.sh` |
 
 ## 历史资料
 

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-# Requirement: render Application/JSON/Build/Meta-app/Test only.
-# Unknown: external readers of the historical 12-column summary.
-# Research: potential reduction of large monitor and script diffs.
-# Risk: breaking marker parsing or reproducible Build previews.
-# Verify: catalog validation, 24/30/52 invariants, and unit regressions.
+# Requirement: Tag alone selects application/<app>/<tag>.Dockerfile; missing Tag means latest.
+# Unknown/research: external consumers of old build paths require migration.
+# Optimization: derive filenames and contexts instead of storing duplicate configuration.
+# Risk: explicit empty/invalid Tags, symlinks, shared fallbacks and expanded contexts.
+# Verify: strict resolution, unchanged 24/30/52 configuration, scripts and monitor records.
 """Read or update the application catalog embedded in README.md.
 
 The application table contains canonical per-row config and monitor JSON.
@@ -28,7 +28,24 @@ TAG = re.compile(r'^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$')
 NAME = re.compile(r'^[a-z0-9][a-z0-9_.-]*$')
 POLICIES = {'none', 'keep', 'strip_channel', 'strip_channel_and_spaces'}
 APP_KEYS = {'repository', 'base_image', 'platforms', 'tag_policy', 'targets'}
-TARGET_KEYS = {'tag', 'dockerfile', 'build_arg', 'base_image', 'tag_policy'}
+TARGET_KEYS = {'tag', 'build_arg', 'base_image', 'tag_policy'}
+
+def target_tag(target):
+    value = target.get('tag', 'latest')
+    if not isinstance(value, str) or not TAG.fullmatch(value) or '..' in value:
+        raise ValueError('Invalid target tag: ' + repr(value))
+    return value
+
+def dockerfile_name(app, tag='latest'):
+    if not isinstance(app, str) or not NAME.fullmatch(app) or '..' in app:
+        raise ValueError('Unknown or unsafe app: ' + repr(app))
+    return target_tag({'tag': tag}) + '.Dockerfile'
+
+def resolve_dockerfile(root, app, tag='latest'):
+    path = root / 'application' / app / dockerfile_name(app, tag)
+    if path.parent.is_symlink() or path.is_symlink() or not path.is_file():
+        raise ValueError(f'{app}:{tag}: missing or non-independent Dockerfile: {path}')
+    return path
 
 def catalog_document_from_text(text):
     """Read the canonical table JSON or historical fenced configuration."""
@@ -70,7 +87,14 @@ def validate_document(document):
 
 def catalog_data_from_text(text):
     document=validate_document(catalog_document_from_text(text))
-    return document['config'] if document.get('schema_version')==2 else document
+    config = document['config'] if document.get('schema_version')==2 else document
+    if isinstance(config, dict) and isinstance(config.get('apps'), dict):
+        for app in config['apps'].values():
+            if isinstance(app, dict) and isinstance(app.get('targets'), list):
+                for target in app['targets']:
+                    if isinstance(target, dict):
+                        target.setdefault('tag', 'latest')
+    return config
 
 def replace_catalog_document(text,document):
     """Rewrite per-row JSON without touching canonical Shell source cells."""
@@ -261,13 +285,8 @@ def validate(c, root):
             unexpected = set(t) - TARGET_KEYS
             if unexpected:
                 raise ValueError(name+': unknown target fields: '+', '.join(sorted(unexpected)))
-            tag,df=t.get('tag'),t.get('dockerfile','Dockerfile')
-            if not isinstance(tag,str) or not TAG.fullmatch(tag):
-                raise ValueError(name+': invalid tag')
-            if not isinstance(df,str) or not re.fullmatch(r'[A-Za-z0-9_.-]+',df):
-                raise ValueError(name+': invalid Dockerfile')
-            if not (root/'application'/name/'build'/df).is_file():
-                raise ValueError(name+': missing Dockerfile '+df)
+            tag = target_tag(t)
+            resolve_dockerfile(root, name, tag)
             for key in ('build_arg','base_image'):
                 val=t.get(key,'')
                 if not isinstance(val,str) or '\n' in val or '\r' in val:
@@ -280,16 +299,17 @@ def validate(c, root):
     return {'apps':len(apps),'targets':len(seen),
             'legacy_ref_conflicts':{r+':'+t:n for (r,t),n in refs.items() if len(n)>1}}
 
-def get(c,app,tag):
+def get(c,app,tag='latest'):
+    dockerfile = dockerfile_name(app, tag)
     a=c['apps'].get(app)
     if a is None: raise ValueError('Unknown app: '+app)
-    ts=[x for x in a['targets'] if x['tag']==tag]
+    ts=[x for x in a['targets'] if target_tag(x)==tag]
     if len(ts)!=1: raise ValueError('Unknown target: '+app+':'+tag)
     t=ts[0]
-    return {'app_branch':app,'tag_repo':tag,'repo_dockerhub':a['repository'],
+    return {'app_branch':app,'tag_repo':tag,'build_tag':tag,'repo_dockerhub':a['repository'],
             'arch_branch':','.join(a['platforms']),
             'base_image':t.get('base_image',a['base_image']),
-            'dockerfile':t.get('dockerfile','Dockerfile'),
+            'dockerfile':dockerfile,
             'build_arg':t.get('build_arg',''),
             'tag_policy':t.get('tag_policy',a.get('tag_policy','keep'))}
 
@@ -297,7 +317,7 @@ def matrix(c,kind,runner):
     if kind=='version':
         items=[{'app_branch':a,'tag_repo':'latest','custom_env':'','runner_image':runner} for a in c['apps']]
     else:
-        items=[{'app_branch':a,'tag_repo':t['tag'],'custom_env':'','runner_image':runner}
+        items=[{'app_branch':a,'tag_repo':target_tag(t),'custom_env':'','runner_image':runner}
                for a,app in c['apps'].items() for t in app['targets']]
     return {'include':items}
 
@@ -331,12 +351,12 @@ def render_build_preview(name, app):
     commands = []
     for target in app['targets']:
         argv = ['docker', 'buildx', 'build', '--platform', ','.join(app['platforms']),
-                '--file', 'application/' + name + '/build/' + target.get('dockerfile', 'Dockerfile'),
+                '--file', 'application/' + name + '/' + dockerfile_name(name, target_tag(target)),
                 '--build-arg', 'base_image=' + target.get('base_image', app['base_image'])]
         if target.get('build_arg'):
             argv += ['--build-arg', 'build_arg=' + target['build_arg']]
-        argv += ['--output', 'type=cacheonly', 'application/' + name + '/build']
-        commands.append('# target: ' + target['tag'] + '\n' +
+        argv += ['--output', 'type=cacheonly', 'application/' + name]
+        commands.append('# target: ' + target_tag(target) + '\n' +
                         ' '.join(shlex.quote(arg) for arg in argv))
     return '\n'.join(commands)
 
@@ -415,7 +435,7 @@ def update(readme, c, app, field, value, *, scope='app', tag='latest'):
             raise ValueError('Unsupported app field: '+str(field))
         dest = c['apps'][app]
     elif scope == 'target':
-        if field not in ('base_image', 'dockerfile', 'build_arg', 'tag_policy'):
+        if field not in ('base_image', 'build_arg', 'tag_policy'):
             raise ValueError('Unsupported target field: '+str(field))
         targets = [t for t in c['apps'][app]['targets'] if t['tag'] == tag]
         if len(targets) != 1:
@@ -481,7 +501,7 @@ def main():
             elif args.command=='tags':
                 print(json.dumps(tags(item,args.version,args.consistent.lower()=='true')))
             else:
-                keys=('repo_dockerhub','arch_branch','base_image','dockerfile','build_arg','tag_policy')
+                keys=('repo_dockerhub','arch_branch','base_image','dockerfile','build_arg','tag_policy','build_tag')
                 data=''.join(k+'='+item[k]+'\n' for k in keys if not args.app_only or k in ('repo_dockerhub','arch_branch','base_image'))
                 if args.output:
                     with open(args.output,'a',encoding='utf-8') as f: f.write(data)

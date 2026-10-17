@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
-# Requirement: assert the compact five-column README table.
-# Unknown: external consumers of the former display columns.
-# Research: stricter, cell-level HTML script preservation tests.
-# Optimization: execute native-file generation rather than mirroring Dockerfile quoting.
-# Risk: confusing display-only removals with deleted canonical data.
-# Verify: header/row shape, unchanged embedded JSON and Shell sources.
+# Requirement: preserve the table while deriving independent Dockerfiles from Target Tags.
+# Unknown/research: external consumers of former display columns and build paths.
+# Optimization: exercise real Buildx argument generation and native-file scripts.
+# Risks/verification: no shared fallback, no Dockerfile override, unchanged monitor/Shell sources.
 """Offline regression tests for the README catalog. No Docker or network access."""
 from __future__ import annotations
 
@@ -86,13 +84,28 @@ class CatalogTests(unittest.TestCase):
             for target in app["targets"]:
                 with self.subTest(app=name, tag=target["tag"]):
                     item = catalog.get(self.config, name, target["tag"])
-                    self.assertTrue((ROOT / "application" / name / "build" /
+                    self.assertTrue((ROOT / "application" / name /
                                      item["dockerfile"]).is_file())
                     self.assertTrue(item["repo_dockerhub"].startswith("grinch27/"))
                     self.assertNotIn("\n", item["base_image"])
                     self.assertEqual(item["tag_repo"], target["tag"])
                     self.assertEqual(item["arch_branch"],
                                      ",".join(app["platforms"]))
+
+    def test_all_targets_have_independent_tag_files_and_no_filename_configuration(self):
+        files = []
+        for name, app in self.config['apps'].items():
+            for target in app['targets']:
+                self.assertNotIn('dockerfile', target)
+                path = catalog.resolve_dockerfile(ROOT, name, target['tag'])
+                self.assertEqual(path.parent, ROOT / 'application' / name)
+                files.append(path)
+        self.assertEqual(len(files), 30)
+        self.assertEqual(len({(p.stat().st_dev, p.stat().st_ino) for p in files}), 30)
+        altered = copy.deepcopy(self.config)
+        altered['apps']['aria2']['targets'][0]['dockerfile'] = 'latest.Dockerfile'
+        with self.assertRaisesRegex(ValueError, 'unknown target fields'):
+            catalog.validate(altered, ROOT)
 
     def test_matrices_have_distinct_work_and_no_implicit_targets(self):
         vs = catalog.matrix(self.config, "version", "ubuntu-test")["include"]
@@ -200,13 +213,13 @@ class CatalogTests(unittest.TestCase):
             (directory / "application").symlink_to(ROOT / "application", target_is_directory=True)
             readme = directory / "README.md"
             shutil.copyfile(ROOT / "README.md", readme)
-            with self.assertRaisesRegex(ValueError, "missing Dockerfile"):
+            with self.assertRaisesRegex(ValueError, "Unsupported target field"):
                 catalog.update(readme, copy.deepcopy(self.config), "runner",
                                "dockerfile", "missing.Dockerfile",
                                scope="target", tag="actions")
             with self.assertRaisesRegex(ValueError, "Unknown target"):
                 catalog.update(readme, copy.deepcopy(self.config), "runner",
-                               "dockerfile", "Dockerfile",
+                               "base_image", "alpine:latest",
                                scope="target", tag="unknown")
 
     def test_reject_unknown_fields_in_every_scope(self):
@@ -462,14 +475,14 @@ class CatalogTests(unittest.TestCase):
                 self.assertEqual(expected.count('# target: '),len(app['targets']))
 
     def test_ffmpeg_automake_lookup_uses_installed_package(self):
-        source=(ROOT/'application'/'ffmpeg'/'build'/'Dockerfile').read_text(encoding='utf-8')
+        source=(ROOT/'application'/'ffmpeg'/'latest.Dockerfile').read_text(encoding='utf-8')
         self.assertNotIn('automake --print-ac-dir',source)
         self.assertEqual(source.count('dpkg -L automake'),4)
         self.assertEqual(source.count('config.guess'),4)
         self.assertEqual(source.count('config.sub'),4)
 
     def test_ffmpeg_mesa_llvm_spirv_translator_versions_are_paired(self):
-        source=(ROOT/'application'/'ffmpeg'/'build'/'Dockerfile').read_text(encoding='utf-8')
+        source=(ROOT/'application'/'ffmpeg'/'latest.Dockerfile').read_text(encoding='utf-8')
         self.assertIn('llvm-18-dev',source)
         self.assertIn('llvm-spirv-18',source)
         self.assertIn('libllvmspirvlib-18-dev',source)
@@ -487,7 +500,7 @@ class CatalogTests(unittest.TestCase):
         builder=ROOT/'scripts/ci/build-image.sh'
         with tempfile.TemporaryDirectory() as dirname:
             root=Path(dirname)
-            (root/'Dockerfile').write_text('FROM scratch\n',encoding='utf-8')
+            (root/'nightly.Dockerfile').write_text('FROM scratch\n',encoding='utf-8')
             bindir=root/'bin'
             bindir.mkdir()
             docker=bindir/'docker'
@@ -496,7 +509,7 @@ class CatalogTests(unittest.TestCase):
             log=root/'argv.log'
             env={**os.environ, 'PATH':str(bindir)+os.pathsep+os.environ.get('PATH',''),
                  'BUILD_ARGV_LOG':str(log),'arch_branch':'linux/amd64',
-                 'base_image':'alpine:latest','dockerfile':'Dockerfile',
+                 'base_image':'alpine:latest','dockerfile':'nightly.Dockerfile','build_tag':'nightly',
                  'build_arg':'update_channel=nightly'}
             registry={**env,'repo_dockerhub':'grinch27/example','tag_repo':'nightly',
                       'registry_local':'127.0.0.1:5000','version':'1.2.3'}

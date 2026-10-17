@@ -1,0 +1,9 @@
+# Exclude generated probes and acceptance outputs from the application build context.
+/test/
+/meta-app/
+/reference/
+/output/
+*.log
+*.tar
+*.tar.xz
+*.part*
