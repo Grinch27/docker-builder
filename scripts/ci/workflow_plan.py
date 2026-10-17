@@ -226,8 +226,12 @@ def staging_plan(config: dict, event_name: str, event: dict, inputs: dict, runne
                 break
         if selector and route == "validate" and selector != "[gpt-validate]":
             raise ValueError("Unknown or malformed staging selector")
+    elif event_name == "schedule":
+        # Replaces the independent daily monitor. Never route a schedule to publication.
+        route = "monitor"
+        selected = {"execution_route": "monitor", "force_build": "false"}
     elif event_name != "workflow_dispatch":
-        raise ValueError("Staging accepts push/workflow_dispatch only")
+        raise ValueError("Core accepts push/schedule/workflow_dispatch only")
     if route not in {"verification", "acceptance", "dev-verify", "container-verify",
                      "validate", "monitor", "build", "test", "smoke",
                      "diagnostics", "registry-smoke", "dev"}:

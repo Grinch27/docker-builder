@@ -25,9 +25,9 @@ def dependencies(block):
 def validate(root):
     flow = root / ".github/workflows"
     files = {p.name for p in flow.glob("*.y*ml")}
-    utilities = {"pull_artifact-dev.yml", "download_artifact.yml"}
-    assert utilities <= files, "Independent Artifact utilities missing"
-    assert "gpt_dev.yml" in files, "Staging workflow missing"
+    expected = {"gpt_dev.yml", "download_artifact.yml"}
+    assert files == expected, f"Expected exactly two workflows, got {sorted(files)}"
+    assert "  pull-image:" in (flow / "download_artifact.yml").read_text(encoding="utf-8"), "Manual Docker pull route missing"
     text = (flow / "gpt_dev.yml").read_text(encoding="utf-8")
     blocks = job_blocks(text)
     required = {"runner-image", "plan", "fetch-versions", "monitor", "check", "build",
@@ -60,7 +60,7 @@ def validate(root):
 
     for key in blocks:
         visit(key)
-    print(f"GPT candidate Job graph: PASS ({len(blocks)} Jobs, {len(utilities)} independent utilities)")
+    print(f"Unified Job graph: PASS ({len(blocks)} Jobs, 2 workflows total)")
 
 
 if __name__ == "__main__":

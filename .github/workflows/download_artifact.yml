@@ -1,4 +1,4 @@
-name: Download to Artifact
+name: Manual Artifact Tools (Download / Pull Image)
 # https://docs.github.com/zh/actions/reference/limits
 # https://docs.github.com/zh/actions/reference/workflows-and-actions/workflow-syntax
 # https://docs.github.com/zh/actions/reference/workflows-and-actions/expressions
@@ -11,10 +11,27 @@ on:
   #     - .github/workflows/download_artifact.yml
   workflow_dispatch:
     inputs:
+      operation:
+        description: Select URL download or Docker image pull/export
+        type: choice
+        required: true
+        default: download
+        options: [download, pull-image]
+      image_ref:
+        description: Docker image reference for pull-image (e.g. docker.io/library/alpine:latest)
+        type: string
+        required: false
+        default: docker.io/library/alpine:latest
+      image_platform:
+        description: Docker platform for pull-image
+        type: choice
+        required: false
+        default: linux/amd64
+        options: [linux/amd64, linux/arm64, linux/386, linux/arm/v7]
       file_url:
         description: "URL to Download"
         type: string
-        required: true
+        required: false
         default: "https://dl.google.com/chrome/install/ChromeStandaloneSetup64.exe"
       user-agent:
         description: "User-Agent"
@@ -80,6 +97,7 @@ jobs:
   download:
     name: Download to Artifact
     needs: runner-image
+    if: ${{ inputs.operation != 'pull-image' }}
     runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
     defaults:
       run:
@@ -307,4 +325,62 @@ jobs:
         with:
           name: ${{ steps.file-info.outputs.FILE_NAME }}
           path: "${{ env.PATH_output }}/**"
+          retention-days: 1
+
+  pull-image:
+    name: Pull Docker image to Artifact (no publish)
+    needs: runner-image
+    if: ${{ inputs.operation == 'pull-image' }}
+    runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    env:
+      IMAGE_REF: ${{ inputs.image_ref }}
+      TARGET_PLATFORM: ${{ inputs.image_platform }}
+      SPLIT_ARCHIVE: ${{ inputs.toggle_split }}
+      OUTPUT_DIR: ${{ runner.temp }}/pulled-image
+    steps:
+      - name: Checkout archive verifier
+        uses: actions/checkout@v4
+      - name: Validate requested image reference and platform
+        run: |
+          set -euo pipefail
+          [[ "$IMAGE_REF" =~ ^[a-zA-Z0-9][a-zA-Z0-9._/:@-]*$ ]] || { echo "::error::Invalid image reference"; exit 1; }
+          case "$TARGET_PLATFORM" in
+            linux/amd64|linux/arm64|linux/386|linux/arm/v7) ;;
+            *) echo "::error::Unsupported image platform" >&2; exit 1 ;;
+          esac
+          docker version
+      - name: Pull, export and verify one platform
+        run: |
+          set -euo pipefail
+          mkdir -p "$OUTPUT_DIR"
+          docker pull --platform "$TARGET_PLATFORM" "$IMAGE_REF"
+          archive="$OUTPUT_DIR/image-${TARGET_PLATFORM//\//-}.tar"
+          docker image save --platform "$TARGET_PLATFORM" --output "$archive" "$IMAGE_REF"
+          python3 scripts/ci/verify_image_archive.py "$archive" "$TARGET_PLATFORM"
+          sha256sum "$archive" > "$archive.sha256"
+      - name: Compress and optionally split the archive
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=("$OUTPUT_DIR"/*.tar)
+          (( ${#files[@]} == 1 )) || { echo "::error::Expected one exported archive" >&2; exit 1; }
+          archive="${files[0]}"
+          xz -T2 -9e --check=sha256 --keep "$archive"
+          xz -t "$archive.xz"
+          if [[ "$SPLIT_ARCHIVE" == "true" ]]; then
+            split --bytes=699M --numeric-suffixes=1 --suffix-length=5 "$archive.xz" "$archive.xz.part"
+            rm -- "$archive.xz"
+          fi
+          rm -- "$archive"
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pulled-image-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pulled-image/*
+          if-no-files-found: error
           retention-days: 1

@@ -160,7 +160,12 @@ class WorkflowPlanTests(unittest.TestCase):
                 workflow_plan.staging_plan(self.config, "workflow_dispatch", {}, inputs, "runner")
 
     def test_staging_rejects_automatic_and_external_write_entrypoints(self):
-        for event_name in ["schedule", "repository_dispatch", "workflow_call"]:
+        scheduled = workflow_plan.staging_plan(self.config, "schedule", {}, {}, "runner")
+        self.assertEqual(scheduled["route"], "monitor")
+        self.assertEqual(scheduled["fetch_versions"], "true")
+        self.assertEqual(scheduled["publish"], "false")
+        self.assertEqual(scheduled["may_publish"], "false")
+        for event_name in ["repository_dispatch", "workflow_call"]:
             with self.subTest(event=event_name), self.assertRaises(ValueError):
                 workflow_plan.staging_plan(self.config, event_name, {}, {}, "runner")
 

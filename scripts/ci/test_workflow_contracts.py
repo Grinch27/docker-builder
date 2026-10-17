@@ -44,8 +44,7 @@ class WorkflowContractTests(unittest.TestCase):
                 workflows = root / ".github/workflows"
                 workflows.mkdir(parents=True)
                 (workflows / "gpt_dev.yml").write_text(source, encoding="utf-8")
-                for utility in ["pull_artifact-dev.yml", "download_artifact.yml"]:
-                    (workflows / utility).touch()
+                (workflows / "download_artifact.yml").write_text("jobs:\n  pull-image:\n", encoding="utf-8")
                 with self.assertRaises(AssertionError):
                     graph.validate(root)
 
@@ -146,6 +145,16 @@ class WorkflowContractTests(unittest.TestCase):
                                             env=env, capture_output=True, text=True)
                     self.assertEqual(result.returncode == 0, accepted, result.stderr)
 
+    def test_manual_artifact_tool_supports_download_and_pull(self):
+        manual = (ROOT / ".github/workflows/download_artifact.yml").read_text(encoding="utf-8")
+        self.assertIn("operation:", manual)
+        self.assertIn("  download:", manual)
+        self.assertIn("  pull-image:", manual)
+        self.assertIn("docker image save --platform", manual)
+        self.assertIn("verify_image_archive.py", manual)
+        self.assertNotIn("docker push ", manual)
+        self.assertNotIn("gh release ", manual)
+
     def test_staging_publication_is_hard_disabled(self):
         jobs = graph.job_blocks(TEXT)
         self.assertIn("WORKFLOW_READ_ONLY: 'true'", jobs["plan"])
@@ -163,7 +172,8 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn('verify_image_archive.py', dev)
         self.assertIn('Upload Dev acceptance evidence', jobs['dev-build'])
         self.assertIn('Enforce complete Container acceptance', jobs['container-build'])
-        self.assertNotIn("  schedule:", TEXT)
+        self.assertIn("  schedule:", TEXT)
+        self.assertIn("cron: '0 1 * * *'", TEXT)
         self.assertNotIn("  repository_dispatch:", TEXT)
 
 

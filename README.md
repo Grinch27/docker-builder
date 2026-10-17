@@ -2,7 +2,7 @@
 
 基于 GitHub Actions 构建、测试和发布多架构 Docker 镜像。
 
-[正式工作流](.github/workflows/docker_allinone.yml) · [合并候选（非发布）](.github/workflows/gpt_dev.yml) · [维护规范与进展](AGENTS.md)
+[统一核心工作流（当前禁止发布）](.github/workflows/gpt_dev.yml) · [手动下载 / 镜像归档工具](.github/workflows/download_artifact.yml) · [维护规范与进展](AGENTS.md)
 
 下表保存应用配置及脚本源码；Build 列仅提供非发布构建示例。
 

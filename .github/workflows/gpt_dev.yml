@@ -1,10 +1,13 @@
-# Requirements: isolated candidate for the single-core-workflow migration; keep production files unchanged.
+# Requirements: single retained core workflow; all jobs stay in this file and publishing remains disabled pending explicit authorization.
 # Unknowns/research: deferred application failures and live publication equivalence remain separate work.
 # Optimization: validate before planning in one Job; ordinary pushes are validation-only; reuse identical scripts.
-# Risks/verification: explicit selectors retain full tests; publication stays disabled; candidate locks stay isolated.
-name: GPT Dev - Unified Jobs (Nonpublishing)
+# Risks/verification: scheduled monitoring is nonpublishing; push validates only; publication and promotion remain hard-disabled.
+name: Docker Builder - Unified Jobs (Nonpublishing)
 run-name: GPT Dev - ${{ github.event_name }} - ${{ inputs.execution_route || github.event.head_commit.message || 'verification' }}
 'on':
+  # Single daily monitor; not the legacy scheduled publication route.
+  schedule:
+  - cron: '0 1 * * *'
   push:
     branches:
     - main

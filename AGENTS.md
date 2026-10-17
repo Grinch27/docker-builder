@@ -2,21 +2,25 @@
 
 适用于仓库根目录及所有子目录。先核对当前源码、GitHub Run 和用户最新要求，再修改；历史描述与当前源码冲突时以实测为准。
 
-## 当前状态
+## 当前状态：两工作流收敛（2026-10-17）
 
-截至 2026-10-17，初始代表性验收提交为 [`95bb3fa`](https://github.com/Grinch27/docker-builder/commit/95bb3fac6a42409192c15f942d5212c5369943f1)，后续全量与定向结果见下表。当前有 **15 个工作流文件：原 14 个 + `gpt_dev.yml` 合并候选**。核心能力已并入候选的 17 个普通 Jobs（校验已并入规划），无嵌套工作流调用；正式入口尚未替换，因此文件数量精简尚未落地。目标是一个核心工作流，另保留两个独立 Artifact 工具。
+当前唯一保留的 Workflow 文件为 `.github/workflows/gpt_dev.yml` 与 `.github/workflows/download_artifact.yml`。
+此前 13 个工作流已从 main 树中移除，Git 历史保留其源码，非 Workflow 执行脚本继续保留。
+新核心仍使用 17 个普通 Jobs，不再引用旧的可复用 Workflow；独立工具提供 URL 下载以及指定平台 Docker 镜像拉取、校验、压缩和 Artifact 上传两种手动模式。
 
-| 入口 | 当前职责 |
-|---|---|
-| `.github/workflows/gpt_dev.yml` | 合并候选，普通 push 默认 `validate`，手动默认 `verification`；`acceptance` 为完整矩阵及 Dev/Container 非发布验收 |
-| `.github/workflows/docker_allinone.yml` | 正式定时检查、构建、发布；手动 Dev 路由 |
-| `.github/workflows/docker_allinone_dev.yml` | Dev 预检、构建、晋升；部分模式会发布 |
-| `.github/workflows/docker_allinone_gpt.yml` | 原非发布回归入口 |
-| `.github/workflows/monitor-images.yml` | 独立版本监控 |
-| `.github/workflows/diagnostics.yml` | 版本、OCI 层及平台诊断 |
-| `.github/workflows/pull_artifact-dev.yml`、`download_artifact.yml` | 保留独立的镜像导出、Artifact 下载与处理用途 |
+**发布边界：** 当前 `gpt_dev.yml` 仍是非发布实现。普通 Push 只作轻量验证；
+每日 01:00 UTC 的 schedule 只进行版本监控，不执行生产 Docker Hub/GHCR/Release 发布。
+手动验证允许 Buildx/Test/Archive，但 Registry/Release 推送、Dev 晋升均保留硬禁用。
+生产正式发布和外部 repository_dispatch/workflow_call 旧入口在迁移后**不再可用**，需未来明确授权、实现并实测后恢复。
+不得将文件数收敛视为生产功能等价验收；本次提交不恢复任何外部写入。
 
-其余 7 个共享或兼容入口仍在使用：`build-docker.yml`、`build-docker_indocker.yml`、`call-build_dev.yml`、`callable-fetch-app-version.yml`、`callable-fetch-layers.yml`、`image-pipeline.yml`、`meta-app_dev.yml`。删除前必须检查内部调用与外部消费者；仓库内没有调用者不能证明没有外部 `workflow_call` / `repository_dispatch` 使用方。
+**独立手动工具：** `download_artifact.yml` 的 `operation=download` 保留旧 URL 下载；
+`operation=pull-image` 通过 `image_ref` 和 `image_platform` 拉取与导出平台明确的 Docker 镜像，压缩并上传 Actions Artifact。
+不进行 Registry Push。外部仍直接调用已删除 Workflow 的用户必须迁移到此两文件入口；尚未覆盖外部消费者。
+
+**已有验证：** `8474dac` 的 [39034967939](https://github.com/Grinch27/docker-builder/actions/runs/39034967939)
+为 106 项测试通过、2 个运行 Job 成功；尚不代表新两文件版本的 CI 结果。
+应用按约八成标准冻结，失败清单及跨 SHA 证据保留在下方历史验收记录，不再本阶段新增应用修复。
 
 ### 已完成的实际验收
 
