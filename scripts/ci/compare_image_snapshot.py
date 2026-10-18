@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-# Requirements: preserve the shared Dev/smoke OCI comparison schema and UNKNOWN failure boundary.
+# Requirements: preserve the Dev OCI comparison schema and UNKNOWN failure boundary.
 # Unknowns/research: live publication and deferred application failures remain separate work.
-# Optimization: maintain the previously identical comparison algorithm once, without registry or Docker access.
+# Optimization: keep the saved-evidence comparison algorithm separate from registry or Docker access.
 # Risks: malformed input must fail; missing/unobservable registry evidence must retain its existing meaning.
 # Verification: CLI fixtures, platform/config/version changes, unknown evidence and extraction parity.
 """Compare BASELINE CANDIDATE PLATFORM MODE OUTPUT using saved JSON evidence only."""

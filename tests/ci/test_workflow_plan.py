@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-# Requirements: push/PR cannot publish; selections must refer to configured targets/platforms.
+# Requirements: only unselected build defaults to vlmcsd; retired routes fail and selections stay catalog-only.
 # Unknowns/research: live GitHub scheduling and registry publication require separate validation.
-# Risks/verification: malformed selectors, duplicate matrices, Dev tag compatibility, routing isolation.
+# Risks/verification: explicit selectors never fall back; full matrices, Dev comparison inputs and routing stay intact.
 # Optimization: test the pure planner without Docker, network, or external writes.
 """Exercise event and target selection boundaries for the unified workflow."""
 
@@ -66,7 +66,7 @@ class WorkflowPlanTests(unittest.TestCase):
             env = dict(GITHUB_EVENT_PATH=str(event), GITHUB_EVENT_NAME='workflow_dispatch',
                        WORKFLOW_INPUTS=json.dumps({'execution_route': 'production'}),
                        WORKFLOW_READ_ONLY='false', RUNNER_IMAGE='fixture', GITHUB_OUTPUT=str(output))
-            with mock.patch.dict(os.environ, env), self.assertRaisesRegex(ValueError, 'Publishing routes'):
+            with mock.patch.dict(os.environ, env), self.assertRaisesRegex(ValueError, 'prohibited execution_route'):
                 workflow_plan.main()
             self.assertFalse(output.exists())
 
@@ -132,11 +132,17 @@ class WorkflowPlanTests(unittest.TestCase):
                 self.make(route, app_branch='runner')
             self.assertEqual(len(self.make(route, app_branch='runner', tag_repo='actions')['build_targets']['include']), 1)
 
-    def test_smoke_requires_target_and_promotion_is_rejected(self):
-        with self.assertRaises(ValueError):
-            self.make('smoke')
-        self.assertEqual(self.make('smoke', target_id='runner-actions')['dev_mode'], 'smoke-target')
-        for mode in ['auto', 'build', 'promote-dockerhub', 'promote-ghcr', 'promote-all']:
+    def test_retired_smoke_routes_and_selectors_fail(self):
+        for route in ['smoke', 'registry-smoke']:
+            for inputs in [{}, {'target_id': 'vlmcsd'}]:
+                with self.subTest(route=route, inputs=inputs), self.assertRaises(ValueError):
+                    self.make(route, **inputs)
+        for message in ['[gpt-smoke:vlmcsd]', '[gpt-smoke:runner-actions]']:
+            with self.subTest(message=message), self.assertRaises(ValueError):
+                self.make(event_name='push', event={'head_commit': {'message': message}})
+
+    def test_dev_promotion_and_retired_smoke_mode_are_rejected(self):
+        for mode in ['auto', 'build', 'smoke-target', 'promote-dockerhub', 'promote-ghcr', 'promote-all']:
             with self.subTest(mode=mode), self.assertRaises(ValueError):
                 self.make('dev', dev_mode=mode, target_id='runner-actions', version='1.0', revision='r1-a1')
 
@@ -250,6 +256,54 @@ class WorkflowPlanTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             workflow_plan.plan(self.config, "workflow_dispatch", {},
                                        {"execution_route": "registry-smoke"}, "runner")
+
+    def test_unselected_build_matches_explicit_vlmcsd_plan(self):
+        for inputs in [{}, dict(app_branch='', tag_repo='', target_id='', build_matrix=''),
+                       dict(force_build='false', custom_env='EXAMPLE=value')]:
+            with self.subTest(inputs=inputs):
+                actual = self.make('build', **inputs)
+                explicit = dict(inputs, app_branch='vlmcsd', tag_repo='latest')
+                self.assertEqual(actual, self.make('build', **explicit))
+                self.assertEqual(actual['target_id'], 'vlmcsd')
+                self.assertEqual(actual['force_build'], 'true')
+                self.assertEqual(actual['fetch_versions'], 'true')
+                self.assertEqual({row['platform'] for row in actual['test_matrix']['include']},
+                                 {'linux/amd64', 'linux/arm64', 'linux/386'})
+                self.assertEqual(actual['publish'], 'false')
+                self.assertEqual(actual['may_publish'], 'false')
+
+    def test_explicit_build_selectors_override_default(self):
+        cases = [(dict(app_branch='aria2'), 'aria2'),
+                 (dict(app_branch='samba', tag_repo='alpine'), 'samba-alpine'),
+                 (dict(tag_repo='beta'), 'adguardvpn-cli-beta'),
+                 (dict(target_id='runner-actions'), 'runner-actions'),
+                 (dict(build_matrix='[{"app_branch":"runner","tag_repo":"slim"}]'), 'runner-slim')]
+        for inputs, expected in cases:
+            with self.subTest(inputs=inputs):
+                result = self.make('build', **inputs)
+                self.assertEqual([row['target_id'] for row in result['build_targets']['include']], [expected])
+
+    def test_explicit_invalid_or_ambiguous_build_does_not_fall_back(self):
+        for inputs in [dict(app_branch='missing'), dict(app_branch='runner'), dict(tag_repo='latest'),
+                       dict(tag_repo='missing'), dict(target_id='missing'),
+                       dict(app_branch='aria2', target_id='vlmcsd'),
+                       dict(build_matrix='[{"app_branch":"aria2"},{"app_branch":"vlmcsd"}]')]:
+            with self.subTest(inputs=inputs), self.assertRaises(ValueError):
+                self.make('build', **inputs)
+        config = copy.deepcopy(self.config)
+        del config['apps']['vlmcsd']
+        with self.assertRaises(ValueError):
+            workflow_plan.plan(config, 'workflow_dispatch', {}, {'execution_route': 'build'}, 'runner')
+
+    def test_build_default_does_not_filter_monitor_test_or_acceptance(self):
+        monitor = self.make('monitor')
+        self.assertEqual(len(monitor['build_targets']['include']), 30)
+        self.assertEqual(len(monitor['version_matrix']['include']), 24)
+        for route in ['test', 'acceptance']:
+            with self.subTest(route=route):
+                matrix = self.make(route)['test_matrix']['include']
+                self.assertEqual(len(matrix), 52)
+                self.assertEqual(len({row['app'] for row in matrix}), 24)
 
     def test_full_acceptance_covers_catalog_and_isolates_compatibility_jobs(self):
         result = workflow_plan.plan(self.config, "push",

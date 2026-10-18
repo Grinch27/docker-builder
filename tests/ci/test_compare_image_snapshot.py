@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Requirements: preserve Dev/smoke comparison decisions and JSON schema after extracting the shared CLI.
+# Requirements: preserve Dev comparison decisions and JSON schema through the saved-evidence CLI.
 # Unknowns/research: registry visibility is represented by saved evidence, not live network requests.
 # Optimization: small JSON fixtures need no Docker, package installation or external services.
 # Risks/verification: platform/version/config differences, unknown evidence, missing data and malformed JSON.

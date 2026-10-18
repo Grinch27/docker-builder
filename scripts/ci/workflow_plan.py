@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# Requirements: preserve the current eleven routes; every plan is intrinsically nonpublishing.
-# Research/optimization: ordinary staging pushes validate only; explicit verification keeps representative coverage.
-# Risks: retired events/routes must fail; Dev/Container acceptance keeps catalog-only settings.
-# Verification: explicit selector parsing, full catalog coverage, Dev/Container selection and event isolation.
+# Requirements: ten nonpublishing routes; only an unselected build defaults to vlmcsd:latest.
+# Unknowns/research: external consumers of retired routes must migrate to build or Dev acceptance.
+# Optimization: retire the duplicate smoke path; keep representative and full catalog coverage.
+# Risks/verification: explicit selectors must not fall back; retired routes fail and Dev comparison stays intact.
 """Plan the single workflow without executing builds, probes, or external writes."""
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ import catalog
 
 
 ROUTES = {"verification", "acceptance", "dev-verify", "container-verify", "validate",
-          "monitor", "build", "test", "smoke", "diagnostics", "dev"}
+          "monitor", "build", "test", "diagnostics", "dev"}
 # This is the former Dev auto-selection policy, not another application catalog.
 DEV_EXCLUDED = {"baidunetdisk", "cloudflare-warp", "expressvpn", "ffmpeg", "novnc",
                 "protonvpn", "sdnext", "sdnext-dev", "stable-diffusion-webui-amdgpu",
@@ -71,7 +71,7 @@ def _target_plan(config: dict, inputs: dict, runner: str) -> dict:
     raw_matrix = inputs.get("build_matrix") or ""
     if not isinstance(raw_matrix, str):
         raise ValueError("build_matrix must be JSON text")
-    if custom and route in {"test", "smoke", "dev"}:
+    if custom and route in {"test", "dev"}:
         raise ValueError("This route uses catalog settings; custom_env is unsupported")
     if raw_matrix:
         if route not in {"monitor", "build", "test"} or app or tag or selected_id:
@@ -96,8 +96,6 @@ def _target_plan(config: dict, inputs: dict, runner: str) -> dict:
         targets = [dict(t, custom_env=custom) for t in targets]
     if not targets or len({t["target_id"] for t in targets}) != len(targets):
         raise ValueError("Empty or duplicated target selection")
-    if route == "smoke" and len(targets) != 1:
-        raise ValueError("smoke requires exactly one configured target")
     test_matrix = [{"app": t["app_branch"], "tag": t["tag_repo"], "platform": platform}
                    for t in targets for platform in t["arch_branch"].split(",")]
     platform = value("platform")
@@ -129,7 +127,7 @@ def _target_plan(config: dict, inputs: dict, runner: str) -> dict:
               ["ubuntu:latest", "debian:latest", "alpine:latest"] if profile == "base" else
               ["debian:latest", "ubuntu:latest", "alpine:latest", "debian:sid", "ubuntu:devel"])
     return {
-        "route": route, "dev_mode": "smoke-target" if route == "smoke" else dev_mode,
+        "route": route, "dev_mode": dev_mode,
         "target_id": targets[0]["target_id"] if len(targets) == 1 else "",
         "force_build": force, "publish": "false", "may_publish": "false",
         "version": value("version"), "revision": value("revision"), "custom_env": custom,
@@ -169,16 +167,12 @@ def plan(config: dict, event_name: str, event: dict, inputs: dict, runner: str) 
         patterns = [(r"\[gpt-dev:([a-z0-9_.-]+):([a-z0-9_.-]+)\]", "dev-verify"),
                     (r"\[gpt-container:([a-z0-9_.-]+):([a-z0-9_.-]+)\]", "container-verify"),
                     (r"\[gpt-build:([a-z0-9_.-]+):([a-z0-9_.-]+)\]", "build"),
-                    (r"\[gpt-monitor:([a-z0-9_.-]+):([a-z0-9_.-]+)\]", "monitor"),
-                    (r"\[gpt-smoke:([a-zA-Z0-9_.-]+)\]", "smoke")]
+                    (r"\[gpt-monitor:([a-z0-9_.-]+):([a-z0-9_.-]+)\]", "monitor")]
         for pattern, candidate in patterns:
             match = re.fullmatch(pattern, selector)
             if match:
                 route = candidate
-                if route == "smoke":
-                    selected["target_id"] = match.group(1)
-                else:
-                    selected["app_branch"], selected["tag_repo"] = match.groups()
+                selected["app_branch"], selected["tag_repo"] = match.groups()
                 break
         if selector and route == "validate" and selector != "[gpt-validate]":
             raise ValueError("Unknown or malformed staging selector")
@@ -189,7 +183,7 @@ def plan(config: dict, event_name: str, event: dict, inputs: dict, runner: str) 
     elif event_name != "workflow_dispatch":
         raise ValueError("Core accepts push/schedule/workflow_dispatch only")
     if route not in ROUTES:
-        raise ValueError("Publishing routes are prohibited in gpt_dev.yml")
+        raise ValueError("Unknown or prohibited execution_route: " + str(route))
     if route == "dev" and selected.get("dev_mode", "preflight") != "preflight":
         raise ValueError("Dev build/promotion is prohibited in gpt_dev.yml")
     acceptance_routes = {"acceptance", "dev-verify", "container-verify"}
@@ -201,6 +195,9 @@ def plan(config: dict, event_name: str, event: dict, inputs: dict, runner: str) 
         raise ValueError("Full acceptance cannot be combined with target filters")
     if route in {"dev-verify", "container-verify"} and not any(
             selected.get(key) for key in ("app_branch", "target_id", "build_matrix")):
+        selected.update(app_branch="vlmcsd", tag_repo="latest")
+    if route == "build" and not any(selected.get(key) for key in
+                                   ("app_branch", "tag_repo", "target_id", "build_matrix")):
         selected.update(app_branch="vlmcsd", tag_repo="latest")
     selected["execution_route"] = "test" if route in acceptance_routes | {"verification"} else route
     result = _target_plan(config, selected, runner)

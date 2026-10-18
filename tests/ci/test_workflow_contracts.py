@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Requirements: fail closed on failed check evidence and prohibit publication during acceptance.
+# Requirements: fail closed on failed checks; retire duplicate smoke Jobs and preserve nonpublishing acceptance.
 # Unknowns/research: GitHub-hosted execution and registry publication remain unverified locally.
 # Risks/verification: execute real check-result shell with fixtures; parse anchored Bash and reject missing validation.
 # Optimization: one standard-library graph/contract gate; actionlint validates YAML separately.
@@ -44,7 +44,7 @@ def validate_workflow(root):
     text = (flow / "gpt_dev.yml").read_text(encoding="utf-8")
     blocks = job_blocks(text)
     required = {"runner-image", "plan", "fetch-versions", "monitor", "check", "build",
-                "dev-inspect", "dev-build", "smoke", "test-images",
+                "dev-inspect", "dev-build", "test-images",
                 "diagnostic-layers", "diagnostic-platforms", "diagnostic-collect",
                 "diagnostic-meta-platforms", "diagnostic-validate", "container-build"}
     assert required <= blocks.keys(), "Core capability Job missing"
@@ -220,15 +220,22 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertNotIn("docker push ", manual)
         self.assertNotIn("gh release ", manual)
 
-    def test_single_target_build_replaces_registry_smoke_job(self):
+    def test_single_target_build_and_dev_replace_retired_smoke_jobs(self):
         jobs = job_blocks(TEXT)
         self.assertNotIn("registry-smoke", TEXT)
         self.assertNotIn("registry-smoke", jobs)
+        self.assertNotIn("smoke", jobs)
+        self.assertNotIn("        - smoke\n", TEXT)
+        self.assertNotIn("smoke-target", TEXT)
         self.assertIn("registry_local: localhost:5000", jobs["build"])
         self.assertIn("Build and push to local registry", jobs["build"])
         self.assertIn("docker pull --platform $platform", jobs["build"])
         self.assertIn("scripts/ci/build-image.sh", jobs["build"])
         self.assertIn("materialize_test_hooks.py", jobs["build"])
+        dev = script_for('dev-build', 'Build, test, compare and archive locally')
+        self.assertIn('compare_image_snapshot.py', dev)
+        self.assertIn('UNKNOWN', dev)
+        self.assertIn('Upload inspect metadata', jobs['dev-inspect'])
 
     def test_staging_publication_is_hard_disabled(self):
         jobs = job_blocks(TEXT)

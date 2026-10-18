@@ -1,6 +1,6 @@
 # Requirements: single retained core workflow; all jobs stay in this file and publishing remains disabled pending explicit authorization.
 # Unknowns/research: deferred application failures and live publication equivalence remain separate work.
-# Optimization: validate before planning in one Job; ordinary pushes are validation-only; reuse identical scripts.
+# Optimization: ordinary pushes validate only; unselected build defaults to vlmcsd; Dev acceptance owns remote comparison.
 # Risks/verification: scheduled monitoring is nonpublishing; push validates only; publication and promotion remain hard-disabled.
 name: Docker Builder - Unified Jobs (Nonpublishing)
 run-name: GPT Dev - ${{ github.event_name }} - ${{ inputs.execution_route || github.event.head_commit.message || 'verification' }}
@@ -34,11 +34,10 @@ run-name: GPT Dev - ${{ github.event_name }} - ${{ inputs.execution_route || git
         - monitor
         - build
         - test
-        - smoke
         - diagnostics
         - dev
       app_branch:
-        description: Optional configured application; empty selects all
+        description: Optional configured application; build without target selectors defaults to vlmcsd
         type: string
         default: ''
       tag_repo:
@@ -53,7 +52,7 @@ run-name: GPT Dev - ${{ github.event_name }} - ${{ inputs.execution_route || git
         - 'true'
         - 'false'
       target_id:
-        description: Optional target_id; required for smoke or single-target promotion
+        description: Optional configured target_id instead of application/tag selectors
         type: string
         default: ''
       build_matrix:
@@ -373,7 +372,7 @@ jobs:
           /tmp/monitor-output/monitor-state.json
           /tmp/monitor-output/monitor-report.md
           /tmp/monitor-output/versions.json
-        retention-days: 7
+        retention-days: 1
     - name: Commit README updates (preserve current config on concurrent push)
       if: ${{ false }}
       env:
@@ -417,7 +416,7 @@ jobs:
     runs-on: ${{ matrix.runner_image }}
     strategy:
       fail-fast: false
-      max-parallel: 3
+      max-parallel: 10
       matrix:
         include: ${{ fromJson(needs.monitor.outputs.changed_build_matrix).include }}
     env:
@@ -811,7 +810,7 @@ jobs:
     runs-on: ${{ matrix.runner_image }}
     strategy:
       fail-fast: false
-      max-parallel: 3
+      max-parallel: 10
       matrix:
         include: ${{ fromJson(needs.monitor.outputs.changed_build_matrix).include }}
     env:
@@ -884,8 +883,8 @@ jobs:
     - name: Checkout ${{ github.repository }}
       uses: actions/checkout@main
     - name: Initialize environment
-      if: ${{ steps.check-result.outputs.changed == 'true' }}
       id: init
+      if: ${{ steps.check-result.outputs.changed == 'true' }}
       env:
         DEBIAN_FRONTEND: noninteractive
       working-directory: /
@@ -908,8 +907,8 @@ jobs:
 
         echo "status=success" | tee -a ${GITHUB_OUTPUT}
     - name: (Env) Load catalog target settings
-      if: ${{ steps.check-result.outputs.changed == 'true' }}
       id: env-app
+      if: ${{ steps.check-result.outputs.changed == 'true' }}
       run: |
         set -euo pipefail
         python3 scripts/ci/catalog.py env \
@@ -924,24 +923,24 @@ jobs:
       run: |
         echo "${{ env.custom_env }}" | tr '${{ env.flag_split }}' '\n' | tee -a $GITHUB_ENV
     - name: (Disk) Expand workspace
-      if: ${{ steps.check-result.outputs.changed == 'true' }}
       id: disk
+      if: ${{ steps.check-result.outputs.changed == 'true' }}
       uses: Grinch27/github-actions/.github/actions/setup-disk@main
       with:
         path_build: ${{ env.path_build }}
         root_num: 4
         mnt_num: 1
     - name: (Clean) Docker Images
-      if: ${{ steps.check-result.outputs.changed == 'true' }}
       id: clean-docker
+      if: ${{ steps.check-result.outputs.changed == 'true' }}
       uses: Grinch27/github-actions/.github/actions/clean-docker_image@main
     - name: (Setup) Docker
-      if: ${{ steps.check-result.outputs.changed == 'true' }}
       id: setup-docker
+      if: ${{ steps.check-result.outputs.changed == 'true' }}
       uses: Grinch27/github-actions/.github/actions/setup-docker@main
     - name: (Setup) Docker Data Root
-      if: ${{ steps.check-result.outputs.changed == 'true' }}
       id: setup-docker-root
+      if: ${{ steps.check-result.outputs.changed == 'true' }}
       env:
         docker_data_root: ${{ env.path_build }}/docker-data
       working-directory: /
@@ -953,15 +952,15 @@ jobs:
       with:
         platforms: ${{ env.arch_branch }}
     - name: Setup Docker Buildx
-      if: ${{ steps.check-result.outputs.changed == 'true' }}
       id: buildx
+      if: ${{ steps.check-result.outputs.changed == 'true' }}
       uses: docker/setup-buildx-action@master
       with:
         version: latest
         driver-opts: network=host
     - name: (Service) Local Registry
-      if: ${{ steps.check-result.outputs.changed == 'true' }}
       id: registry
+      if: ${{ steps.check-result.outputs.changed == 'true' }}
       env:
         DEBIAN_FRONTEND: noninteractive
       working-directory: /
@@ -974,16 +973,16 @@ jobs:
           registry:latest
         echo "status=success" | tee -a ${GITHUB_OUTPUT}
     - name: Build and push to local registry
-      if: ${{ steps.check-result.outputs.changed == 'true' }}
       id: build
+      if: ${{ steps.check-result.outputs.changed == 'true' }}
       working-directory: ${{ github.workspace }}/${{ env.dir_app }}
       run: |
         set -euo pipefail
         bash "${GITHUB_WORKSPACE}/scripts/ci/build-image.sh"
         echo "status=success" >> "${GITHUB_OUTPUT}"
     - name: (Inspect) Layers with skopeo
-      if: ${{ steps.check-result.outputs.changed == 'true' }}
       id: inspect
+      if: ${{ steps.check-result.outputs.changed == 'true' }}
       working-directory: ${{ github.workspace }}/${{ env.dir_app }}
       run: |
         echo "Current working directory: $(pwd)"
@@ -1009,9 +1008,8 @@ jobs:
         done
         echo "status=success" | tee -a ${GITHUB_OUTPUT}
     - name: (Test) Docker image
-      if: ${{ steps.check-result.outputs.changed == 'true' }}
       id: test
-      timeout-minutes: ${{ fromJSON('3') }}
+      if: ${{ steps.check-result.outputs.changed == 'true' }}
       env:
         container_name: container-test
         dir_container: /tmp
@@ -1110,8 +1108,8 @@ jobs:
 
         echo "status=success" | tee -a ${GITHUB_OUTPUT}
     - name: (Output) Save
-      if: ${{ steps.check-result.outputs.changed == 'true' }}
       id: output
+      if: ${{ steps.check-result.outputs.changed == 'true' }}
       env:
         dir_output: ${{ env.path_build }}/${{ env.dir_app }}/output
         target_ext: tar
@@ -1243,8 +1241,8 @@ jobs:
         echo "metadata_sum_path=${metadata_sum_path}" | tee -a ${GITHUB_OUTPUT}
         echo "status=success" | tee -a ${GITHUB_OUTPUT}
     - name: (release.md) Generate
-      if: ${{ steps.check-result.outputs.changed == 'true' }}
       id: release-md
+      if: ${{ steps.check-result.outputs.changed == 'true' }}
       env:
         release_md: ${{ github.workspace }}/${{ env.dir_app }}/release.md
         metadata_sum_path: ${{ steps.output-check.outputs.metadata_sum_path }}
@@ -1301,10 +1299,6 @@ jobs:
       id: upload-release
       if: ${{ false }}
       uses: ncipollo/release-action@main
-      env:
-        dir_output: ${{ env.dir_output }}
-        target_ext: ${{ env.target_ext }}
-        release_md: ${{ env.release_md }}
       with:
         name: ${{ env.repo_dockerhub }}
         tag: ${{ env.app_branch }}
@@ -1314,8 +1308,12 @@ jobs:
         replacesArtifacts: true
         token: ${{ secrets.GITHUB_TOKEN }}
         bodyFile: ${{ env.release_md }}
+      env:
+        dir_output: ${{ env.dir_output }}
+        target_ext: ${{ env.target_ext }}
+        release_md: ${{ env.release_md }}
   dev-inspect:
-    if: ${{ contains(fromJSON('["smoke","acceptance","dev-verify"]'), needs.plan.outputs.route) || (needs.plan.outputs.route == 'dev' && needs.plan.outputs.dev_mode != 'preflight') }}
+    if: ${{ contains(fromJSON('["acceptance","dev-verify"]'), needs.plan.outputs.route) || (needs.plan.outputs.route == 'dev' && needs.plan.outputs.dev_mode != 'preflight') }}
     name: ${{ needs.runner-image.outputs.RUNNER_IMAGE }} - inspect
     needs:
     - runner-image
@@ -1323,7 +1321,6 @@ jobs:
     runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
     outputs:
       mode: ${{ steps.inspect.outputs.mode }}
-      target_count: ${{ steps.inspect.outputs.target_count }}
       target_matrix: ${{ steps.inspect.outputs.target_matrix }}
       artifact_name: ${{ steps.inspect.outputs.artifact_name }}
       fatal_count: ${{ steps.inspect.outputs.fatal_count }}
@@ -1359,7 +1356,7 @@ jobs:
         mkdir -p "${inspect_dir}" "${work_dir}"
 
         case "${mode}" in
-          auto|build|smoke-target|promote-dockerhub|promote-ghcr|promote-all) ;;
+          auto|build|promote-dockerhub|promote-ghcr|promote-all) ;;
           *)
             printf 'Unsupported mode: %s\n' "${mode}" >&2
             exit 2
@@ -1634,7 +1631,7 @@ jobs:
           rm -rf "${dir}"
         }
 
-        if [[ "${mode}" == auto || "${mode}" == build || "${mode}" == smoke-target ]]; then
+        if [[ "${mode}" == auto || "${mode}" == build ]]; then
           while IFS= read -r target; do
             target_id=$(jq -r '.target_id' <<< "${target}")
             tag_repo=$(jq -r '.tag_repo' <<< "${target}")
@@ -1666,7 +1663,6 @@ jobs:
 
         {
           echo "mode=${mode}"
-          echo "target_count=${target_count}"
           echo "artifact_name=${artifact_name}"
           echo "fatal_count=${fatal_count}"
           echo "unobservable_count=${unobservable_count}"
@@ -1687,7 +1683,7 @@ jobs:
           echo "- Hash calculations: NONE"
         } >> "${GITHUB_STEP_SUMMARY}"
     - name: Upload inspect metadata
-      if: steps.inspect.outputs.mode == 'auto' || steps.inspect.outputs.mode == 'build' || steps.inspect.outputs.mode == 'smoke-target'
+      if: steps.inspect.outputs.mode == 'auto' || steps.inspect.outputs.mode == 'build'
       uses: actions/upload-artifact@main
       with:
         name: ${{ steps.inspect.outputs.artifact_name }}
@@ -1706,7 +1702,6 @@ jobs:
     - plan
     - dev-inspect
     if: ${{ contains(fromJSON('["acceptance","dev-verify"]'), needs.plan.outputs.route) }}
-    timeout-minutes: 75
     permissions:
       contents: read
     runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
@@ -1716,7 +1711,7 @@ jobs:
       queue: max
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: 10
       matrix:
         include: ${{ fromJSON(needs.dev-inspect.outputs.target_matrix).include }}
     env:
@@ -2374,183 +2369,7 @@ jobs:
         name: dev-acceptance-${{ matrix.target_id }}-a${{ github.run_attempt }}
         path: ${{ runner.temp }}/docker-pipeline/${{ matrix.target_id }}
         if-no-files-found: error
-        retention-days: 5
-  smoke:
-    name: Smoke ${{ matrix.target_id }} (local only)
-    needs:
-    - runner-image
-    - plan
-    - dev-inspect
-    if: ${{ needs.plan.outputs.route == 'smoke' && needs.dev-inspect.result == 'success' && needs.dev-inspect.outputs.target_count == '1' }}
-    runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
-    timeout-minutes: 75
-    concurrency:
-      group: gpt-smoke-${{ github.ref }}-${{ matrix.target_id }}
-      cancel-in-progress: false
-    strategy:
-      fail-fast: false
-      max-parallel: 1
-      matrix:
-        include: ${{ fromJSON(needs.dev-inspect.outputs.target_matrix).include }}
-    env:
-      TARGET_ID: ${{ matrix.target_id }}
-      APP_BRANCH: ${{ matrix.app_branch }}
-      TAG_REPO: ${{ matrix.tag_repo }}
-      REPO_DOCKERHUB: ${{ matrix.repo_dockerhub }}
-      BASE_IMAGE: ${{ matrix.base_image }}
-      ARCH_BRANCH: ${{ matrix.arch_branch }}
-      DOCKERFILE: ${{ matrix.dockerfile }}
-      BUILD_TAG: ${{ matrix.build_tag }}
-      BUILD_ARG: ${{ matrix.build_arg }}
-      LEGACY_TAG_POLICY: ${{ matrix.legacy_tag_policy }}
-      REVISION: ${{ matrix.revision }}
-      MODE: smoke-target
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@main
-    - name: QEMU platform emulation
-      uses: docker/setup-qemu-action@master
-      with:
-        cache-image: false
-    - name: Configure Buildx
-      uses: docker/setup-buildx-action@master
-    - name: Download published-image inspection (read only)
-      uses: actions/download-artifact@main
-      with:
-        name: ${{ needs.dev-inspect.outputs.artifact_name }}
-        path: ${{ runner.temp }}/inspect-baseline
-    - name: Sequential Buildx / test.sh / compare / archive / tag simulation
-      shell: bash
-      run: |
-        set -euo pipefail
-        dir_app="application/$APP_BRANCH"
-        build_dir="$dir_app"
-        dockerfile="$build_dir/$DOCKERFILE"
-        baseline_file="$RUNNER_TEMP/inspect-baseline/$TARGET_ID.json"
-        out="$RUNNER_TEMP/smoke-$TARGET_ID"
-        mkdir -p "$out"
-        [[ -f "$dockerfile" && -f "$baseline_file" ]] || { echo "::error::Dockerfile or baseline missing"; exit 1; }
-        python3 scripts/ci/materialize_test_hooks.py --app "${APP_BRANCH}"
-        shopt -s nullglob
-        test_scripts=("$dir_app"/test/*.sh)
-        if (( ${#test_scripts[@]} == 0 )); then
-          echo "::error::No test.sh found for $TARGET_ID"
-          exit 1
-        fi
-        cid=""
-        image_ref=""
-        cleanup() {
-          if [[ -n "$cid" ]]; then docker rm -f "$cid" >/dev/null 2>&1 || true; fi
-          if [[ -n "$image_ref" ]]; then docker image rm "$image_ref" >/dev/null 2>&1 || true; fi
-        }
-        trap cleanup EXIT
-        normalize_version() {
-          printf '%s' "${1#v}" | sed -E 's/[^A-Za-z0-9_.-]+/-/g; s/^-+//; s/-+$//'
-        }
-        IFS=',' read -r -a platforms <<< "$ARCH_BRANCH"
-        versions=()
-        for platform in "${platforms[@]}"; do
-          platform="${platform//[[:space:]]/}"
-          [[ -n "$platform" ]] || continue
-          arch="${platform#linux/}"
-          arch="${arch//\//-}"
-          image_ref="smoke-$TARGET_ID:$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$arch"
-          cid=""
-          echo "=== Build $TARGET_ID $platform ==="
-          build_args=(
-            docker buildx build
-            --platform "$platform"
-            --file "$dockerfile"
-            --tag "$image_ref"
-            --build-arg "base_image=$BASE_IMAGE"
-            --load
-          )
-          if [[ -n "$BUILD_ARG" ]]; then
-            build_args+=(--build-arg "build_arg=$BUILD_ARG")
-          fi
-          build_args+=("$build_dir")
-          "${build_args[@]}"
-          cid=$(docker run --detach --platform "$platform" --entrypoint /bin/sh "$image_ref" -c 'sleep infinity')
-          : > "$out/$arch.test.log"
-          for test_script in "${test_scripts[@]}"; do
-            name=$(basename "$test_script")
-            docker cp "$test_script" "$cid:/tmp/$name"
-            docker exec --user 0 "$cid" /bin/sh "/tmp/$name" | tee -a "$out/$arch.test.log"
-          done
-          actual_version=$(awk -F= '/^version=/{sub(/^[^=]*=/,""); v=$0} END{print v}' "$out/$arch.test.log")
-          if [[ -z "$actual_version" ]]; then
-            echo "::error::$TARGET_ID $platform: no actual version from test.sh"
-            exit 1
-          fi
-          versions+=("$actual_version")
-          docker rm -f "$cid" >/dev/null
-          cid=""
-          docker image inspect "$image_ref" > "$out/$arch.image.json"
-          docker image history --no-trunc --human=false --format '{{json .}}' "$image_ref" |
-            jq -s '.' > "$out/$arch.history.json"
-          jq -cn \
-            --arg platform "$platform" \
-            --arg actual_version "$actual_version" \
-            --argjson image_inspect "$(cat "$out/$arch.image.json")" \
-            --argjson image_history "$(cat "$out/$arch.history.json")" \
-            '{platform:$platform,actual_version:$actual_version,test_result:"success",source:{image_inspect:$image_inspect,image_history:$image_history}}' > "$out/$arch.snapshot.json"
-          snapshot_file="$out/$arch.snapshot.json"
-          comparison_file="$out/$arch.comparison.json"
-            python3 "$GITHUB_WORKSPACE/scripts/ci/compare_image_snapshot.py" \
-              "${baseline_file}" "${snapshot_file}" "${platform}" "${MODE}" "${comparison_file}"
-          result=$(jq -r '.comparison.result' "$comparison_file")
-          echo "Read-only candidate comparison $platform: $result"
-          normalized=$(normalize_version "$actual_version")
-          [[ -n "$normalized" ]] || exit 1
-          channel_tag="$TAG_REPO"
-          if [[ "$TAG_REPO" == latest ]]; then
-            version_manifest_tag="$normalized"
-            platform_tag="$normalized-$arch"
-          else
-            version_manifest_tag="$normalized-$TAG_REPO"
-            platform_tag="$normalized-$TAG_REPO-$arch"
-          fi
-          legacy="$TAG_REPO-$actual_version"
-          case "$LEGACY_TAG_POLICY" in
-            strip_channel) legacy="${legacy#*-}" ;;
-            strip_channel_and_spaces) legacy="${legacy#*-}"; legacy="${legacy// /-}" ;;
-            none) legacy="" ;;
-            keep|default) ;;
-            *) echo "::error::Unknown tag policy"; exit 2 ;;
-          esac
-          jq -cn \
-            --arg target "$TARGET_ID" --arg platform "$platform" \
-            --arg version "$actual_version" --arg remote_comparison "$result" \
-            --arg legacy_version_tag "$legacy" \
-            --arg dev_platform_tag "$platform_tag" \
-            --arg dev_version_manifest_tag "$version_manifest_tag" \
-            --arg dev_channel_tag "$channel_tag" \
-            '{target:$target,platform:$platform,version:$version,remote_comparison:$remote_comparison,legacy_version_tag:$legacy_version_tag,dev_platform_tag:$dev_platform_tag,dev_version_manifest_tag:$dev_version_manifest_tag,dev_channel_tag:$dev_channel_tag}' > "$out/$arch.tags.json"
-          asset="$out/$TARGET_ID-v$normalized-$REVISION-linux-$arch.tar"
-          docker save --output "$asset" "$image_ref"
-          tar tf "$asset" | grep -Fxq 'manifest.json'
-          xz -T2 -6 "$asset"
-          xz -t "$asset.xz"
-          sha256sum "$asset.xz" > "$asset.xz.sha256"
-          (cd "$out" && sha256sum --check "$(basename "$asset.xz.sha256")")
-          docker image rm "$image_ref" >/dev/null || true
-          image_ref=""
-          echo "| $platform | $actual_version | $result | $version_manifest_tag |" >> "$GITHUB_STEP_SUMMARY"
-        done
-        unique_versions=$(printf '%s\n' "${versions[@]}" | sort -u | wc -l)
-        if [[ "$unique_versions" -ne 1 ]]; then
-          echo "::error::Version differs across declared platforms"
-          exit 1
-        fi
-        echo "Smoke success: $TARGET_ID, ${#versions[@]} declared platforms; NO registry push / NO GitHub Release." >> "$GITHUB_STEP_SUMMARY"
-    - name: Upload smoke evidence (Actions Artifact ONLY)
-      if: always()
-      uses: actions/upload-artifact@main
-      with:
-        name: smoke-${{ matrix.target_id }}-${{ github.run_id }}
-        path: ${{ runner.temp }}/smoke-${{ matrix.target_id }}
-        if-no-files-found: warn
-        retention-days: 5
+        retention-days: 1
   test-images:
     name: Build and test ${{ matrix.app }}:${{ matrix.tag }} / ${{ matrix.platform }} (no publish)
     needs:
@@ -2558,14 +2377,13 @@ jobs:
     - plan
     if: ${{ contains(fromJSON('["verification","acceptance","test"]'), needs.plan.outputs.route) }}
     runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
-    timeout-minutes: 120
     permissions:
       contents: read
     env:
       LARGE_IMAGE_BUILD: ${{ contains(fromJSON('["ffmpeg","sdnext","sdnext-dev","stable-diffusion-webui-amdgpu"]'), matrix.app) }}
     strategy:
       fail-fast: false
-      max-parallel: 8
+      max-parallel: 10
       matrix: ${{ fromJSON(needs.plan.outputs.test_matrix) }}
     steps:
     - name: Checkout repository
@@ -2591,11 +2409,11 @@ jobs:
     - name: Setup Docker Buildx
       uses: docker/setup-buildx-action@master
     - name: Build image, execute README Test, and inspect result
-      shell: bash
       env:
         APP: ${{ matrix.app }}
         TARGET_TAG: ${{ matrix.tag }}
         TARGET_PLATFORM: ${{ matrix.platform }}
+      shell: bash
       run: |
         set -euo pipefail
         evidence="$RUNNER_TEMP/full-test"
@@ -2648,7 +2466,7 @@ jobs:
         name: full-test-${{ matrix.app }}-${{ matrix.tag }}-${{ strategy.job-index }}-a${{ github.run_attempt }}
         path: ${{ runner.temp }}/full-test
         if-no-files-found: error
-        retention-days: 5
+        retention-days: 1
   diagnostic-layers:
     name: OCI layers ${{ matrix.image_name }}
     needs:
@@ -2734,7 +2552,7 @@ jobs:
         if-no-files-found: warn
     strategy:
       fail-fast: false
-      max-parallel: 3
+      max-parallel: 10
       matrix:
         image_name: ${{ fromJSON(needs.plan.outputs.images) }}
     if: ${{ needs.plan.outputs.route == 'verification' || (needs.plan.outputs.route == 'diagnostics' && (needs.plan.outputs.diagnostic_mode == 'layers' || needs.plan.outputs.diagnostic_mode == 'both')) }}
@@ -2747,7 +2565,7 @@ jobs:
     runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
     strategy:
       fail-fast: false
-      max-parallel: 3
+      max-parallel: 10
       matrix:
         include: ${{ fromJSON(needs.plan.outputs.image_platforms) }}
     steps:
@@ -3020,7 +2838,6 @@ jobs:
     - runner-image
     - plan
     runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
-    timeout-minutes: 90
     permissions:
       contents: read
     defaults:
@@ -3650,7 +3467,6 @@ jobs:
     - name: (Test) Docker image
       id: test
       if: steps.build.outputs.status == 'success' && !cancelled()
-      timeout-minutes: ${{ fromJSON('3') }}
       env:
         container_name: container-test
         dir_container: /tmp
@@ -3933,7 +3749,7 @@ jobs:
           /builder/metadata
           /builder/release.md
         if-no-files-found: error
-        retention-days: 5
+        retention-days: 1
     if: ${{ contains(fromJSON('["acceptance","container-verify"]'), needs.plan.outputs.route) }}
     strategy:
       fail-fast: false
