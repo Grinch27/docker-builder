@@ -131,13 +131,13 @@ class CatalogTests(unittest.TestCase):
             catalog.validate(altered, ROOT)
 
     def test_matrices_have_distinct_work_and_no_implicit_targets(self):
-        vs = catalog.matrix(self.config, "version", "ubuntu-test")["include"]
-        bs = catalog.matrix(self.config, "build", "ubuntu-test")["include"]
+        vs = catalog.matrix(self.config, "version")["include"]
+        bs = catalog.matrix(self.config, "build")["include"]
         self.assertEqual(len(vs), 24)
         self.assertEqual(len(bs), 30)
         self.assertEqual({i["app_branch"] for i in vs}, set(self.config["apps"]))
         self.assertEqual(len({(i["app_branch"], i["tag_repo"]) for i in bs}), 30)
-        self.assertTrue(all(i["runner_image"] == "ubuntu-test" for i in vs + bs))
+        self.assertTrue(all(set(i) == {"app_branch", "tag_repo"} for i in vs + bs))
 
     def test_target_overrides(self):
         alpine = catalog.get(self.config, "samba", "alpine")
@@ -517,7 +517,7 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(generated,"[binaries]\nllvm-config = '/usr/bin/llvm-config-18'\n")
         self.assertIn('-Dvideo-codecs=all',mesa)
 
-    def test_shared_buildx_registry_and_load_contracts(self):
+    def test_buildx_only_exports_to_the_local_acceptance_registry(self):
         builder=ROOT/'scripts/ci/build-image.sh'
         with tempfile.TemporaryDirectory() as dirname:
             root=Path(dirname)
@@ -534,7 +534,6 @@ class CatalogTests(unittest.TestCase):
                  'build_arg':'update_channel=nightly'}
             registry={**env,'repo_dockerhub':'grinch27/example','tag_repo':'nightly',
                       'registry_local':'127.0.0.1:5000','version':'1.2.3'}
-            registry.pop('build_output',None)
             subprocess.run(['bash',str(builder)],cwd=root,env=registry,check=True)
             args=log.read_text(encoding='utf-8').splitlines()
             self.assertEqual(args[:2],['buildx','build'])
@@ -542,20 +541,37 @@ class CatalogTests(unittest.TestCase):
             self.assertIn('version=1.2.3',args)
             self.assertIn('type=registry,registry.insecure=true',args)
             self.assertNotIn('--load',args)
-            load={**env,'build_output':'load','image_ref':'example:test'}
-            subprocess.run(['bash',str(builder)],cwd=root,env=load,check=True)
-            args=log.read_text(encoding='utf-8').splitlines()
-            self.assertIn('example:test',args)
-            self.assertIn('--load',args)
-            self.assertNotIn('--label',args)
-            self.assertNotIn('--output',args)
-            log.unlink()
-            invalid={**env,'build_output':'load'}
-            invalid.pop('image_ref',None)
-            result=subprocess.run(['bash',str(builder)],cwd=root,env=invalid,
-                                  capture_output=True,text=True)
-            self.assertNotEqual(result.returncode,0)
-            self.assertFalse(log.exists())
+            for invalid in [dict(registry, registry_local='docker.io'), dict(registry, version='')]:
+                log.unlink(missing_ok=True)
+                result=subprocess.run(['bash',str(builder)],cwd=root,env=invalid,capture_output=True,text=True)
+                self.assertNotEqual(result.returncode,0)
+                self.assertFalse(log.exists())
+
+
+    def test_monitor_cli_preserves_records_without_old_build_outputs(self):
+        import monitor_state
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            readme=root/'README.md'
+            original=(ROOT/'README.md').read_text()
+            readme.write_text(original)
+            artifacts=root/'versions'
+            artifacts.mkdir()
+            records=monitor_state.parse_readme_versions(original)
+            for row in records:
+                (artifacts/('version-'+row['app_branch']+'.json')).write_text(json.dumps(row))
+            output=root/'output'
+            command=[sys.executable,str(ROOT/'scripts/ci/monitor_state.py'),'--artifact-root',str(artifacts),
+                     '--readme-path',str(readme),'--output-dir',str(output)]
+            subprocess.run(command,check=True,capture_output=True)
+            state=json.loads((output/'monitor-state.json').read_text())
+            self.assertEqual(state['changed_apps'],[])
+            self.assertFalse(state['readme_changed'])
+            self.assertEqual(readme.read_text(),original)
+            self.assertFalse((output/'build-matrix.json').exists())
+            for flag in ['--force-build','--build-targets-json']:
+                result=subprocess.run(command+[flag,'true'],capture_output=True)
+                self.assertNotEqual(result.returncode,0)
 
 
 if __name__ == "__main__":

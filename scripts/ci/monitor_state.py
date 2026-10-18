@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-# Requirements: preserve config, scripts and semantic monitor outputs.
-# Unknowns/research: external users of retired --workflow-name must migrate.
-# Optimization: remove unused link-rendering parameters and duplicate work.
+# Requirements: preserve README records and report monitor changes without selecting builds.
+# Unknowns/research: external users of retired build-matrix artifacts must migrate.
+# Optimization: remove build selection and force/custom-environment parameters from monitoring.
 # Risks/verification: unchanged output fixtures, monitor-only edits and idempotence.
 """Build stable monitor outputs and README version sections."""
 
 from __future__ import annotations
 
 import argparse
-
-import catalog
 import json
 from pathlib import Path
 from typing import Any
+
+import catalog
 
 
 README_FIELDS = [
@@ -26,39 +26,12 @@ README_FIELDS = [
     "status",
 ]
 
-TARGET_FIELDS = [
-    "app_branch",
-    "tag_repo",
-    "custom_env",
-    "runner_image",
-    "force_push",
-]
-
-
-
-def load_json_text(raw: str, fallback: Any) -> Any:
-    raw = raw.strip()
-    if not raw:
-        return fallback
-    return json.loads(raw)
-
-
-def dump_json(data: Any, *, compact: bool = False) -> str:
-    if compact:
-        return json.dumps(data, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+def dump_json(data: Any) -> str:
     return json.dumps(data, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
 
 
 def normalize_record(item: dict[str, Any]) -> dict[str, str]:
     return {key: str(item.get(key, "")) for key in README_FIELDS}
-
-
-def normalize_target(item: dict[str, Any]) -> dict[str, str]:
-    target = {key: str(item.get(key, "")) for key in TARGET_FIELDS}
-    target["tag_repo"] = target["tag_repo"] or "latest"
-    target["runner_image"] = target["runner_image"] or "ubuntu-latest"
-    target["force_push"] = target["force_push"] or "false"
-    return target
 
 
 def record_sort_key(item: dict[str, str]) -> tuple[str, str, str]:
@@ -100,31 +73,14 @@ def semantic_changed_apps(old_records: list[dict[str, str]], new_records: list[d
     return sorted(changed)
 
 
-def select_build_targets(build_targets: dict[str, Any], changed_apps: list[str], force_build: bool) -> list[dict[str, str]]:
-    targets = build_targets.get("include", [])
-    if not isinstance(targets, list):
-        targets = []
-
-    selected_apps = {target.get("app_branch", "") for target in targets} if force_build else set(changed_apps)
-    selected = []
-    for target in targets:
-        if not isinstance(target, dict):
-            continue
-        if str(target.get("app_branch", "")) in selected_apps:
-            selected.append(normalize_target(target))
-    return selected
-
-
-def render_report(state: dict[str, Any], build_matrix: dict[str, Any]) -> str:
+def render_report(state: dict[str, Any]) -> str:
     lines = [
         "# Monitor Report",
         "",
         "This artifact is generated from semantic monitor state. Volatile run metadata is omitted.",
         "",
-        f"- Force build: {str(state['force_build']).lower()}",
         f"- README changed: {str(state['readme_changed']).lower()}",
         f"- Changed apps: {len(state['changed_apps'])}",
-        f"- Build targets: {state['changed_count']}",
         "",
         "## Changed Apps",
         "",
@@ -134,24 +90,12 @@ def render_report(state: dict[str, Any], build_matrix: dict[str, Any]) -> str:
     else:
         lines.append("- None")
 
-    lines.extend(
-        [
-            "",
-            "## Build Matrix",
-            "",
-            "```json",
-            dump_json(build_matrix).rstrip("\n"),
-            "```",
-            "",
-        ]
-    )
     return "\n".join(lines)
 
 
-def write_outputs(output_dir: Path, state: dict[str, Any], build_matrix: dict[str, Any], report: str) -> None:
+def write_outputs(output_dir: Path, state: dict[str, Any], report: str) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "monitor-state.json").write_text(dump_json(state), encoding="utf-8")
-    (output_dir / "build-matrix.json").write_text(dump_json(build_matrix), encoding="utf-8")
     (output_dir / "monitor-report.md").write_text(report, encoding="utf-8")
     (output_dir / "versions.json").write_text(dump_json(state["versions"]), encoding="utf-8")
     (output_dir / "changed-apps.json").write_text(dump_json(state["changed_apps"]), encoding="utf-8")
@@ -165,8 +109,6 @@ def main() -> int:
     parser.add_argument("--artifact-root", required=True)
     parser.add_argument("--readme-path", default="README.md")
     parser.add_argument("--output-dir", required=True)
-    parser.add_argument("--build-targets-json", required=True)
-    parser.add_argument("--force-build", default="false")
     args = parser.parse_args()
 
     readme_path = Path(args.readme_path)
@@ -174,14 +116,7 @@ def main() -> int:
     old_records = parse_readme_versions(original_readme)
     new_records = load_version_artifacts(Path(args.artifact_root))
 
-    build_targets = load_json_text(args.build_targets_json, {"include": []})
-    if not isinstance(build_targets, dict):
-        build_targets = {"include": []}
-
-    force_build = args.force_build.lower() == "true"
     changed_apps = semantic_changed_apps(old_records, new_records)
-    build_targets_selected = select_build_targets(build_targets, changed_apps, force_build)
-    build_matrix = {"include": build_targets_selected}
 
     rendered_readme = render_readme(original_readme, new_records)
     readme_changed = rendered_readme != original_readme
@@ -190,15 +125,13 @@ def main() -> int:
 
     state = {
         "changed_apps": changed_apps,
-        "changed_count": len(build_targets_selected),
-        "force_build": force_build,
         "readme_changed": readme_changed,
         "schema_version": 1,
         "versions": new_records,
     }
 
-    report = render_report(state, build_matrix)
-    write_outputs(Path(args.output_dir), state, build_matrix, report)
+    report = render_report(state)
+    write_outputs(Path(args.output_dir), state, report)
     return 0
 
 

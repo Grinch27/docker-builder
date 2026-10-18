@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-# Requirements: two inputs, fixed combined diagnostics and nonpublishing acceptance must fail closed.
+# Requirements: one input, one Container builder, shared diagnostics and strict evidence gates.
 # Unknowns/research: GitHub-hosted execution and registry publication remain unverified locally.
-# Risks/verification: execute real check/diagnostic gates; reject missing evidence, ignored tests and retired controls.
+# Risks/verification: execute real platform/Test/diagnostic gates with success and failure fixtures.
 # Optimization: one standard-library graph/contract gate; actionlint validates YAML separately.
 """Verify failure boundaries and executable shell in the single core workflow."""
 
@@ -10,6 +10,8 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sys
+import shlex
 import tempfile
 import textwrap
 import unittest
@@ -43,11 +45,10 @@ def validate_workflow(root):
     assert "  pull-image:" in (flow / "download_artifact.yml").read_text(encoding="utf-8"), "Manual Docker pull route missing"
     text = (flow / "gpt_dev.yml").read_text(encoding="utf-8")
     blocks = job_blocks(text)
-    required = {"runner-image", "plan", "fetch-versions", "monitor", "check", "build",
-                "dev-inspect", "dev-build", "test-images",
+    required = {"runner-image", "plan", "fetch-versions", "monitor",
                 "diagnostic-layers", "diagnostic-platforms", "diagnostic-collect",
-                "diagnostic-meta-platforms", "diagnostic-validate", "container-build"}
-    assert required <= blocks.keys(), "Core capability Job missing"
+                "diagnostic-validate", "container-build"}
+    assert required == blocks.keys(), "Core Job set changed"
     planning = blocks["plan"]
     outputs = set(re.findall(r"^      ([a-zA-Z0-9_-]+): \$\{\{ steps\.plan\.outputs\.", planning, re.MULTILINE))
     references = set(re.findall(r"needs\.plan\.outputs\.([a-zA-Z0-9_-]+)", text))
@@ -90,296 +91,237 @@ def script_for(job, name):
 
 
 class WorkflowContractTests(unittest.TestCase):
-    def test_manual_workflow_rejects_dangling_reusable_reference(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            flow = root / '.github/workflows'
-            flow.mkdir(parents=True)
-            (flow / 'gpt_dev.yml').write_text(TEXT, encoding='utf-8')
-            (flow / 'download_artifact.yml').write_text(
-                'jobs:\n  pull-image:\n    uses: ./.github/workflows/retired.yml\n', encoding='utf-8')
-            with self.assertRaisesRegex(AssertionError, 'Dangling reusable'):
-                validate_workflow(root)
-
-    def test_job_graph_has_no_dangling_or_nested_calls(self):
+    def test_graph_and_planning_validation(self):
         validate_workflow(ROOT)
-
-    def test_only_targets_and_verify_are_public_inputs(self):
-        inputs = TEXT.split('  workflow_dispatch:\n    inputs:\n', 1)[1].split('\npermissions:', 1)[0]
-        self.assertEqual(set(re.findall(r'^      ([a-z_]+):', inputs, re.MULTILINE)), {'targets', 'verify'})
-        self.assertIn('        default: vlmcsd', inputs)
-        self.assertIn('        type: boolean\n        default: false', inputs)
-        for control in ['execution_route', 'needs.plan.outputs.route', 'diagnostic_mode', 'layer_profile']:
-            self.assertNotIn(control, TEXT)
-
-    def test_acceptance_jobs_use_the_same_strict_verify_gate(self):
-        jobs = job_blocks(TEXT)
-        for name in ['dev-inspect', 'dev-build', 'container-build', 'test-images',
-                     'diagnostic-layers', 'diagnostic-platforms', 'diagnostic-collect',
-                     'diagnostic-meta-platforms', 'diagnostic-validate']:
-            with self.subTest(job=name):
-                condition = re.search(r'^    if: (.*)$', jobs[name], re.MULTILINE)[1]
-                self.assertIn("needs.plan.outputs.verify == 'true'", condition)
-        self.assertIn('diagnostic-meta-platforms', dependencies(jobs['diagnostic-validate']))
-
-    def test_graph_rejects_undeclared_plan_output(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            flow = root / '.github/workflows'
-            flow.mkdir(parents=True)
-            (flow / 'gpt_dev.yml').write_text(TEXT.replace('needs.plan.outputs.verify', 'needs.plan.outputs.retired'), encoding='utf-8')
-            (flow / 'download_artifact.yml').write_text('jobs:\n  pull-image:\n', encoding='utf-8')
-            with self.assertRaisesRegex(AssertionError, 'Missing plan outputs'):
-                validate_workflow(root)
-
-    def diagnostic_result(self, mutate=None):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            version = 'app-version-vlmcsd/version-vlmcsd.json'
-            meta = 'meta-platforms-vlmcsd-latest-a1/platforms.json'
-            files = {
-                version: dict(app_branch='vlmcsd', tag_repo='latest', status='success', version='1.0'),
-                meta: dict(app='vlmcsd', tag='latest', platforms=[dict(platform=p, version='1.0')
-                           for p in ['linux/amd64', 'linux/arm64', 'linux/386']]),
-                'diagnostics-layer-summary/base_layers.json': {'alpine:latest': ['sha256:a']},
-                'diagnostics-layer-summary/aggregated_layers.json': {'Layers': ['sha256:a']},
-            }
-            for arch in ['amd64', 'arm64']:
-                files['layers-alpine-' + arch + '/layers.json'] = ['sha256:a']
-                files['layer-info-alpine-' + arch + '/image_alpine.json'] = dict(
-                    image='alpine:latest', architecture=arch, raw_data={'Layers': ['sha256:a']})
-            needs = {key: {'result': 'success'} for key in ['fetch-versions', 'diagnostic-layers',
-                     'diagnostic-platforms', 'diagnostic-collect', 'diagnostic-meta-platforms']}
-            if mutate:
-                mutate(files, needs)
-            for name, data in files.items():
-                path = root / 'diagnostic-contracts' / name
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(json.dumps(data), encoding='utf-8')
-            env = dict(os.environ, RUNNER_TEMP=directory, DIAGNOSTIC_IMAGES='["alpine:latest"]',
-                       META_TARGET=json.dumps(dict(app_branch='vlmcsd', build_tag='latest',
-                         arch_branch='linux/amd64,linux/arm64,linux/386')), JOB_RESULTS=json.dumps(needs))
-            return subprocess.run(['bash', '-e', '-o', 'pipefail'], env=env, capture_output=True, text=True,
-                                  input=script_for('diagnostic-validate', 'Check selected diagnostic contracts'))
-
-    def test_real_fixed_diagnostic_gate_accepts_complete_evidence(self):
-        result = self.diagnostic_result()
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn('meta-app PASS', result.stdout)
-
-    def test_real_fixed_diagnostic_gate_rejects_missing_or_incorrect_evidence(self):
-        version = 'app-version-vlmcsd/version-vlmcsd.json'
-        meta = 'meta-platforms-vlmcsd-latest-a1/platforms.json'
-        detail = 'layer-info-alpine-arm64/image_alpine.json'
-        cases = {
-            'missing meta': lambda f, n: f.pop(meta),
-            'wrong target': lambda f, n: f[meta].update(app='aria2'),
-            'missing platform': lambda f, n: f[meta]['platforms'].pop(),
-            'duplicate platform': lambda f, n: f[meta]['platforms'][1].update(platform='linux/amd64'),
-            'unknown platform version': lambda f, n: f[meta]['platforms'][0].update(version='unknown'),
-            'failed version probe': lambda f, n: f[version].update(status='probe_failed'),
-            'unknown version': lambda f, n: f[version].update(version='unknown'),
-            'padded unknown version': lambda f, n: f[version].update(version=' UNKNOWN '),
-            'wrong version tag': lambda f, n: f[version].update(tag_repo='other'),
-            'missing detailed architecture': lambda f, n: f.pop(detail),
-            'duplicated detailed architecture': lambda f, n: f[detail].update(architecture='amd64'),
-            'empty detailed layers': lambda f, n: f[detail]['raw_data'].update(Layers=[]),
-            'missing image layers': lambda f, n: f['diagnostics-layer-summary/base_layers.json'].clear(),
-        }
-        for case, mutate in cases.items():
-            with self.subTest(case=case):
-                self.assertNotEqual(self.diagnostic_result(mutate).returncode, 0)
-
-    def test_real_fixed_diagnostic_gate_rejects_failed_or_skipped_jobs(self):
-        for job in ['fetch-versions', 'diagnostic-layers', 'diagnostic-platforms',
-                    'diagnostic-collect', 'diagnostic-meta-platforms']:
-            for status in ['failure', 'cancelled', 'skipped']:
-                with self.subTest(job=job, status=status):
-                    result = self.diagnostic_result(lambda f, n: n[job].update(result=status))
-                    self.assertNotEqual(result.returncode, 0)
-
-    def test_real_diagnostic_meta_pipeline_does_not_hide_probe_failure(self):
-        script = script_for('diagnostic-meta-platforms', '(MetaData) ${{ env.app_branch }} in Container')
-        values = {'env.category': 'platforms', 'env.arch_branch': 'linux/amd64',
-                  'env.base_image': 'example:test', 'env.container_name': 'fixture', 'env.dir_container': '/tmp'}
-        script = re.sub(r'\$\{\{ (.*?) \}\}', lambda match: values[match[1]], script)
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            work, tools = root / 'vlmcsd', root / 'bin'
-            (work / 'meta-app').mkdir(parents=True)
-            (work / 'meta-app/probe.sh').write_text('echo version=1.0\n', encoding='utf-8')
-            tools.mkdir()
-            for name, source in {
-                'docker': '#!/bin/sh\nif [ "$1" = exec ] && [ "$3" = sh ]; then exit 7; fi\nexit 0\n',
-                'python3': '#!/bin/sh\nexit 0\n',
-            }.items():
-                tool = tools / name
-                tool.write_text(source, encoding='utf-8')
-                tool.chmod(0o755)
-            env = dict(os.environ, PATH=str(tools) + ':' + os.environ['PATH'], RUNNER_TEMP=directory,
-                       GITHUB_WORKSPACE=str(ROOT), GITHUB_OUTPUT=str(root / 'output'),
-                       container_name='fixture', app_branch='vlmcsd', tag_repo='latest')
-            result = subprocess.run(['bash'], input=script, env=env, cwd=work, capture_output=True, text=True)
-            self.assertEqual(result.returncode, 7, result.stderr)
-            self.assertFalse((root / 'output').exists(), 'Failed meta probe emitted success')
-            self.assertFalse((root / 'meta-platforms/platforms.json').exists())
-
-    def test_planning_rejects_missing_or_ignored_validation(self):
-        for source in [TEXT.replace("python3 -m unittest discover", "echo skipped tests"),
-                       TEXT.replace("  plan:\n", "  plan:\n    continue-on-error: true\n", 1)]:
+        for source in [TEXT.replace('python3 -m unittest discover','echo skipped tests'),
+                       TEXT.replace('  plan:\n','  plan:\n    continue-on-error: true\n',1),
+                       TEXT.replace('needs.plan.outputs.build','needs.plan.outputs.retired')]:
             with tempfile.TemporaryDirectory() as directory:
-                root = Path(directory)
-                workflows = root / ".github/workflows"
-                workflows.mkdir(parents=True)
-                (workflows / "gpt_dev.yml").write_text(source, encoding="utf-8")
-                (workflows / "download_artifact.yml").write_text("jobs:\n  pull-image:\n", encoding="utf-8")
+                root=Path(directory)
+                flow=root/'.github/workflows'
+                flow.mkdir(parents=True)
+                (flow/'gpt_dev.yml').write_text(source)
+                (flow/'download_artifact.yml').write_text('jobs:\n  pull-image:\n')
                 with self.assertRaises(AssertionError):
                     validate_workflow(root)
 
+    def test_manual_tool_reusable_references_are_checked(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            flow=root/'.github/workflows'
+            flow.mkdir(parents=True)
+            (flow/'gpt_dev.yml').write_text(TEXT)
+            (flow/'download_artifact.yml').write_text('jobs:\n  pull-image:\n    uses: ./.github/workflows/retired.yml\n')
+            with self.assertRaisesRegex(AssertionError,'Dangling reusable'):
+                validate_workflow(root)
+
+    def test_only_targets_is_public_and_other_builders_are_absent(self):
+        inputs=TEXT.split('  workflow_dispatch:\n    inputs:\n',1)[1].split('\npermissions:',1)[0]
+        self.assertEqual(set(re.findall(r'^      ([a-z_]+):',inputs,re.MULTILINE)),{'targets'})
+        self.assertIn('default: vlmcsd',inputs)
+        for old in ['execution_route','GPT_STAGING','custom_env','force_push','publish:','may_publish:',
+                    'needs.plan.outputs.verify','env-indocker','--load','free_disk_before_compress']:
+            self.assertNotIn(old,TEXT)
+        for name in ['container-build','diagnostic-layers','diagnostic-platforms','diagnostic-collect','diagnostic-validate']:
+            self.assertIn("needs.plan.outputs.build == 'true'",job_blocks(TEXT)[name])
+        for name in ['fetch-versions','monitor']:
+            self.assertIn("needs.plan.outputs.monitor == 'true'",job_blocks(TEXT)[name])
+
+    def test_no_external_write_implementation_or_legacy_marker_parser(self):
+        self.assertNotRegex(TEXT,r'\b(?:docker\s+(?:login|push)|gh\s+release|git\s+push)\b')
+        self.assertNotRegex(TEXT,r'--dest-creds|release-action|secrets\.')
+        planner=(ROOT/'scripts/ci/workflow_plan.py').read_text()
+        self.assertNotIn('head_commit',planner)
+        self.assertNotIn('GITHUB_EVENT_PATH',planner)
+        self.assertIn('127.0.0.1:5000',TEXT)
+        self.assertIn("cron: '0 1 * * *'",TEXT)
+
+    def test_daemon_is_host_socket_only_and_storage_is_observed(self):
+        block=job_blocks(TEXT)['container-build']
+        self.assertIn('/var/run/docker.sock:/var/run/docker.sock',block)
+        self.assertIn('DOCKER_HOST: unix:///var/run/docker.sock',block)
+        for old in ['dockerd --host','service docker','daemon.json','--pid=host','gcc_install']:
+            self.assertNotIn(old,block)
+        self.assertIn('docker-ce-cli docker-buildx-plugin',block)
+        self.assertIn('.DockerRootDir',block)
+        self.assertIn('src=$root,dst=/data,readonly',block)
+        self.assertIn('needs.runner-image.outputs.CONTAINER_IMAGE',block)
+
     def test_all_inline_shell_parses(self):
-        scripts = re.findall(r"^      run: (?:&[\w-]+ )?\|[-+]?\n((?:        [^\n]*\n|\n)*)", TEXT, re.MULTILINE)
-        self.assertGreater(len(scripts), 30)
-        for index, script in enumerate(scripts):
-            # GitHub expands contexts before invoking Bash; use a harmless token for syntax checks.
-            script = re.sub(r"\$\{\{.*?\}\}", "CONTEXT", textwrap.dedent(script))
+        scripts=re.findall(r'^      run: (?:&[\w-]+ )?\|[-+]?\n((?:        [^\n]*\n|\n)*)',TEXT,re.MULTILINE)
+        self.assertGreater(len(scripts),15)
+        for index,source in enumerate(scripts):
+            source=re.sub(r'\$\{\{.*?\}\}','CONTEXT',textwrap.dedent(source))
             with self.subTest(script=index):
-                result = subprocess.run(["bash", "-n"], input=script, capture_output=True, text=True)
-                self.assertEqual(result.returncode, 0, result.stderr)
+                result=subprocess.run(['bash','-n'],input=source,text=True,capture_output=True)
+                self.assertEqual(result.returncode,0,result.stderr)
 
-    def check_result(self, data):
+    def diagnostic_result(self,mutate=None):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            (root / "docker-check").mkdir()
-            if data is not None:
-                (root / "docker-check/result.json").write_text(json.dumps(data), encoding="utf-8")
-            env = dict(os.environ, RUNNER_TEMP=directory, GITHUB_ENV=str(root / "env"),
-                       GITHUB_OUTPUT=str(root / "output"), app_branch="samba", tag_repo="alpine")
-            return subprocess.run(["bash", "-e", "-o", "pipefail"],
-                                  input=script_for("build", "Load check result"),
-                                  env=env, capture_output=True, text=True)
+            root=Path(directory)
+            files={'diagnostics-layer-summary/base_layers.json':{'alpine:latest':['sha256:a']},
+                   'diagnostics-layer-summary/aggregated_layers.json':{'Layers':['sha256:a']}}
+            for arch in ['amd64','arm64']:
+                files[f'layers-alpine-{arch}/layers.json']=['sha256:a']
+                files[f'layer-info-alpine-{arch}/image_alpine.json']=dict(image='alpine:latest',architecture=arch,raw_data={'Layers':['sha256:a']})
+            needs={k:{'result':'success'} for k in ['diagnostic-layers','diagnostic-platforms','diagnostic-collect']}
+            if mutate:
+                mutate(files,needs)
+            for name,data in files.items():
+                path=root/'diagnostic-contracts'/name
+                path.parent.mkdir(parents=True,exist_ok=True)
+                path.write_text(json.dumps(data))
+            env=dict(os.environ,RUNNER_TEMP=directory,DIAGNOSTIC_IMAGES='["alpine:latest"]',JOB_RESULTS=json.dumps(needs))
+            return subprocess.run(['bash','-e','-o','pipefail'],input=script_for('diagnostic-validate','Check selected diagnostic contracts'),env=env,capture_output=True,text=True)
 
-    def test_real_check_loader_accepts_correct_success_evidence(self):
-        data = dict(app_branch="samba", tag_repo="alpine", changed="true", consistent="false",
-                    check_status="success", version="4.21.3")
-        self.assertEqual(self.check_result(data).returncode, 0)
-        data["changed"] = "false"
-        self.assertEqual(self.check_result(data).returncode, 0)
+    def test_shared_diagnostic_gate_checks_actual_contracts(self):
+        result=self.diagnostic_result()
+        self.assertEqual(result.returncode,0,result.stderr)
+        cases=[lambda f,n:f.pop('layer-info-alpine-arm64/image_alpine.json'),
+               lambda f,n:f['layer-info-alpine-arm64/image_alpine.json'].update(architecture='amd64'),
+               lambda f,n:f['diagnostics-layer-summary/base_layers.json'].clear(),
+               lambda f,n:f['diagnostics-layer-summary/aggregated_layers.json'].update(Layers=[])]
+        for change in cases:
+            self.assertNotEqual(self.diagnostic_result(change).returncode,0)
+        for job in ['diagnostic-layers','diagnostic-platforms','diagnostic-collect']:
+            for status in ['failure','cancelled','skipped']:
+                self.assertNotEqual(self.diagnostic_result(lambda f,n:n[job].update(result=status)).returncode,0)
 
-    def test_real_check_loader_rejects_failed_or_wrong_target_evidence(self):
-        good = dict(app_branch="samba", tag_repo="alpine", changed="true", consistent="false",
-                    check_status="success", version="4.21.3")
-        bad_values = [("app_branch", "aria2"), ("tag_repo", "latest"), ("changed", "null"),
-                      ("consistent", "null"), ("check_status", "failure"), ("check_status", "cancelled"),
-                      ("version", ""), ("version", "null"), ("version", "bad\nvalue")]
-        for key, value in bad_values:
-            with self.subTest(key=key, value=value):
-                self.assertNotEqual(self.check_result(dict(good, **{key: value})).returncode, 0)
-        self.assertNotEqual(self.check_result(None).returncode, 0)
-
-    def test_container_testing_is_strict(self):
-        metadata = script_for("container-build", "(MetaData) ${{ env.app_branch }} in Container")
-        self.assertIn('${PATH_self}/scripts/ci/materialize_test_hooks.py', metadata)
-        self.assertNotIn('GITHUB_WORKSPACE', job_blocks(TEXT)['container-build'])
-        script = script_for("container-build", "(Test) Docker image")
-        self.assertNotIn("set +e", script)
-        self.assertTrue(script.startswith("set -euo pipefail\n"))
-        # Simulate a failing in-container probe; do not run Docker, package tools, or network calls.
+    def test_actual_image_platform_gate_handles_variants_and_wrong_images(self):
+        source=script_for('container-build','Test, compare and export every configured platform')
+        gate=source.split('  phase=platform\n',1)[1].split('  phase=test\n',1)[0]
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            (root / "test").mkdir()
-            (root / "test/test.sh").write_text("exit 7\n", encoding="utf-8")
-            bin_dir = root / "bin"
-            bin_dir.mkdir()
-            for name, source in {
-                "docker": '#!/bin/sh\nif [ "$1" = exec ] && [ "$5" = sh ]; then exit 7; fi\nexit 0\n',
-                "python3": '#!/bin/sh\nexit 0\n',
-            }.items():
-                tool = bin_dir / name
-                tool.write_text(source, encoding="utf-8")
-                tool.chmod(0o755)
-            env = dict(os.environ, PATH=str(bin_dir) + ":" + os.environ["PATH"], PATH_app=directory,
-                       PATH_self=str(ROOT), arch_branch="linux/amd64", registry_local="localhost:5000",
-                       repo_dockerhub="example/test", tag_repo="latest", container_name="test", dir_container="/tmp",
-                       GITHUB_OUTPUT=str(root / "output"), time_sleep="0")
-            result = subprocess.run(["bash"], input=script, env=env, cwd=directory,
-                                    capture_output=True, text=True)
-            self.assertNotEqual(result.returncode, 0)
-            self.assertFalse((root / "output").exists(), "Failed test emitted success")
+            path=Path(directory)/'image.json'
+            cases=[('linux/amd64','linux','amd64','',True),('linux/arm64','linux','arm64','v8',True),
+                   ('linux/386','linux','386','',True),('linux/arm/v7','linux','arm','v7',True),
+                   ('linux/arm/v7','linux','arm','v6',False),('linux/arm64','linux','amd64','',False),
+                   ('linux/amd64','windows','amd64','',False)]
+            for platform,os_name,arch,variant,accepted in cases:
+                path.write_text(json.dumps([dict(Os=os_name,Architecture=arch,Variant=variant)]))
+                result=subprocess.run(['bash','-e','-u','-o','pipefail'],input=gate,text=True,capture_output=True,
+                                      env=dict(os.environ,evidence=directory,platform=platform))
+                self.assertEqual(result.returncode==0,accepted,result.stderr)
 
-    def test_real_image_platform_gate_handles_variants_and_mismatches(self):
-        source = script_for("test-images", "Build image, execute README Test, and inspect result")
-        gate = source.split('phase=platform\n', 1)[1].split('python3 scripts/ci/materialize', 1)[0]
+    def pipeline(self,root,test_exit='0',baseline='missing',platforms='linux/amd64'):
+        import io
+        import tarfile
+        tools=root/'bin'
+        tools.mkdir()
+        work=root/'app/test'
+        work.mkdir(parents=True)
+        (work/'test.sh').write_text('echo version=1.0\n')
+        for platform in platforms.split(','):
+            fixture=root/(platform.replace('/','_')+'.tar')
+            with tarfile.open(fixture,'w') as archive:
+                for name,data in {'manifest.json':json.dumps([dict(Config='config.json',Layers=['layer.tar'])]).encode(),
+                                  'config.json':json.dumps(dict(os='linux',architecture=platform.split('/')[1])).encode(),
+                                  'layer.tar':b'fixture'}.items():
+                    item=tarfile.TarInfo(name)
+                    item.size=len(data)
+                    archive.addfile(item,io.BytesIO(data))
+        docker=tools/'docker'
+        docker.write_text('#!'+sys.executable+'\n'+textwrap.dedent('''
+            import json,os,shutil,sys
+            a=sys.argv[1:]
+            if a[:2]==['image','inspect']:
+                assert '--platform' in a, 'Inspect must select a platform explicitly'
+                platform=a[a.index('--platform')+1]
+                print(json.dumps([dict(Os='linux',Architecture=platform.split('/')[1],Config={})]))
+            elif a[:2]==['image','save']:
+                platform=a[a.index('--platform')+1]
+                shutil.copyfile(os.path.join(os.environ['FIXTURE_ROOT'],platform.replace('/','_')+'.tar'),a[a.index('--output')+1])
+            elif a and a[0]=='exec':
+                print('version=1.0')
+                sys.exit(int(os.environ['TEST_EXIT']))
+        '''))
+        docker.chmod(0o755)
+        python=tools/'python3'
+        python.write_text('#!/bin/sh\ncase "$1" in *materialize_test_hooks.py) exit 0;; esac\nexec '+shlex.quote(sys.executable)+' "$@"\n')
+        python.chmod(0o755)
+        metadata=root/'metadata'
+        metadata.mkdir()
+        (metadata/'baseline.json').write_text(json.dumps({'registries':{k:{'status':baseline} for k in ['dockerhub','ghcr']}}))
+        output=root/'output'
+        output.mkdir()
+        env=dict(os.environ,PATH=str(tools)+':'+os.environ['PATH'],PATH_app=str(work.parent),PATH_self=str(ROOT),
+                 PATH_output=str(output),PATH_metadata=str(metadata),arch_branch=platforms,registry_local='127.0.0.1:5000',
+                 repo_dockerhub='example/image',tag_repo='latest',app_branch='fixture',version='1.0',GITHUB_SHA='fixture-sha',
+                 FIXTURE_ROOT=str(root),TEST_EXIT=test_exit)
+        return subprocess.run(['bash','-e','-u','-o','pipefail'],cwd=ROOT,env=env,capture_output=True,text=True,
+                              input=script_for('container-build','Test, compare and export every configured platform'))
+
+    def test_real_container_pipeline_exports_verified_success_evidence(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            bin_dir = root / 'bin'
-            bin_dir.mkdir()
-            docker = bin_dir / 'docker'
-            docker.write_text('#!/bin/sh\ncat "$FIXTURE"\n', encoding='utf-8')
+            root=Path(directory)
+            result=self.pipeline(root)
+            self.assertEqual(result.returncode,0,result.stderr)
+            record=json.loads((root/'metadata/linux_amd64/result.json').read_text())
+            self.assertEqual((record['platform'],record['phase'],record['exit_code']),('linux/amd64','complete',0))
+            exports=json.loads((root/'metadata/exports.json').read_text())['archives']
+            self.assertEqual(len(exports),1)
+            self.assertTrue((root/'output'/exports[0]['filename']).is_file())
+
+    def test_three_platforms_are_inspected_tested_and_exported_independently(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            platforms='linux/amd64,linux/arm64,linux/386'
+            result=self.pipeline(root,platforms=platforms)
+            self.assertEqual(result.returncode,0,result.stderr)
+            exports=json.loads((root/'metadata/exports.json').read_text())['archives']
+            self.assertEqual({row['platform'] for row in exports},set(platforms.split(',')))
+            self.assertEqual(len({row['sha256'] for row in exports}),3)
+
+    def test_test_failure_and_unknown_comparison_fail_without_exporting(self):
+        for code,status,phase in [('7','missing','test'),('0','unobservable','compare')]:
+            with tempfile.TemporaryDirectory() as directory:
+                root=Path(directory)
+                result=self.pipeline(root,code,status)
+                self.assertNotEqual(result.returncode,0)
+                record=json.loads((root/'metadata/linux_amd64/result.json').read_text())
+                self.assertEqual(record['phase'],phase)
+                self.assertNotEqual(record['exit_code'],0)
+                self.assertEqual(json.loads((root/'metadata/exports.json').read_text())['archives'],[])
+
+    def test_meta_probe_failure_cannot_emit_valid_platform_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            (root/'app/meta-app').mkdir(parents=True)
+            (root/'app/meta-app/meta-app.sh').write_text('echo version=1.0\n')
+            (root/'bin').mkdir()
+            docker=root/'bin/docker'
+            docker.write_text('#!/bin/sh\nif [ "$1" = exec ]; then echo version=1.0; exit 7; fi\nexit 0\n')
             docker.chmod(0o755)
-            fixture = root / 'fixture.json'
-            cases = [('linux/amd64', 'linux', 'amd64', '', True),
-                     ('linux/arm64', 'linux', 'arm64', 'v8', True),
-                     ('linux/386', 'linux', '386', '', True),
-                     ('linux/arm/v7', 'linux', 'arm', 'v7', True),
-                     ('linux/arm/v7', 'linux', 'arm', 'v6', False),
-                     ('linux/arm64', 'linux', 'amd64', '', False),
-                     ('linux/amd64', 'windows', 'amd64', '', False)]
-            for platform, os_name, arch, variant, accepted in cases:
-                with self.subTest(platform=platform, actual=(os_name, arch, variant)):
-                    fixture.write_text(json.dumps([dict(Os=os_name, Architecture=arch, Variant=variant)]))
-                    env = dict(os.environ, PATH=str(bin_dir) + ':' + os.environ['PATH'],
-                               FIXTURE=str(fixture), TARGET_PLATFORM=platform, evidence=directory, image_ref='test')
-                    result = subprocess.run(['bash', '-e', '-u', '-o', 'pipefail'], input=gate,
-                                            env=env, capture_output=True, text=True)
-                    self.assertEqual(result.returncode == 0, accepted, result.stderr)
+            python=root/'bin/python3'
+            python.write_text('#!/bin/sh\nexit 0\n')
+            python.chmod(0o755)
+            (root/'metadata').mkdir()
+            env=dict(os.environ,PATH=str(root/'bin')+':'+os.environ['PATH'],PATH_app=str(root/'app'),
+                     PATH_metadata=str(root/'metadata'),app_branch='fixture',tag_repo='latest',arch_branch='linux/amd64',
+                     base_image='fixture:base',build_arg='')
+            result=subprocess.run(['bash'],input=script_for('container-build','Probe Meta-app on every configured platform'),
+                                  env=env,cwd=ROOT,capture_output=True,text=True)
+            self.assertEqual(result.returncode,7,result.stderr)
+            self.assertEqual(json.loads((root/'metadata/meta-app.json').read_text())['platforms'],[])
 
-    def test_manual_artifact_tool_supports_download_and_pull(self):
-        manual = (ROOT / ".github/workflows/download_artifact.yml").read_text(encoding="utf-8")
-        self.assertIn("operation:", manual)
-        self.assertIn("  download:", manual)
-        self.assertIn("  pull-image:", manual)
-        self.assertIn("docker image save --platform", manual)
-        self.assertIn("verify_image_archive.py", manual)
-        self.assertNotIn("docker push ", manual)
-        self.assertNotIn("gh release ", manual)
+    def test_final_gate_rejects_missing_failed_or_skipped_stages(self):
+        stages=['meta-app','buildx','registry','build','test-export','free-storage','compress','split','verify-outputs','report']
+        steps={k:{'conclusion':'success'} for k in stages}
+        script=script_for('container-build','Enforce complete Container acceptance')
+        def check(data):
+            return subprocess.run(['bash'],input=script,env=dict(os.environ,STEP_RESULTS=json.dumps(data)),capture_output=True,text=True)
+        self.assertEqual(check(steps).returncode,0)
+        for key in stages:
+            for status in ['failure','skipped','cancelled']:
+                self.assertNotEqual(check(dict(steps,**{key:{'conclusion':status}})).returncode,0)
 
-    def test_single_target_build_and_dev_replace_retired_smoke_jobs(self):
-        jobs = job_blocks(TEXT)
-        self.assertNotIn("registry-smoke", TEXT)
-        self.assertNotIn("registry-smoke", jobs)
-        self.assertNotIn("smoke", jobs)
-        self.assertNotIn("        - smoke\n", TEXT)
-        self.assertNotIn("smoke-target", TEXT)
-        self.assertIn("registry_local: localhost:5000", jobs["build"])
-        self.assertIn("Build and push to local registry", jobs["build"])
-        self.assertIn("docker pull --platform $platform", jobs["build"])
-        self.assertIn("scripts/ci/build-image.sh", jobs["build"])
-        self.assertIn("materialize_test_hooks.py", jobs["build"])
-        dev = script_for('dev-build', 'Build, test, compare and archive locally')
-        self.assertIn('compare_image_snapshot.py', dev)
-        self.assertIn('UNKNOWN', dev)
-        self.assertIn('Upload inspect metadata', jobs['dev-inspect'])
-
-    def test_staging_publication_is_hard_disabled(self):
-        jobs = job_blocks(TEXT)
-        self.assertIn("publish: 'false'", jobs["build"])
-        for job, names in {
-            "build": ["(Publish) Log in to Docker Hub", "(Push) Image to ${{ env.registry_push }}", "(Upload) to Release"],
-            "container-build": ["(Log in) to Docker Hub", "(Push) Image to ${{ env.registry_push }}", "(Upload) to Release"],
-            "dev-build": ["Promote archived images"],
-        }.items():
-            for name in names:
-                step = jobs[job].split("    - name: " + name + "\n", 1)[1].split("    - name:", 1)[0]
-                self.assertIn("if: ${{ false }}", step, job + ': ' + name)
-        dev = script_for("dev-build", "Build, test, compare and archive locally")
-        self.assertNotRegex(dev, r"\bgh\s+release\b|\bdocker\s+(?:login|push)\b")
-        self.assertIn('verify_image_archive.py', dev)
-        self.assertIn('Upload Dev acceptance evidence', jobs['dev-build'])
-        self.assertIn('Enforce complete Container acceptance', jobs['container-build'])
-        self.assertIn("  schedule:", TEXT)
-        self.assertIn("cron: '0 1 * * *'", TEXT)
-        self.assertNotIn("  repository_dispatch:", TEXT)
+    def test_manual_artifact_tool_remains_nonpublishing(self):
+        manual=(ROOT/'.github/workflows/download_artifact.yml').read_text()
+        self.assertIn('  download:',manual)
+        self.assertIn('  pull-image:',manual)
+        self.assertIn('verify_image_archive.py',manual)
+        self.assertNotIn('docker push ',manual)
+        self.assertNotIn('gh release ',manual)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     unittest.main()

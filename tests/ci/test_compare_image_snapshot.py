@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Requirements: preserve Dev comparison decisions and JSON schema through the saved-evidence CLI.
+# Requirements: preserve Container comparison decisions and JSON schema through the saved-evidence CLI.
 # Unknowns/research: registry visibility is represented by saved evidence, not live network requests.
 # Optimization: small JSON fixtures need no Docker, package installation or external services.
 # Risks/verification: platform/version/config differences, unknown evidence, missing data and malformed JSON.
@@ -28,7 +28,7 @@ class ImageSnapshotComparisonTests(unittest.TestCase):
                 "status": "present", "image": copy.deepcopy(self.image)}}}}
             for name in ("dockerhub", "ghcr")}}
 
-    def compare(self, mode="auto"):
+    def compare(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             baseline, candidate, output = [root / name for name in ("baseline", "candidate", "output")]
@@ -36,7 +36,7 @@ class ImageSnapshotComparisonTests(unittest.TestCase):
                 path.write_text(json.dumps(value), encoding="utf-8")
             before = [baseline.read_bytes(), candidate.read_bytes()]
             result = subprocess.run([sys.executable, str(SCRIPT), str(baseline), str(candidate),
-                                     PLATFORM, mode, str(output)], cwd=directory,
+                                     PLATFORM, str(output)], cwd=directory,
                                     capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(before, [baseline.read_bytes(), candidate.read_bytes()])
@@ -71,11 +71,10 @@ class ImageSnapshotComparisonTests(unittest.TestCase):
         self.assertIn("actual_version", result["registries"]["dockerhub"]["reasons"])
         self.assertEqual(result["comparison"]["result"], "CHANGED")
 
-    def test_missing_and_unobservable_evidence_depends_on_explicit_build(self):
+    def test_missing_and_unobservable_evidence_preserves_build_repair_semantics(self):
         self.baseline["registries"] = {"dockerhub": {"status": "missing"},
                                        "ghcr": {"status": "unobservable"}}
-        self.assertEqual(self.compare()["comparison"]["result"], "UNKNOWN")
-        result = self.compare("build")
+        result = self.compare()
         self.assertEqual(result["comparison"]["result"], "REPAIR")
         self.assertTrue(result["registries"]["dockerhub"]["promotion_required"])
         self.assertFalse(result["registries"]["ghcr"]["promotion_required"])
@@ -111,7 +110,7 @@ class ImageSnapshotComparisonTests(unittest.TestCase):
             baseline.write_text("{invalid", encoding="utf-8")
             candidate.write_text(json.dumps(self.candidate), encoding="utf-8")
             result = subprocess.run([sys.executable, str(SCRIPT), str(baseline), str(candidate),
-                                     PLATFORM, "build", str(output)], capture_output=True, text=True)
+                                     PLATFORM, str(output)], capture_output=True, text=True)
             self.assertNotEqual(result.returncode, 0)
             self.assertFalse(output.exists())
 

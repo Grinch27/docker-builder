@@ -6,6 +6,8 @@
 """Tests for inspecting Docker-save archive platform metadata."""
 
 import io
+import hashlib
+import lzma
 import json
 from pathlib import Path
 import tarfile
@@ -77,6 +79,87 @@ class ImageArchiveTests(unittest.TestCase):
             for platform in ["linux/amd64", "linux", "linux//amd64"]:
                 with self.subTest(platform=platform), self.assertRaises(ValueError):
                     verify_image_archive.verify(path, platform)
+
+    def compressed(self, directory, split=False):
+        root = Path(directory)
+        output = root / "output"
+        output.mkdir()
+        tar = self.archive(directory, ["amd64"])
+        raw = tar.read_bytes()
+        data = lzma.compress(raw, check=lzma.CHECK_SHA256)
+        manifest = root / "exports.json"
+        manifest.write_text(json.dumps({"archives":[dict(platform="linux/amd64",filename="image.tar",sha256=hashlib.sha256(raw).hexdigest())]}))
+        if split:
+            parts = output / "file-split"
+            parts.mkdir()
+            for i, start in enumerate(range(0,len(data),31),1):
+                (parts / f"image.tar.xz.part{i:03d}").write_bytes(data[start:start+31])
+        else:
+            (output / "image.tar.xz").write_bytes(data)
+        return output, manifest
+
+    def test_whole_and_split_xz_match_original_tar_checksum(self):
+        for split in [False,True]:
+            with self.subTest(split=split), tempfile.TemporaryDirectory() as directory:
+                output, manifest = self.compressed(directory,split)
+                result = verify_image_archive.verify_outputs(output,manifest,"linux/amd64")
+                self.assertEqual(len(result["archives"]),1)
+                self.assertTrue(result["files"])
+                self.assertTrue(all(len(r['checksum'])==64 for r in result['files']))
+
+    def test_empty_outputs_and_invalid_manifest_platform_sets_fail(self):
+        for mutate, platforms in [(lambda o,m:(o/"image.tar.xz").unlink(),"linux/amd64"),
+                                  (lambda o,m:None,"linux/amd64,linux/arm64"),
+                                  (lambda o,m:None,"linux/amd64,linux/amd64"),
+                                  (lambda o,m:m.write_text('{"archives":[]}'),"linux/amd64")]:
+            with tempfile.TemporaryDirectory() as directory:
+                output,manifest=self.compressed(directory)
+                mutate(output,manifest)
+                with self.assertRaises(ValueError):
+                    verify_image_archive.verify_outputs(output,manifest,platforms)
+
+    def test_corrupt_truncated_and_wrong_content_xz_fail(self):
+        for data in [b"not-xz",lzma.compress(b"wrong tar bytes"),lzma.compress(b"data")[:-8]]:
+            with tempfile.TemporaryDirectory() as directory:
+                output,manifest=self.compressed(directory)
+                (output/"image.tar.xz").write_bytes(data)
+                with self.assertRaises(ValueError):
+                    verify_image_archive.verify_outputs(output,manifest,"linux/amd64")
+
+    def test_split_gaps_missing_last_and_bad_first_index_fail(self):
+        for index in [0,1,-1]:
+            with tempfile.TemporaryDirectory() as directory:
+                output,manifest=self.compressed(directory,True)
+                parts=sorted((output/'file-split').iterdir())
+                parts[index].unlink()
+                with self.assertRaises(ValueError):
+                    verify_image_archive.verify_outputs(output,manifest,"linux/amd64")
+
+    def test_extra_files_ambiguous_whole_and_split_and_symlink_fail(self):
+        for kind in ['extra','both','symlink']:
+            with tempfile.TemporaryDirectory() as directory:
+                output,manifest=self.compressed(directory)
+                if kind=='extra':
+                    (output/'extra.tar.xz').write_bytes(b'fixture')
+                elif kind=='both':
+                    (output/'file-split').mkdir()
+                    (output/'file-split/image.tar.xz.part001').write_bytes(b'fixture')
+                else:
+                    compressed=output/'image.tar.xz'
+                    compressed.rename(Path(directory)/'external.xz')
+                    compressed.symlink_to(Path(directory)/'external.xz')
+                with self.assertRaises(ValueError):
+                    verify_image_archive.verify_outputs(output,manifest,"linux/amd64")
+
+    def test_export_manifest_rejects_paths_duplicates_and_invalid_digests(self):
+        for change in [{'filename':'../image.tar'},{'filename':'image.tar/x'},{'sha256':'invalid'}]:
+            with tempfile.TemporaryDirectory() as directory:
+                output,manifest=self.compressed(directory)
+                data=json.loads(manifest.read_text())
+                data['archives'][0].update(change)
+                manifest.write_text(json.dumps(data))
+                with self.assertRaises(ValueError):
+                    verify_image_archive.verify_outputs(output,manifest,"linux/amd64")
 
 
 if __name__ == "__main__":

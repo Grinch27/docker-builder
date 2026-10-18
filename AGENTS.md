@@ -1,313 +1,99 @@
 # AGENTS.md — docker-builder
+适用于根目录及所有子目录。先检查当前源码、远端 main、工作区及对应 Run；历史成功不能替代当前 SHA 的验证。
 
-适用于仓库根目录及所有子目录。先核对当前源码、GitHub Run 和用户最新要求，再修改；历史描述与当前源码冲突时以实测为准。
+## 当前实现（2026-10-18）
+保留 `.github/workflows/gpt_dev.yml`、`.github/workflows/download_artifact.yml` 两个工作流。核心只有 **9 个普通 Job、一个 Container 构建实现、一个公开输入 targets**。9 个业务脚本保留在 `scripts/ci/`，8 个集中测试文件保留在 `tests/ci/`。
 
-## 当前状态：两工作流收敛（2026-10-17）
+| 事件 | 行为 |
+|---|---|
+| main 普通 push | 配置、单元测试和规划检查；不构建 |
+| 每日 01:00 UTC schedule | 24 个应用版本监控、生成 Artifact；不构建，不推送 README |
+| workflow_dispatch | 所选 Target 的全部配置平台经过 Container 构建、Test、比较、导出和压缩验收；固定基础镜像诊断每次运行一次 |
 
-当前唯一保留的 Workflow 文件为 `.github/workflows/gpt_dev.yml` 与 `.github/workflows/download_artifact.yml`。
-此前 13 个工作流已从 main 树中移除，Git 历史保留其源码，非 Workflow 执行脚本继续保留。
-新核心使用 15 个普通 Jobs，仅公开 `targets`、`verify` 两个输入，不再维护路线枚举或引用旧的可复用 Workflow；独立工具提供 URL 下载以及指定平台 Docker 镜像拉取、校验、压缩和 Artifact 上传两种手动模式。
+targets 默认/空值为 vlmcsd。接受 `app`、`app:tag`、逗号列表或 `all`；多 Tag 应用必须指定 Tag，重复/未知/显式空 Tag 直接失败。`all` 当前为 **24 应用、30 Target、52 Target/平台组合**，全部直接进入 Container 矩阵，不替换成代表应用。按 30 个 Target 展开 Job，每个 Job 包含该 Target 的平台列表；单 Target 失败即停止后续步骤，其他 Target 因 fail-fast=false 继续，未执行的平台不计为通过。没有单架构或其他构建路线开关；提交消息不参与规划。
 
-**当前 CI 结构验收（2026-10-18）：** P1–P4 已完成；`scripts/ci` 保留 9 个业务脚本，`tests/ci` 集中 8 个测试文件。111 项测试、8/8 代表性构建组合、vlmcsd 三架构 Dev 与 Container 非发布全链路均通过，具体 Commit/Run/Artifact 见文末 CI 精简记录。没有重跑全量 52 组合，不替换历史应用统计。
+```bash
+gh workflow run gpt_dev.yml --ref main -f targets=vlmcsd
+gh workflow run gpt_dev.yml --ref main -f targets=samba:alpine
+gh workflow run gpt_dev.yml --ref main -f targets=aria2,samba:alpine,vlmcsd,runner:actions-slim
+gh workflow run gpt_dev.yml --ref main -f targets=all
+```
 
-**当前两输入精简（2026-10-18）：** 基线 `cddb439`，用户已批准 `targets + verify`、诊断固定并入验收、取消单架构和独立 Dev/Container 入口，并要求提交 main。当前本地 121 项测试通过；新 Commit 的远端结果以对应 Run 为准。`cddb439` 的 [39081337359](https://github.com/Grinch27/docker-builder/actions/runs/39081337359) 为上一轮轻量校验，116 项测试、2 成功/13 跳过，不代表本轮综合验收已经运行。
+全量命令仅说明接口，不表示已授权或已经执行新一轮全量。现行版本不接受旧 verify、路线、任意 JSON 矩阵、自由环境变量、诊断 profile、版本/修订覆盖参数，不提供旧 CLI 回退。Catalog 的矩阵工具只返回应用及 Tag，不再输出失效的 runner/custom-env 字段。
 
-**发布边界：** 当前 `gpt_dev.yml` 仍是非发布实现。普通 Push 只作轻量验证；
-每日 01:00 UTC 的 schedule 只进行版本监控，不执行生产 Docker Hub/GHCR/Release 发布。
-手动验证允许 Buildx/Test/Archive，但 Registry/Release 推送、Dev 晋升均保留硬禁用。
-生产正式发布和外部 repository_dispatch/workflow_call 旧入口在迁移后**不再可用**，需未来明确授权、实现并实测后恢复。
-不得将文件数收敛视为生产功能等价验收；本次提交不恢复任何外部写入。
+## 构建与验收契约
+- Container 使用 `ubuntu:devel`，经顶层 CONTAINER_IMAGE → runner-image 输出引用；运行在动态解析的 Runner 上。
+- 明确使用 **宿主 Docker socket**。容器只安装必需工具、Docker CLI/Buildx，不安装 Engine、不重启 daemon、不混用 DIND，不安装 OpenWrt/GCC/JDK 工具链。Docker 客户端包使用受支持的 noble 源；Job 镜像仍为 devel。
+- 记录实际 DockerRootDir、daemon 所在文件系统和产物目录磁盘。需要 Docker API 1.49+（逐平台 inspect；save 要求 1.48+）；不宣称 Docker 数据已迁移到其他磁盘。大应用磁盘容量仍须实测。
+- 每 Target 一次 Buildx 多平台构建，仅推送 **127.0.0.1:5000 本地 Registry**。每个平台分别拉取、核对实际 OS/架构/Variant、执行 README Test、比较和导出。
+- Test 用 `/bin/sh` 覆盖 ENTRYPOINT，复制整个 test 目录并执行原始 test.sh；保留业务脚本退出码。该检查不代表服务默认启动、VPN、GUI 或 GPU 实机验收。
+- 每个平台 Meta-app 必须产生有效版本；缺失探针直接报错，不能伪造版本。Test 必须成功并产生有效实际版本；所有配置平台的实际版本须一致。
+- Docker Hub/GHCR 均匿名读取原 OCI/平台配置；比较器保留 SAME、CHANGED、MISSING、UNOBSERVABLE、UNKNOWN 语义，UNKNOWN 失败。不因缺少匿名权限伪装成镜像不存在。
+- `docker image save --platform` 后先核对归档内的平台、单一 manifest 和层文件，再记录原 tar SHA256。压缩和分卷后，门禁检查完整平台集合、全部文件、连续分卷、xz 解码完整性及解压流与原 tar 的 SHA256；不在磁盘重建大型 tar。
+- 产物为 `container-acceptance-APP-TAG-aATTEMPT`，包含 output、metadata、离线 release.md。普通归档保持 APP_TAG_VERSION_PLATFORM.tar.xz 格式；版本中的文件名不安全字符替换为连字符，原始版本保存在元数据。分卷使用现有 file-split/*.partNNN，校验和记录相对路径。
+- 压缩前只清理本次 Buildx、本地 Registry 和构建镜像；不作宿主全局 prune。Artifact 保留 **1 天**，所有矩阵 max-parallel **10**，不设置 timeout-minutes。
+- 固定诊断为 debian:latest、ubuntu:latest、alpine:latest、debian:sid、ubuntu:devel：枚举全部 Linux 平台层，详细检查 amd64/arm64（10 项），聚合及最终门禁检查证据完整；不按每个应用重复运行。
 
-**独立手动工具：** `download_artifact.yml` 的 `operation=download` 保留旧 URL 下载；
-`operation=pull-image` 通过 `image_ref` 和 `image_platform` 拉取与导出平台明确的 Docker 镜像，压缩并上传 Actions Artifact。
-不进行 Registry Push。外部仍直接调用已删除 Workflow 的用户必须迁移到此两文件入口；尚未覆盖外部消费者。
+## 非发布边界及授权
+本轮用户已批准 Container 单实现迁移、删除旧实现/参数/消息选择器及提交 main。其他旧 build/check、Dev、逐平台独立构建和重复 Meta-app Job 已退休；禁用的外部发布实现已删除，纯 OCI 比较保留。
+不进行 Docker Hub/GHCR 登录或推送、GitHub Release 发布、Dev 晋升、自动 README 提交、密钥操作或生产变更。全局 `permissions: write-all` 是用户既定规范，构建 Job 显式 contents: read；权限声明不能作为发布授权。
+独立下载工具保留 URL 下载和指定平台镜像拉取/导出两种模式，不构建或推送镜像。已知 URL 下载的 aria2→curl 回退后仍受失败状态影响，待单独处理；本轮不改该工具的业务行为。
+Git 历史保留旧实现；回退用普通 revert，不强推或重置共享历史。改动前检查外部消费者，现有 Artifact/CLI 的退休不代表外部调用者已全部迁移。
 
-**当前目录迁移验证：** `c7ad230` 的 [39045898957](https://github.com/Grinch27/docker-builder/actions/runs/39045898957) 已通过 113 项测试，Dev 与 Container 的 vlmcsd 三架构非发布路径均成功。完整矩阵结果见下方 Tag 目录迁移验收记录；未结束项不计为通过。应用仍按约八成标准，失败只记录原因与状态，不追加应用专项修复。
-
-### 已完成的实际验收
-
-- 第一轮：[`39026138786`](https://github.com/Grinch27/docker-builder/actions/runs/39026138786)，提交 `d913873`，成功。读取成功日志仍发现强制构建标志丢失、不同架构导出包含相同平台集合两个问题，随后修正。
-- 修正轮：[`39026725070`](https://github.com/Grinch27/docker-builder/actions/runs/39026725070)，提交 `95bb3fa`，**23 个 Jobs 成功、5 个跳过**。18 个 Jobs 经矩阵展开共 28 个实例。
-- 90 项单元测试；8 个应用/平台构建与镜像内测试组合；3 个本地 Registry 往返测试均通过。`vlmcsd` 的 amd64 / arm64 / 386 检查、强制构建、镜像测试、导出及 xz 压缩通过；版本、层诊断和 Artifact 校验通过。
-- 日志确认 `plan=true check=true`、`forced=true changed=true publish=false`。逐平台导出验证为 `linux/amd64`、`linux/arm64`、`linux/386`，三个归档 SHA256 不同。
-- Registry 登录、外部镜像推送、GitHub Release 发布均跳过。候选写入步骤禁用，原正式工作流和应用构建源码在上述迁移提交中未改动。
-
-以上为初始代表性非发布验收，**不证明全部 52 个 Target/平台组合、正式发布或 Dev 晋升通过**。`verification` 的 8 个组合为 aria2:latest × amd64/arm64、samba:alpine × amd64/arm64、vlmcsd:latest × amd64/arm64/386、runner:actions-slim × amd64；本地 Registry 测试为 aria2、samba、vlmcsd 的 amd64。
-
-### 全量与 Dev/Container 验收（2026-10-17）
-
-| 范围 | 代码与运行 | 实际结果 |
-|---|---|---|
-| 完整配置矩阵 | `faefe3f` / [39028192731](https://github.com/Grinch27/docker-builder/actions/runs/39028192731) | 41/52 通过、11/52 失败；52 个唯一组合与 README 配置逐项一致，SD.Next Dev 通过 |
-| Dev 构建、比较、归档 | 同上，Job `117383380616` | vlmcsd 的 amd64 / arm64 / 386 全通过，逐平台 tar 验证通过；晋升跳过 |
-| Container 全链路 | `342a289` / [39028584662](https://github.com/Grinch27/docker-builder/actions/runs/39028584662) | vlmcsd 三架构元数据、强制构建、本地 Registry、Test、导出、xz、分卷、校验及说明生成通过；外部发布全部跳过 |
-| 百度网盘定向重测 | `5a7ef20` / [39028873811](https://github.com/Grinch27/docker-builder/actions/runs/39028873811) | amd64 / arm64 构建及现有 README Test 均通过 |
-
-本轮修正：Container 元数据恢复脚本改用实际克隆目录 `PATH_self`；平台检查分别核对 OS、架构、可选 Variant；验收 Artifact 名含 run attempt，避免重跑冲突。百度网盘改用同版本、同架构的百度官方直连 CDN，并从 GitHub 发布页跳转解析 noVNC/websockify 归档，避免匿名 API 未返回下载字段。未改平台、镜像标签及正式工作流。
-
-### 阶段验收标准与应用待办
-
-用户于 2026-10-17 调整标准：**约八成应用能成功构建即可，不再为个别应用持续追加修复；失败应用记录后留待以后处理。** 本阶段按此标准收尾，保留真实失败状态和现有测试门禁，不要求 52/52 全绿，也不通过删除矩阵项、忽略退出码或弱化 Test 提高成功率。
-
-截至本次记录，完整运行 `faefe3f` 加百度网盘定向重测 `5a7ef20`、SD.Next 定向重测 `62dbd5a` 的已完成证据如下。应用通过要求该应用全部配置目标及平台均通过；Target 通过要求其全部配置平台均通过。
-
-| 统计口径 | 首轮完整运行 | 加入百度网盘及 SD.Next 重测后的累计证据 |
-|---|---|---|
-| 应用 | 18/24（75.0%） | 20/24（83.3%） |
-| Target | 24/30（80.0%） | 26/30（86.7%） |
-| Target/平台组合 | 41/52（78.8%） | 44/52（84.6%） |
-
-累计列跨不同 SHA，**不代表同一提交的全量通过**。下面 4 个应用、8 个组合保留为后续待办，不阻塞本阶段工作流整合验收。百度网盘两架构及 SD.Next amd64 已重测通过，不再列入失败待办；不代表 GPU 实机验收。
-
-| 待处理应用（均为 latest） | 首轮失败平台 | 已知原因与后续处理 |
-|---|---|---|
-| expressvpn | amd64、arm64、386、arm/v7 | 旧下载页未提供所需 `.deb` 链接，下载地址为空。后续核对官方包来源、CLI 迁移与 32 位兼容方案；本轮暂缓。 |
-| ffmpeg | amd64 | 原 Meson 引号已修复；`62dbd5a` / [39033385954](https://github.com/Grinch27/docker-builder/actions/runs/39033385954) 最终仍失败，现为 Mesa 构建中 once_flag/call_once 类型冲突。只记录，不追加修复。 |
-| stable-diffusion-webui-amdgpu | amd64 | 首轮为 Python 3.12/scikit-image/Pythran 编译错误；`3893ab4` / [39033539487](https://github.com/Grinch27/docker-builder/actions/runs/39033539487) 最终 failure，Job 日志下载返回 404；后续读取 Check Run annotation 确认 Runner 根盘耗尽，Worker 日志无法写入。只记录，不追加修复。 |
-| ttrss | amd64、arm64 | 缺少 Dockerfile 的 COPY 输入：`docker-entrypoint.sh`、`src/wait-for.sh`、`src/ttrss.nginx.conf`、`src/initialize.php`、`src/s6`。后续恢复并审查匹配版本的构建资源；本轮暂缓。 |
-
-历史三项重测已结束：SD.Next amd64 成功，日志确认 README Test 通过；FFmpeg 和 WebUI AMDGPU 失败，状态已更新。本轮不再追加这些应用的专项修复。历史结果不替代新目录 Commit 的测试结果。
-
-工作流精简阶段本地与 CI 为 106 项测试通过，含实际平台门禁、Meson 文件生成、目标筛选、规划失败门禁和镜像比较边界；最新轻量验收见下节。actionlint 仅精确忽略前述 queue / false 两类提示，shellcheck / pyflakes 未执行。Dev/Container 实测仅证明代表性 vlmcsd 目标，未验证所有应用、真实 Registry/Release 晋升、VPN 联网、GUI 或 GPU 运行。跨 SHA 的定向通过不得汇总成同一 SHA 的 52/52。
-
-### 工作流精简验收（2026-10-17）
-
-- `b5f71d3` / [39034643008](https://github.com/Grinch27/docker-builder/actions/runs/39034643008)：校验与规划合并，18 → 17 个 Jobs；普通 push 默认只运行 Runner 解析和校验/规划，实测 **2 成功、15 跳过**，99 项测试通过，`route=validate`、发布标志均为 `false`。
-- `8474dac` / [39034967939](https://github.com/Grinch27/docker-builder/actions/runs/39034967939)：Dev/smoke 两份完全相同的 197 行比较代码提取为 `compare_image_snapshot.py`；实测 **2 成功、15 跳过、106 项测试通过**。原算法 AST 保持一致，本地 9 组固定输入的完整 JSON 输出与提取前逐字节相同。
-- 候选 YAML 本轮由 **4,442 → 4,006 行**、178,539 → 161,053 字节。提取共享逻辑用于减少重复维护，不把转移到辅助脚本的代码计为业务逻辑删除；未据此声称运行时间提升百分比。
-- 两段完全相同的 Docker 数据目录/压缩前清理脚本使用 [YAML Anchor/Alias](https://docs.github.com/en/actions/reference/workflows-and-actions/reusing-workflow-configurations#yaml-anchors-and-aliases) 复用。解析后确认所有原始执行步骤保留，校验先于规划运行；失效校验不能被忽略。
-- 候选 Dev/smoke 并发组改用 `gpt-dev-<ref>-<app>`、`gpt-smoke-<ref>-<target>`，与原入口隔离。push 路径覆盖 README 配置及全部 `scripts/ci/**`，普通变更不再启动镜像构建；未知、格式错误或重复的候选选择标记直接失败。
-
-本轮两次 CI 只证明轻量路由和比较器的固定输入回归；没有重新执行镜像构建或 Dev/Container 全链路，不增加上表应用通过数量。该轮提出的 Dev/smoke 重复问题已通过后续 smoke 退役处理，见下方现行单应用规则；旧入口/重复定时任务已收敛。候选内约 401 行禁用发布 Shell 的最终归属仍待研究。层诊断枚举全部 Linux 平台，详细诊断仅检查 amd64/arm64，不能作为相同覆盖直接合并。缓存与预装工具镜像需先确认上游更新语义并测量收益，暂不新增维护面。
-
-## 配置、脚本与目录
-
-`README.md` 文末 Applications 表格是唯一维护源，固定保留 **Application / JSON / Build / Meta-app / Test** 五列：
-
-- JSON：每个 `app-json:<app>` 单元格保存 `app`、`config`、`monitor`。人工维护 `config`；自动化只更新 `monitor`。解析后对应文档的 `monitor.records`，不是独立 `app-config` 块。
-- Meta-app / Test：完整 Shell 源码，分别用于上游版本探针、镜像内测试。保留 HTML 实体编码及全部起止标记，不能用摘要、占位符或预期版本标签代替实际测试。
-- Build：由 JSON 为全部 30 个 Target 生成 `--output type=cacheonly` 示例；保留此列，使用生成器更新，不手工维护重复脚本。
-
-当前基线：**24 个应用、30 个 Target、52 个 Target/平台组合、23 份 Meta-app、24 份 Test**。`ffmpeg` 没有有效的 Meta-app 探针，保留缺失语义。`app-summary`、`app-json`、`app-build`、`app-meta`、`app-test` 标记及表格位于文件末尾的约定必须保留。精简 README 说明时，不删除其中可执行配置和源码。
-
-新增应用固定使用 `application/<app>/<tag>.Dockerfile`，构建上下文为 `application/<app>/`。一个有效 Target 对应一个独立、非符号链接文件，禁止共享或回退到其他 Tag。仅缺失 Tag 时默认 `latest`；显式空值、null、非法 Tag 或缺失文件直接失败。README JSON.config 只维护 Tag、平台、基础镜像、build_arg 和标签策略，禁止 `dockerfile` 配置字段；运行时 `dockerfile` 由 Catalog 派生，不是第二份配置。清理文件前检查构建上下文及跨仓库引用。
-
-`build_tag` 表示 Catalog 中的原始构建 Target，`tag_repo` 可以承载既有的附加发布/Dev 标签语义；只有前者决定 Dockerfile。例如 novnc_alpine 构建仍使用 latest.Dockerfile，保留 Dev 的 alpine 目标标签。不要把版本号生成的发布标签当作新构建 Target。
-
-运行时恢复脚本，再扫描或执行对应目录：
-
+## 唯一配置与源码
+README.md 末尾 Applications 表格是唯一维护源，保留 **Application / JSON / Build / Meta-app / Test** 五列，以及 app-summary/app-json/app-build/app-meta/app-test 起止标记和 HTML 实体编码。
+JSON.config 人工维护，monitor 记录由监控更新；Meta-app/Test 是完整可执行 Shell 源码，禁止摘要、占位符、预期版本替代。Build 列由配置生成，不手工维护第二套命令。
+当前 24 份 Test、23 份 Meta-app；FFmpeg 缺少 Meta-app 是真实缺失状态。生成脚本仅在临时 Actions 工作区恢复，不提交重复副本：
 ```bash
 python3 scripts/ci/materialize_test_hooks.py --app APP --kind meta
 python3 scripts/ci/materialize_test_hooks.py --app APP --kind test
 ```
+每个 Target 使用独立、非符号链接的 `application/APP/TAG.Dockerfile`，上下文为 `application/APP/`。仅缺失 Tag 默认 latest，显式空值/null、非法 Tag、缺失文件直接失败；禁止共享、回退或配置第二个 Dockerfile 路径。build_tag 决定文件，不能将版本号或发布 Tag 当作新 Target。
+保持 README 配置、监控记录、Meta-app/Test、平台及应用源码。改写 README 前比较全部配置和脚本并验证幂等，不用生成命令掩盖源码丢失。已知 novnc 与 novnc_alpine 共享 grinch27/novnc:latest，不静默改名。
 
-生成路径为 `application/APP/meta-app/meta-app.sh`、`application/APP/test/test.sh`，仅用于 Actions 工作区，不重新提交重复副本。生成器不执行 Shell，拒绝覆盖不同内容或符号链接。
-
-## 共享实现与变更约束
-
-| 文件 | 职责与约束 |
+## 业务脚本
+| 文件 | 职责 |
 |---|---|
-| `scripts/ci/catalog.py` | 读取表格 JSON、生成矩阵和展示列、维护配置与标签策略 |
-| `scripts/ci/materialize_test_hooks.py` | 从表格恢复 Meta-app / Test 的完整源码 |
-| `scripts/ci/build-image.sh` | 共用 Buildx 命令，Registry 验收仅推送本地 Registry，Dev/GPT 使用 `load` |
-| `scripts/ci/workflow_plan.py` | 唯一非发布 `plan()` 按事件及两输入生成执行标志与矩阵；不存在生产规划分支 |
-| `scripts/ci/monitor_state.py` | 监控状态、变更矩阵及稳定 README 展示 |
-| `tests/ci/test_workflow_contracts.py` | 在单元测试中统一检查两工作流布局、依赖图、调用引用和非发布门禁 |
-| `scripts/ci/verify_image_archive.py` | 不解压、不执行归档；验证唯一 manifest、平台配置和层文件 |
-| `scripts/ci/compare_image_snapshot.py` | Dev 使用的纯 JSON 比较器；保留 UNKNOWN、缺失/不可观察及版本/配置差异语义，不访问 Registry、不执行发布 |
-| `scripts/ci/inspect-image-platform.sh` | Skopeo 平台元数据及兼容 Artifact 输出 |
-| `scripts/ci/aggregate-layer-artifacts.py` | 聚合已下载的 OCI 层证据，不访问 Registry |
+| catalog.py | 唯一表格配置、严格 Tag/文件解析、维护与展示生成 |
+| workflow_plan.py | 按事件和 targets 生成 Container/共享诊断或监控矩阵，不读取提交消息 |
+| monitor_state.py | 语义监控记录、README 临时渲染和报告；不生成构建矩阵，不接受 force/build-targets 参数 |
+| materialize_test_hooks.py | 从 README 恢复完整 Meta-app/Test，不执行 Shell，拒绝异内容/符号链接覆盖 |
+| build-image.sh | 单一 Buildx 本地 Registry 导出；拒绝非本地 Registry，不保留 load 模式 |
+| compare_image_snapshot.py | 纯 JSON OCI 比较，无网络和发布行为 |
+| verify_image_archive.py | Docker-save 平台检查，以及整组压缩/分卷字节完整性检查；不提取归档 |
+| inspect-image-platform.sh | 固定平台 Skopeo 元数据及 Artifact |
+| aggregate-layer-artifacts.py | 聚合 OCI 层证据，不访问 Registry |
 
-强制构建用显式布尔比较合并 matrix 与 plan 值，避免字符串 `"false"` 被 `||` 视为真值而覆盖强制请求。运行时门禁必须确认强制标志没有丢失。
+新增/修改脚本在文件头说明需求、未知项、后续研究、优化、风险和验证。修复依据真实失败证据；不得删矩阵项、忽略退出码或弱化 Test 换取绿色状态。步骤键顺序 name > id > if > uses > with > env > working-directory > shell > run；Actions 保持核验过的 main/master 引用。
 
-逐平台归档使用 `docker image save --platform "$platform"`，随后运行归档验证器。默认 save 会包含本地所有平台变体，不能用于冒充逐架构导出。该选项需要 Docker API 1.48+，见 [Docker 官方说明](https://docs.docker.com/reference/cli/docker/image/save/)。
-
-保持平台、基础镜像、Registry、Tag、版本 Label、Artifact 名称与格式、监控语义兼容。新增或改动脚本时，在文件头记录需求、未知项、风险和验证方式。修复依据实际日志；不得用跳过失败、弱化测试或篡改版本值换取绿色状态。
-
-## 验证命令
-
-在仓库根目录运行：
-
+## 验证与证据
 ```bash
 python3 scripts/ci/catalog.py validate
 python3 scripts/ci/catalog.py summary --check
 python3 scripts/ci/catalog.py matrix --kind version
 python3 scripts/ci/catalog.py matrix --kind build
-PYTHONPATH="$PWD/scripts/ci" python3 -m unittest discover -s tests/ci -p 'test_*.py' -v
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$PWD/scripts/ci" python3 -m unittest discover -s tests/ci -p 'test_*.py' -v
+actionlint -shellcheck='' -pyflakes='' -ignore 'anchor "container_(options|volumes)" is defined but not used' .github/workflows/gpt_dev.yml .github/workflows/download_artifact.yml
+git diff --check
 ```
+actionlint v1.7.12 仅需精确豁免独立下载工具两个既有未使用锚点提示。新核心不再需要 queue/常量 false 豁免。未安装或未执行 shellcheck/pyflakes 时明确说明，不计作通过。
+本轮基线 f83e6bf。本地已通过 108 项测试和 9 Job 图检查；覆盖实际 Container Test/导出 Shell 的成功及失败、平台变体、UNKNOWN、Meta-app 管道失败、最终步骤门禁、真实 tar/xz/分卷的损坏/缺失/额外文件/校验和不匹配。移除旧路线专属测试不计为新能力丢失。
+本地没有 Docker，不宣称进行了真实镜像构建。新 Container-only、全量 52 组合和监控远端执行均以对应 SHA/Run 为准；普通 push 成功只证明轻量验证。
 
-配置变更优先使用 `catalog.py set`；手改对应 JSON.config 后运行 `python3 scripts/ci/catalog.py summary --write`，然后重新检查。示例：
+## 历史验收与冻结应用
+约八成可构建标准继续有效：失败只记录原因和状态，不追加冻结应用修复，不删除其配置，不重跑全部矩阵或继续等待耗时应用，除非用户另行指定。
+- 历史全量 faefe3f / [39028192731](https://github.com/Grinch27/docker-builder/actions/runs/39028192731)：41/52；后续跨 SHA 定向证据为 44/52、20/24 应用，不代表同一提交全量成功。
+- Tag 目录迁移 c7ad230 / [39045898957](https://github.com/Grinch27/docker-builder/actions/runs/39045898957)：已确认 42/52（80.8%）组合、24/30 Target 全平台通过；完整应用口径 18/24。8 失败、2 耗时项按用户要求本轮不验收，不计为通过。
+- 历史 Dev 046df23 / [39079220995](https://github.com/Grinch27/docker-builder/actions/runs/39079220995) 及 Container dc9ff58 / [39079222968](https://github.com/Grinch27/docker-builder/actions/runs/39079222968)：vlmcsd 三平台成功。该 Container 日志 DockerRootDir=/var/lib/docker；不能证明旧 /builder/docker-data 配置生效，也不能替代本轮验收。
+- 两输入基线 f83e6bf / [39083789076](https://github.com/Grinch27/docker-builder/actions/runs/39083789076)：121 测试、2 成功/13 跳过，只是轻量验证。
 
-```bash
-python3 scripts/ci/catalog.py set --scope target --app samba --tag alpine --field base_image --value alpine:latest
-python3 scripts/ci/catalog.py set --scope app --app vlmcsd --field platforms --value linux/amd64,linux/arm64,linux/386
-```
-
-README 改写需比较全部 JSON 配置、监控记录、应用行和 Meta-app / Test 源码，检查生成幂等及末尾标记；不得用 `summary --write` 掩盖源码丢失。工作流变更再运行 YAML / Actions 表达式检查、调用关系检查，并读取实际 Actions 日志和产物。
-
-验收环境使用 actionlint v1.7.12。它不识别 `concurrency.queue`，且对候选隔离用的 `if: false` 报常量提示；仅可精确忽略这两类已知提示。缺少 shellcheck / pyflakes 时应明确说明相应检查未执行，不把它们计为通过。不能为消除提示启用禁用的发布步骤。
-
-## 两输入与固定非发布验收（2026-10-18）
-
-`workflow_dispatch` 只接受 `targets`（string，默认 `vlmcsd`）与 `verify`（boolean，默认 false）。规划器接受实际布尔值及精确的字符串 `true`/`false`，拒绝 null、数字和其他值，不能把字符串 false 当成真值。没有新 Python 依赖；9 个业务脚本、8 个集中测试文件及 15 个普通 Job 保留。
-
-| 触发与输入 | 实际范围 |
+| 应用 | 已知原因及状态 |
 |---|---|
-| 普通 push | 校验配置、单元测试与 Job 依赖图；不构建镜像 |
-| 每日 01:00 UTC schedule | 全部 24 个应用版本监控，保留原版本记录 Tag 策略；非强制构建 |
-| 手动 `verify=false` | 一个配置 Target，默认 vlmcsd:latest 三平台；强制构建、本地 Registry 检查/Test/逐平台归档 |
-| 手动 `verify=true`，单目标 | 该 Target 的全部配置平台 Test、Dev 比较与归档、Container 全链路及固定诊断 |
-| 手动 `verify=true`，列表或 all | 所选 Target 的全部平台 Test；Dev/Container/版本诊断的代表目标固定为 vlmcsd:latest；all 当前为 24 应用/30 Target/52 组合 |
+| expressvpn | 四平台下载地址为空；冻结待处理 |
+| ffmpeg | 历史 Mesa once_flag/call_once 冲突；缺少 Meta-app 将阻断新 Container 前置探针；冻结，本轮不复测 |
+| stable-diffusion-webui-amdgpu | 历史 Python/scikit-image 编译问题，后续 Runner 根盘耗尽；耗时项本轮不验收 |
+| ttrss | 缺 docker-entrypoint.sh、src/wait-for.sh、ttrss.nginx.conf、initialize.php、s6；冻结待处理，Test 也未声明实际版本 |
+| novnc | 迁移轮未提取到下载 tarball_url；只记录，未重测 |
+| runner:actions | 迁移轮版本提取为空导致下载 HTTP 404；只记录，未重测 |
 
-`targets` 支持 `app`、`app:tag`、逗号分隔列表及独立关键字 `all`，保留输入顺序。省略 Tag 只允许该应用恰好配置一个 Target；runner、samba 等必须指定 Tag。未知、重复（包括 vlmcsd 与 vlmcsd:latest 别名重复）、空列表项、非法 Tag、换行及 NUL 直接失败。多目标和 all 必须开启 verify；不默默删减矩阵，不把子集称为全量。默认目标或多目标验收的代表目标缺失时失败，不选择其他应用代替。
-
-示例：
-
-```bash
-# 默认单目标三平台构建
-gh workflow run gpt_dev.yml --ref main
-# 指定单目标
-gh workflow run gpt_dev.yml --ref main -f targets=samba:alpine
-# vlmcsd 三平台综合非发布验收
-gh workflow run gpt_dev.yml --ref main -f verify=true
-# 全配置 52 组合及代表性 Dev/Container/诊断；仅在明确要求全量时执行
-gh workflow run gpt_dev.yml --ref main -f targets=all -f verify=true
-# 原 8 组合的覆盖由配置选择表达，不再有 verification 专用路线
-gh workflow run gpt_dev.yml --ref main -f targets=aria2,samba:alpine,vlmcsd,runner:actions-slim -f verify=true
-```
-
-旧 execution_route、app_branch、tag_repo、target_id、build_matrix、platform、force_build、diagnostic_mode、layer_profile、image_name、dev_mode、custom_env、version/revision 等公开/隐藏输入全部拒绝。旧 `[gpt-*]` 提交消息选择器一律报错并提示迁移，不保留影子路线、JSON 通用配置或自由命令入口。独立 test、Dev、Container、diagnostics 和 dev/preflight 手动路线均退休；内部矩阵仍包含现有业务所需的 app_branch/tag_repo/target_id 等字段，这些不是公开参数。
-
-`build` 保留版本采集、monitor、check、Buildx、本地 Registry `localhost:5000`、Skopeo、逐平台 pull、README Test 和归档校验，仍非直接 --load 的快速测试。验收的 Dev 固定使用 build 模式并保留 UNKNOWN 门禁，既有 Container 强制构建/测试/导出/xz/分卷/最终完整性门禁保留。novnc_alpine 的 Dev 目标标签 alpine 与 Container 配置目标 latest 保持区别。常规构建和验收均禁止外部 Registry Push、Release、README 推送及晋升；硬禁用步骤不得启用。
-
-固定诊断镜像为 debian:latest、ubuntu:latest、alpine:latest、debian:sid、ubuntu:devel；逐镜像枚举全部 Linux 平台层，详细检查 amd64/arm64，保持这两种覆盖的区别。版本探针、层聚合、详细平台信息及代表应用逐平台 Meta-app 都在 verify=true 时执行；不再选择诊断 profile、任意镜像或单架构。新增 meta-platforms-APP-TAG-aATTEMPT Artifact 保存平台/版本记录，保留 1 天；最终诊断门禁检查全部依赖成功、版本探针成功、五镜像及十详细平台证据完整、Meta-app 目标与全部平台匹配。Meta-app 管道启用 pipefail，失败不能被 tee 覆盖。
-
-两工作流所有 retention-days 为 1，所有显式 max-parallel 为 10，无 timeout-minutes 字段或旧注释。步骤键顺序为 name > id > if > uses > with > env > working-directory > run；shell 位于 working-directory 后、run 前。全局 permissions: write-all 及既定 Action main/master 引用保持。
-
-历史 smoke 与 registry-smoke 已退休，原标签模拟 JSON/独立压缩 Artifact 不再生成；外部消费者未确认。历史 `cddb439` 退休独立 smoke Job 的 175 行（按先前配置调整后的工作区计），旧源码与验收记录保留在 Git 历史中。当前修改不恢复任何退休接口，不修复冻结应用，不自动重跑全量或重新检查耗时应用。
-
-本轮本地验证：121 项测试通过；全部 30 个 Target 的常规 build 与旧入口的目标/版本矩阵一致，综合验收与旧 Dev/Container/Test 的目标设置和平台矩阵一致；schedule 的全应用矩阵及版本记录 Tag 策略不变。两工作流 141 步骤符合键顺序，83 段 Bash 语法、Python 语法、Catalog、展示幂等及 actionlint 通过（沿用既有精确提示豁免）；未运行 shellcheck/pyflakes。业务 Shell 仅调整 Dev inspect 的失效参数/分支、诊断 Meta-app 的 Tag/失败证据以及固定诊断门禁，其余构建/check/Test/Dev 归档/Container 脚本保持原文。README 与 application 源码未修改；新综合重型验收尚未实跑，不能引用历史 Run 冒充本轮成功。
-
-## 发布边界与下一步
-
-用户已授权两工作流收敛及本次 Tag 目录迁移、main 提交、非发布测试、读取日志和结构回归修正；未授权 Registry/Release 发布或密钥操作。
-
-历史全量与定向 Dev/Container 的证据见上表。现行全量使用 targets=all、verify=true；单目标综合验收使用 targets=APP:TAG、verify=true。独立 Dev/Container 和提交消息控制不再可用，不能沿用旧命令触发新版本验收。
-
-规划器无条件拒绝生产、容器发布和 Dev 晋升路由；`WORKFLOW_READ_ONLY` 不再是启用生产规划的开关。Dev 仅运行本地构建、比较及归档，Release 创建/上传已从该构建步骤移除；晋升、外部 Registry 登录/推送、README 推送及 Release 发布步骤硬禁用。Container 构建启用后同样保留逐步骤发布禁用。这里描述的是执行门禁，候选 YAML 的全局 token 权限仍为用户既定的 `write-all`；验收 Jobs 仅请求 `contents: read`。
-
-普通 push 仅轻量校验；所有重型验收由 workflow_dispatch 的 targets/verify 显式选择。每个 Test 组合继续上传 SHA、平台、阶段和退出码；Dev/Container 归档只上传 Actions Artifact。不同 SHA 的定向成功不能替代同一 SHA 全量通过。新入口合并了 Test、Dev、Container 和固定诊断，一次验收的工作量高于旧独立路线，减少参数不代表运行成本下降。
-
-待办顺序：Tag 目录迁移与本次 CI 精简已按授权范围收尾，历史失败只记录；后续按需核对外部调用方和未选路由。旧工作流已退役，不恢复重复定时任务。正式发布和 Dev 晋升须未来另行实现并验收；既有代表性 Dev/Container 成功不能代替新目录版本的实测。
-
-已知事项：`novnc` 与 `novnc_alpine` 共享 `grinch27/novnc:latest`，不可静默改标签。历史应用失败保留已读取的证据；未重新指定前不重测或追加修复，不沿用旧数字冒充新结果。两份模板改为 `application/.example/latest.Dockerfile`、`alpine.Dockerfile`；FFmpeg 非 Target 参考文件保留在 `application/ffmpeg/reference/`，不自动登记为 Tag。
-
-## Tag 目录迁移（2026-10-17）
-
-基线为 `f3a383aaeb7160de77889bde84fa8c93579f14bf`。用户已明确批准实施及提交。30 个 Target 的 Dockerfile、全部辅助文件与未注册参考文件均已迁移；Dockerfile/辅助文件内容哈希保持不变。AdGuardVPN 从同一初始内容建立三份独立文件，不使用符号链接、共享或回退。
-
-Catalog 严格解析与全部执行路径已更新，普通 Push 仍只轻量校验；完整矩阵显式选择。各应用 `.dockerignore` 排除恢复的 test/meta-app、参考文件、日志和输出归档；本地 COPY/ADD 审计仅保留 TT-RSS 已有的五项缺失，不补包或修复历史应用。
-
-本地及同 SHA CI 的 113 项测试通过，另外全部 30 个 Target 的 load/registry 两模式共 60 次真实 Bash 参数夹具通过（未调用 Docker）。README 的全部 Meta-app、Test、监控记录及除 dockerfile 字段外的配置已逐项比较。actionlint 核心通过；未修改的手动工具存在两个既有未使用 Anchor 提示。shellcheck/pyflakes 不可用。迁移后的同 SHA 52 组合已运行，Dev/Container 通过；完整状态见下方验收记录，不能引用旧累计 44/52 作为新版本成功率。
-
-### Tag 迁移 CI 验收记录
-
-- 代码 Commit：`c7ad230ee590bc72f3cf5163706a1587e7d95681`；Run：[39045898957](https://github.com/Grinch27/docker-builder/actions/runs/39045898957)。52 个唯一组合与全部 Catalog 配置逐项一致；没有筛选或删除失败目标。
-- Dev Job `117434560200`：vlmcsd 的 amd64/arm64/386 构建、Test、比较及逐平台 tar 校验均通过。
-- Container Job `117434494806`：三架构元数据、构建、本地 Registry、Test、导出、xz/分卷、校验及说明均通过；严格最终门禁通过，登录/Push/Release 跳过，日志确认 external publication=0。
-- 本轮冻结应用故障：ExpressVPN 四平台下载地址为空；TT-RSS 两平台仍缺少迁移前就不存在的入口脚本及 src 资源。
-- 新观测的应用下载故障：noVNC amd64 未取得 tarball_url，curl 报无 URL；runner:actions 未提取出版本号，拼成 actions/runner/releases/download/v/actions-runner-linux-x64-.tar.gz 并返回 HTTP 404。对应 Dockerfile 字节与迁移前相同，非文件选择或上下文错误；只记录，不修改应用。
-- 截至 2026-10-18 00:15:33 +0800，同一 SHA 的矩阵为 **42 成功、8 失败、2 运行中**。剩余 FFmpeg Job `117434496358` 和 WebUI AMDGPU Job `117434498636` 在该快照时仍运行。用户于 2026-10-18 明确允许耗时长的个别应用本轮先不检查，因此这两项标记为“本轮暂不验收／待后续”，停止等待和读取其结果；不计为通过，不取消现有运行，不追加应用专项修复或重跑全量。
-
-| 同 SHA 统计口径 | 已确认结果 |
-|---|---|
-| 至少一个 Target/平台成功的应用 | 20/24（83.3%）；补充统计，不替代完整配置口径 |
-| 全部配置均成功的应用 | 18/24（75.0%）；与历史应用口径一致 |
-| 全部平台均成功的 Target | 24/30（80.0%） |
-| Target/平台组合成功 | 42/52（80.8%） |
-
-本次代码迁移及静态、代表性 Dev/Container 验收已完成，按约八成可构建范围收尾代码修改。已完成 Job 中未发现本轮结构回归；**完整应用口径尚未确认达到约八成，完整矩阵仍在运行，不能宣称 52 项已全部结束或全部通过**。本轮按用户允许跳过耗时项的最新要求，以已完成证据收尾；上述两项留待以后需要时再检查。这里的跳过是人工验收范围调整，不代表 Actions Job 实际为 skipped，也不通过删除矩阵或修改失败门禁改变结果；当前八个失败如实保留。
-
-
-下表路径均相对于仓库根目录；迁移前后映射覆盖全部 38 个原始移动文件，原本已在 test/ 的数据未移动。
-
-| 原路径 | 新路径 |
-|---|---|
-| `application/adguardvpn-cli/build/Dockerfile` | `application/adguardvpn-cli/nightly.Dockerfile`, `application/adguardvpn-cli/beta.Dockerfile`, `application/adguardvpn-cli/release.Dockerfile` |
-| `application/aria2/build/Dockerfile` | `application/aria2/latest.Dockerfile` |
-| `application/baidunetdisk/build/Dockerfile` | `application/baidunetdisk/dev.Dockerfile` |
-| `application/cloudflare-warp/build/Dockerfile` | `application/cloudflare-warp/latest.Dockerfile` |
-| `application/curl/build/Dockerfile` | `application/curl/latest.Dockerfile` |
-| `application/dnscrypt-proxy/build/Dockerfile` | `application/dnscrypt-proxy/latest.Dockerfile` |
-| `application/doh-nosni/build/Dockerfile` | `application/doh-nosni/latest.Dockerfile` |
-| `application/expressvpn/build/Dockerfile` | `application/expressvpn/latest.Dockerfile` |
-| `application/ffmpeg/build/Dockerfile` | `application/ffmpeg/latest.Dockerfile` |
-| `application/nordvpn/build/Dockerfile` | `application/nordvpn/latest.Dockerfile` |
-| `application/novnc/build/Dockerfile` | `application/novnc/latest.Dockerfile` |
-| `application/novnc_alpine/build/Dockerfile` | `application/novnc_alpine/latest.Dockerfile` |
-| `application/openwrt/build/Dockerfile` | `application/openwrt/main.Dockerfile` |
-| `application/privoxy/build/Dockerfile` | `application/privoxy/latest.Dockerfile` |
-| `application/protonvpn/build/Dockerfile` | `application/protonvpn/latest.Dockerfile` |
-| `application/runner/build/Dockerfile` | `application/runner/dev.Dockerfile` |
-| `application/runner/build/slim.Dockerfile` | `application/runner/slim.Dockerfile` |
-| `application/runner/build/actions.Dockerfile` | `application/runner/actions.Dockerfile` |
-| `application/runner/build/actions-slim.Dockerfile` | `application/runner/actions-slim.Dockerfile` |
-| `application/samba/build/Dockerfile` | `application/samba/latest.Dockerfile` |
-| `application/samba/build/alpine.Dockerfile` | `application/samba/alpine.Dockerfile` |
-| `application/sdnext/build/Dockerfile` | `application/sdnext/latest.Dockerfile` |
-| `application/sdnext-dev/build/Dockerfile` | `application/sdnext-dev/dev.Dockerfile` |
-| `application/squid/build/Dockerfile` | `application/squid/latest.Dockerfile` |
-| `application/stable-diffusion-webui-amdgpu/build/Dockerfile` | `application/stable-diffusion-webui-amdgpu/latest.Dockerfile` |
-| `application/steamcmd/build/Dockerfile` | `application/steamcmd/dev.Dockerfile` |
-| `application/ttrss/build/Dockerfile` | `application/ttrss/latest.Dockerfile` |
-| `application/vlmcsd/build/Dockerfile` | `application/vlmcsd/latest.Dockerfile` |
-| `application/.example/build/Dockerfile` | `application/.example/latest.Dockerfile` |
-| `application/.example/build/Dockerfile.alpine` | `application/.example/alpine.Dockerfile` |
-| `application/dnscrypt-proxy/build/dnscrypt-proxy.toml` | `application/dnscrypt-proxy/dnscrypt-proxy.toml` |
-| `application/ffmpeg/build/Dev.dockerfile` | `application/ffmpeg/reference/Dev.dockerfile` |
-| `application/ffmpeg/build/docker-ffmpeg.dockerfile` | `application/ffmpeg/reference/docker-ffmpeg.dockerfile` |
-| `application/ffmpeg/build/root/ffmpegwrapper.sh` | `application/ffmpeg/root/ffmpegwrapper.sh` |
-| `application/sdnext-dev/build/install_therock_deps.sh` | `application/sdnext-dev/install_therock_deps.sh` |
-| `application/sdnext-dev/build/install_therock_tarball.sh` | `application/sdnext-dev/install_therock_tarball.sh` |
-| `application/sdnext-dev/build/startup.sh` | `application/sdnext-dev/startup.sh` |
-| `application/sdnext/build/startup.sh` | `application/sdnext/startup.sh` |
-
-## 历史资料
-
-先前五份研究/迁移文档、历史 Run、已删除文件及其恢复链接统一保存在 [精简前 AGENTS 固定快照](https://github.com/Grinch27/docker-builder/blob/95bb3fac6a42409192c15f942d5212c5369943f1/AGENTS.md)。通过该提交读取或恢复原文；不再在现行规范中重复过时阶段描述。历史记录仅用于追溯，不构成当前发布或删除授权。回退用普通 revert，不强推分支历史。
-
-## CI 精简 P1–P4（2026-10-18）
-
-用户已明确批准 P1–P4 的实现、清理、提交及非发布验证；冻结应用不追加修复。最终基线为 `0f1ce52`，已包含核验后的 Action 默认分支引用及固定 registry-smoke 的退役；保留该并行更新。P1 退休旧 image-pipeline 入口和表格实验编解码器，将两份依赖图检查合并进契约测试，移除未使用的 workflow-name 参数。旧入口仅从当前树退休，Git 历史保留；不再提供旧 CLI 兼容。后续阶段的最终结果与验收证据在本节更新。
-
-P2 将行为测试集中到 `tests/ci/`；运行脚本固定保留 9 个。旧 probe 对照分支在统一入口不可达，已退休；正常版本、空值、非法控制字符及 DNS 首行解析语义改由 README Test 的真实 Shell 夹具验证。新增测试触发路径；测试必须从仓库根目录使用上面的显式 PYTHONPATH 命令执行。目录迁移不计作运行时间收益。
-
-P3 对每次 Catalog 加载只读取一个 README 快照，复用已经解码的测试覆盖集合，去除 validate CLI 的第二次完整校验及 monitor 的重复整表渲染；脚本恢复复用同一快照。无持久缓存，无新 Python 依赖；文件存在性、符号链接、行归属与监控校验继续执行。
-
-P4 退休通用生产规划器和 fenced README 兼容读取。`workflow_plan.plan()` 是唯一入口，允许 push/schedule/workflow_dispatch；当时保留 11 个非发布路由、16 个 Job 以及 Dev/Container 的内部构建参数，后续 smoke 退役及两输入迁移后的现行规则见上方两输入契约。production/container 发布路由、promotion、PR/workflow_call/repository_dispatch 直接失败，环境变量不能恢复发布。旧 app-config/app-version-json 存储明确报错，不回退读取；内部 config 的 schema_version=1 保留，当前 README 行存储仍派生 schema_version=2 文档。
-
-本地验收：111 项测试通过；相对基线保存的 333 组当前入口规划夹具（退休 probe 输出除外）完全一致；README 配置、监控、24 份 Test、23 份 Meta-app、相同/变化监控渲染逐字节一致，68 个 application 文件哈希未变化。实验 codec 的 5 项和退休 probe 的 5 项专属测试移除；新增手动工作流引用保护、两项 README 真实脚本夹具、两项单快照/单次校验测试、一项环境变量不能恢复发布的测试，业务约束继续覆盖。没有运行全量 52 组合，也未重新检查冻结/耗时应用。
-
-### P1–P4 非发布验收记录
-
-- P1 `41319f6`、P2 `5b5eb4a`、P3 `17fb23a`、P4 `9b28b16` 已推送 main；远端每个树对象与本地已测试树完全一致。实现后的 `scripts/ci` 为 9 个业务脚本、`tests/ci` 为 8 个测试文件，总计 17 个文件；相对 `0f1ce52` 的 24 个文件，两个目录合计 3,426 → 3,044 行，净减少 382 行。移动的测试代码不计作删除。
-- 相对 `0f1ce52` 的 115 项单元测试，退休 codec/probe 各 5 项专属测试，新增 6 项对实际 README Shell、依赖图、单快照和非发布约束的验证，最终 111 项。现行路由仍全部接受相同的目标筛选及错误边界；注册表固定 Smoke 的退役作为并行基线变更保留。
-- [39079099089](https://github.com/Grinch27/docker-builder/actions/runs/39079099089) 对 `9b28b16` 执行代表性 verification；Run success：19 个 Job 成功、5 个跳过，111 项测试、8/8 Build/Test 组合、vlmcsd 本地 Registry 检查/构建/三平台 Test/归档及诊断全部通过。Dev/Container 使用独立定向验收。
-- 本地 actionlint、Shell 语法、目录与引用检查通过；继续精确忽略 queue、常量 false 和独立手动工具原有的两个未使用 anchor 提示。未运行 shellcheck/pyflakes，不增加依赖或宣称 CI 时间提升。
-
-- Dev 定向验收：[39079220995](https://github.com/Grinch27/docker-builder/actions/runs/39079220995)，`046df23`，Run success，4 个 Job 成功、12 个跳过；Job `117532670282` 的 vlmcsd amd64/arm64/386 实际构建、README Test、比较及逐平台归档全部成功。日志明确三份归档对应 linux/amd64、linux/arm64、linux/386；Artifact `12118640556` 为 dev-acceptance-vlmcsd-a1（11,787,887 字节）。
-- Container 定向验收：[39079222968](https://github.com/Grinch27/docker-builder/actions/runs/39079222968)，`dc9ff58`，Run success，3 个 Job 成功、13 个跳过；Job `117532624736` 完成元数据、构建、本地 Registry、amd64/arm64/386 README Test、逐平台归档、xz、分卷及校验。日志确认三个归档的实际平台正确，并输出 `Container acceptance: build/test/export/compress/metadata PASS; external publication=0`。登录 Docker Hub、推送 docker.io、上传 Release 全部 skipped，最终完整性门禁 success；Artifact `12118516413` 为 container-acceptance-vlmcsd-latest-a1（11,762,632 字节）。
-- 三轮验收的 Commit 不同；Dev/Container 触发提交仅补充工作流注释，相对 `9b28b16` 的 YAML 解析结构、业务脚本、测试及应用源码完全相同。只修改 AGENTS.md 的提交不命中 push 路径过滤，不计为新 CI；最终收尾提交仅更新本记录，不混算为新 SHA 的全量应用通过。
-
-### 旧接口迁移
-
-| 退休入口 | 当前入口与边界 |
-|---|---|
-| prepare_image_pipeline.py | 由现行 workflow_plan.plan() 按 README 配置生成矩阵；不接受任意新 Target |
-| gpt_workflow_graph.py / test-workflow-graph.py | 运行 tests/ci 中的完整 unittest 门禁；图检查已归入 test_workflow_contracts.py |
-| table_catalog_lab.py | 使用 catalog.py 的 set / summary；不再维护实验表格编码格式 |
-| probe-image.sh | 使用 README Test，经 materialize_test_hooks.py 恢复；DNS 版本保持首行解析语义 |
-| staging_plan() / --workflow-name | Python 调用使用 plan()；删除失效 CLI 参数，不提供兼容回退 |
-| app-config / app-version-json fenced 存储 | 先迁移为现行 Applications 表格的 JSON 列；旧标记会直接失败 |
-
-测试移动后的脚本路径必须从仓库根目录定位 scripts/ci，不能再假定测试和业务脚本同目录。普通 Push 仍只运行轻量校验；现行手动构建/综合验收必须使用上方 targets/verify 契约，旧路线及标记仅作历史记录。当前仅验证本地 Registry，不恢复 Docker Hub/GHCR/Release 发布。
+详细迁移过程、旧路线、历史文档及完整文件映射保留在 [迁移前 AGENTS 固定快照](https://github.com/Grinch27/docker-builder/blob/f83e6bf1ca49c93bb958c2176ca60ca05ef9838e/AGENTS.md)，历史说明不构成现行接口或新授权。

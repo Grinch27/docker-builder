@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Requirements: execute from application root; only the exact configured build Tag selects a Dockerfile.
 # Unknowns/research: public publication is outside the nonpublishing migration acceptance.
-# Optimization: share Catalog's filename resolver across registry and local-load modes.
+# Optimization: one Buildx invocation exports all configured platforms to the local registry.
 # Risks/verification: no shared/case-insensitive fallback; test missing files, overrides and full Buildx argv.
 set -euo pipefail
 : "${arch_branch:?missing arch_branch}"
@@ -20,26 +20,15 @@ dockerfile="$expected"
 [[ -f "$dockerfile" && ! -L "$dockerfile" ]] || { echo "Missing independent Dockerfile for $build_tag: $PWD/$dockerfile" >&2; exit 2; }
 
 args=(docker buildx build --platform "${arch_branch}" --file "$dockerfile")
-case "${build_output:-registry}" in
-  registry)
-    : "${repo_dockerhub:?missing repo_dockerhub}"
-    : "${tag_repo:?missing tag_repo}"
-    : "${registry_local:?missing registry_local}"
-    : "${version:?missing version}"
-    args+=(--tag "${registry_local}/${repo_dockerhub}:${tag_repo}"
-           --build-arg "base_image=${base_image}"
-           --label "version=${version}"
-           --output "type=registry,registry.insecure=true")
-    ;;
-  load)
-    : "${image_ref:?missing image_ref}"
-    args+=(--tag "${image_ref}" --build-arg "base_image=${base_image}" --load)
-    ;;
-  *)
-    echo "Unknown build_output: ${build_output}" >&2
-    exit 2
-    ;;
-esac
+: "${repo_dockerhub:?missing repo_dockerhub}"
+: "${tag_repo:?missing tag_repo}"
+: "${registry_local:?missing registry_local}"
+: "${version:?missing version}"
+[[ "$registry_local" == '127.0.0.1:5000' ]] || { echo 'Only the local acceptance registry is allowed' >&2; exit 2; }
+args+=(--tag "${registry_local}/${repo_dockerhub}:${tag_repo}"
+       --build-arg "base_image=${base_image}"
+       --label "version=${version}"
+       --output "type=registry,registry.insecure=true")
 if [[ -n "${build_arg:-}" ]]; then
   args+=(--build-arg "build_arg=${build_arg}")
 fi

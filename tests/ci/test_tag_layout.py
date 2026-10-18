@@ -62,7 +62,8 @@ class TagLayoutTests(unittest.TestCase):
             docker.chmod(0o755)
             called = root / 'called'
             env = dict(os.environ, PATH=str(root / 'bin') + ':' + os.environ['PATH'],
-                       DOCKER_CALLED=str(called), build_output='load', image_ref='fixture:test',
+                       DOCKER_CALLED=str(called), registry_local='127.0.0.1:5000', repo_dockerhub='example/test',
+                       tag_repo='actions', version='1.0',
                        arch_branch='linux/amd64', base_image='scratch', build_tag='actions')
             for name in ['Dockerfile', 'latest.Dockerfile', 'dev.Dockerfile', 'Actions.Dockerfile']:
                 (root / name).write_text('FROM scratch\n')

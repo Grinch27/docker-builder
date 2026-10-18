@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-# Requirements: preserve the Dev OCI comparison schema and UNKNOWN failure boundary.
+# Requirements: preserve Container OCI comparison schema and UNKNOWN failure boundary.
 # Unknowns/research: live publication and deferred application failures remain separate work.
 # Optimization: keep the saved-evidence comparison algorithm separate from registry or Docker access.
 # Risks: malformed input must fail; missing/unobservable registry evidence must retain its existing meaning.
 # Verification: CLI fixtures, platform/config/version changes, unknown evidence and extraction parity.
-"""Compare BASELINE CANDIDATE PLATFORM MODE OUTPUT using saved JSON evidence only."""
+"""Compare BASELINE CANDIDATE PLATFORM OUTPUT using saved JSON evidence only."""
 
 import json
 import sys
@@ -12,7 +12,7 @@ from pathlib import Path
 
 
 def main():
-    baseline_path, candidate_path, platform, mode, out_path = sys.argv[1:]
+    baseline_path, candidate_path, platform, out_path = sys.argv[1:]
     baseline = json.loads(Path(baseline_path).read_text(encoding="utf-8"))
     candidate = json.loads(Path(candidate_path).read_text(encoding="utf-8"))
 
@@ -169,8 +169,7 @@ def main():
 
     all_missing = all(registry["result"] == "MISSING" for registry in registries.values())
     explicit_missing_repair = (
-        mode == "build"
-        and any(registry["result"] == "MISSING" for registry in registries.values())
+        any(registry["result"] == "MISSING" for registry in registries.values())
         and all(
             registry["result"] in {"MISSING", "UNOBSERVABLE"}
             for registry in registries.values()

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Requirement: Tag alone selects application/<app>/<tag>.Dockerfile; missing Tag means latest.
-# Unknown/research: external consumers of retired fenced README storage must migrate.
+# Unknown/research: external consumers of retired storage and matrix runner/env fields must migrate.
 # Optimization: read one README snapshot per load; reuse decoded script coverage without global caches.
 # Risk: explicit empty/invalid Tags, symlinks, shared fallbacks and expanded contexts.
 # Verify: strict resolution, unchanged 24/30/52 configuration, scripts and monitor records.
@@ -308,11 +308,11 @@ def get(c,app,tag='latest'):
             'build_arg':t.get('build_arg',''),
             'tag_policy':t.get('tag_policy',a.get('tag_policy','keep'))}
 
-def matrix(c,kind,runner):
+def matrix(c,kind):
     if kind=='version':
-        items=[{'app_branch':a,'tag_repo':'latest','custom_env':'','runner_image':runner} for a in c['apps']]
+        items=[{'app_branch':a,'tag_repo':'latest'} for a in c['apps']]
     else:
-        items=[{'app_branch':a,'tag_repo':target_tag(t),'custom_env':'','runner_image':runner}
+        items=[{'app_branch':a,'tag_repo':target_tag(t)}
                for a,app in c['apps'].items() for t in app['targets']]
     return {'include':items}
 
@@ -448,7 +448,6 @@ def main():
     p.add_argument('command',choices=['validate','matrix','get','env','tags','set','summary'])
     p.add_argument('--readme',default='README.md')
     p.add_argument('--kind',choices=['version','build'],default='build')
-    p.add_argument('--runner',default='ubuntu-latest')
     p.add_argument('--app')
     p.add_argument('--tag',default='latest')
     p.add_argument('--version',default='')
@@ -479,7 +478,7 @@ def main():
                 print(render_summary(c,snapshot_from_readme(source),
                                      tests,embedded_meta_from_text(source, tests=tests)))
         elif args.command=='matrix':
-            print(json.dumps(matrix(c,args.kind,args.runner),separators=(',',':')))
+            print(json.dumps(matrix(c,args.kind),separators=(',',':')))
         elif args.command in ('get','env','tags'):
             if not args.app: raise ValueError('--app is required')
             item=(get(c,args.app,c['apps'][args.app]['targets'][0]['tag']) if args.app_only and args.command in ('env','tags') else get(c,args.app,args.tag))
