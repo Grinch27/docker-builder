@@ -1,242 +1,109 @@
 #!/usr/bin/env python3
-# Requirements: ten nonpublishing routes; only an unselected build defaults to vlmcsd:latest.
-# Unknowns/research: external consumers of retired routes must migrate to build or Dev acceptance.
-# Optimization: retire the duplicate smoke path; keep representative and full catalog coverage.
-# Risks/verification: explicit selectors must not fall back; retired routes fail and Dev comparison stays intact.
-"""Plan the single workflow without executing builds, probes, or external writes."""
+# Requirements: expose only targets/verify; push validates, schedule monitors, dispatch never publishes.
+# Unknowns/research: external callers must migrate retired routes and commit selectors explicitly.
+# Optimization: one catalog selector and event flags replace overlapping route/matrix/profile parsers.
+# Risks/verification: reject ambiguous/duplicate targets and false-like values; retain full platform coverage.
+"""Plan fixed nonpublishing Jobs from the event and two public inputs."""
 
 from __future__ import annotations
 
 import json
 import os
-import re
 from pathlib import Path
 
 import catalog
 
 
-ROUTES = {"verification", "acceptance", "dev-verify", "container-verify", "validate",
-          "monitor", "build", "test", "diagnostics", "dev"}
-# This is the former Dev auto-selection policy, not another application catalog.
-DEV_EXCLUDED = {"baidunetdisk", "cloudflare-warp", "expressvpn", "ffmpeg", "novnc",
-                "protonvpn", "sdnext", "sdnext-dev", "stable-diffusion-webui-amdgpu",
-                "steamcmd", "ttrss"}
+DIAGNOSTIC_IMAGES = ("debian:latest", "ubuntu:latest", "alpine:latest", "debian:sid", "ubuntu:devel")
 
 
-def target_id(app: str, tag: str) -> str:
-    if tag == "latest" or app.endswith(("-" + tag, "_" + tag)):
-        return app
-    return app + "-" + tag
+def _target(config: dict, app: str, tag: str, runner: str) -> dict:
+    item = catalog.get(config, app, tag)
+    target_id = app if tag == "latest" or app.endswith(("-" + tag, "_" + tag)) else app + "-" + tag
+    return dict(item, target_id=target_id, custom_env="", runner_image=runner)
 
 
-def _target_plan(config: dict, inputs: dict, runner: str) -> dict:
-    """Reject ambiguous/unsafe selections before returning any Job outputs."""
-    def value(key: str, default: str = "") -> str:
-        raw = inputs.get(key) or default
-        if isinstance(raw, bool):
-            raw = str(raw).lower()
-        if not isinstance(raw, str) or any(c in raw for c in "\r\n\0"):
-            raise ValueError("Expected a single-line string for " + key)
-        return raw
+def _verify(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str) and value in {"true", "false"}:
+        return value == "true"
+    raise ValueError("verify must be a boolean or true/false string")
 
-    route = value("execution_route", "test")
-    app, tag = value("app_branch"), value("tag_repo")
-    selected_id = value("target_id")
-    dev_mode = value("dev_mode", "preflight")
-    if dev_mode not in {"preflight", "build"}:
-        raise ValueError("Unknown internal dev_mode: " + dev_mode)
-    force = value("force_build", "false").lower()
-    if force not in {"true", "false"}:
-        raise ValueError("force_build must be true or false")
-    diagnostic_mode = value("diagnostic_mode", "both")
-    if diagnostic_mode not in {"version", "layers", "both", "all-platforms"}:
-        raise ValueError("Unknown diagnostic_mode")
-    profile = value("layer_profile", "stable")
-    if profile not in {"stable", "base"}:
-        raise ValueError("Unknown layer_profile")
 
-    all_targets = [dict(catalog.get(config, name, t["tag"]),
-                        target_id=target_id(name, t["tag"]), custom_env="", runner_image=runner)
-                   for name, meta in config["apps"].items() for t in meta["targets"]]
-    if len({t["target_id"] for t in all_targets}) != len(all_targets):
-        raise ValueError("Duplicate target_id in catalog")
-    targets = all_targets
-    if app:
-        targets = [t for t in targets if t["app_branch"] == app]
-    if tag:
-        targets = [t for t in targets if t["tag_repo"] == tag]
-    if selected_id:
-        targets = [t for t in targets if t["target_id"] == selected_id]
-    custom = value("custom_env")
-    raw_matrix = inputs.get("build_matrix") or ""
-    if not isinstance(raw_matrix, str):
-        raise ValueError("build_matrix must be JSON text")
-    if custom and route in {"test", "dev"}:
-        raise ValueError("This route uses catalog settings; custom_env is unsupported")
-    if raw_matrix:
-        if route not in {"monitor", "build", "test"} or app or tag or selected_id:
-            raise ValueError("build_matrix cannot be combined with other target selectors or this route")
-        raw = json.loads(raw_matrix)
-        rows = raw.get("include") if isinstance(raw, dict) else raw
-        if not isinstance(rows, list) or not rows:
-            raise ValueError("build_matrix must contain a non-empty target list")
-        targets = []
-        for row in rows:
-            if not isinstance(row, dict) or set(row) - {"app_branch", "tag_repo", "custom_env"}:
-                raise ValueError("Matrix entries accept app_branch, tag_repo, custom_env only")
-            selected = [t for t in all_targets if t["app_branch"] == row.get("app_branch")
-                        and t["tag_repo"] == row.get("tag_repo", "latest")]
-            if len(selected) != 1:
-                raise ValueError("Matrix target is not in the README catalog")
-            override = row.get("custom_env", custom)
-            if not isinstance(override, str) or any(c in override for c in "\r\n\0"):
-                raise ValueError("Invalid matrix custom_env")
-            targets.append(dict(selected[0], custom_env=override))
-    else:
-        targets = [dict(t, custom_env=custom) for t in targets]
-    if not targets or len({t["target_id"] for t in targets}) != len(targets):
-        raise ValueError("Empty or duplicated target selection")
-    test_matrix = [{"app": t["app_branch"], "tag": t["tag_repo"], "platform": platform}
-                   for t in targets for platform in t["arch_branch"].split(",")]
-    platform = value("platform")
-    if platform:
-        if route != "test":
-            raise ValueError("platform only applies to test Jobs")
-        test_matrix = [t for t in test_matrix if t["platform"] == platform]
-        if not test_matrix:
-            raise ValueError("platform does not match selected configured targets")
-    if len(test_matrix) > 256:
-        raise ValueError("Test matrix exceeds GitHub's 256-job limit")
-    dev_targets = targets
-    if not (app or tag or selected_id) and route == "dev":
-        dev_targets = [t for t in targets if t["app_branch"] not in DEV_EXCLUDED]
-    # Preserve the former Dev-only destination; production catalog tags stay unchanged.
-    if route == "dev":
-        dev_targets = [dict(t, tag_repo="alpine") if t["app_branch"] == "novnc_alpine" else t
-                       for t in dev_targets]
-    versions = []
-    for name in dict.fromkeys(t["app_branch"] for t in targets):
-        versions.append(dict(app_branch=name, tag_repo=tag or "latest", custom_env=custom, runner_image=runner))
-    if route == "diagnostics":
-        chosen_app = app or "vlmcsd"
-        versions = [dict(app_branch=chosen_app, tag_repo=tag or "latest", custom_env=custom, runner_image=runner)]
-    image = value("image_name")
-    if image and not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9./_:@-]*", image):
-        raise ValueError("Invalid diagnostic image reference")
-    images = ([image] if image else
-              ["ubuntu:latest", "debian:latest", "alpine:latest"] if profile == "base" else
-              ["debian:latest", "ubuntu:latest", "alpine:latest", "debian:sid", "ubuntu:devel"])
-    return {
-        "route": route, "dev_mode": dev_mode,
-        "target_id": targets[0]["target_id"] if len(targets) == 1 else "",
-        "force_build": force, "publish": "false", "may_publish": "false",
-        "version": value("version"), "revision": value("revision"), "custom_env": custom,
-        "fetch_versions": str(route in {"monitor", "build"} or
-                              (route == "diagnostics" and diagnostic_mode in {"version", "both"})).lower(),
-        "diagnostic_mode": diagnostic_mode,
-        "version_matrix": {"include": versions}, "build_targets": {"include": targets},
-        "dev_matrix": {"include": dev_targets}, "test_matrix": {"include": test_matrix},
-        "images": images, "image_platforms": [{"image_name": image, "arch": arch}
-                                                  for image in images for arch in ["amd64", "arm64"]],
-    }
+def _select(config: dict, text: str, all_targets: list[dict], runner: str) -> list[dict]:
+    if not isinstance(text, str) or any(c in text for c in "\r\n\0"):
+        raise ValueError("targets must be a single-line string")
+    text = text.strip() or "vlmcsd"
+    if text == "all":
+        return list(all_targets)
+    selected, seen = [], set()
+    for token in text.split(","):
+        parts = token.strip().split(":")
+        if len(parts) not in {1, 2} or not parts[0] or parts[0] not in config["apps"]:
+            raise ValueError("Unknown or malformed target: " + token)
+        app = parts[0]
+        if len(parts) == 1:
+            targets = config["apps"][app]["targets"]
+            if len(targets) != 1:
+                raise ValueError("Tag required for multi-target application: " + app)
+            tag = catalog.target_tag(targets[0])
+        else:
+            tag = parts[1]
+        item = _target(config, app, tag, runner)
+        identity = (app, tag)
+        if identity in seen:
+            raise ValueError("Duplicate target: " + app + ":" + tag)
+        seen.add(identity)
+        selected.append(item)
+    return selected
 
 
 def plan(config: dict, event_name: str, event: dict, inputs: dict, runner: str) -> dict:
-    """Reject retired/publication entrypoints before selecting catalog-only Jobs."""
-    selected = dict(inputs)
-    route = selected.get("execution_route") or "verification"
-    if event_name == "push":
-        route = "validate"
-        message = event.get("head_commit", {}).get("message", "")
-        selectors = re.findall(r"\[gpt-[^\]]*\]", message)
-        if message.count("[gpt-") != len(selectors):
-            raise ValueError("Unterminated staging selector")
-        if len(selectors) > 1:
-            raise ValueError("Use exactly one staging selector per push")
-        selector = selectors[0] if selectors else ""
-        if selector in {"[gpt-verification]", "[gpt-validate]", "[gpt-acceptance]"}:
-            route = selector[len("[gpt-"):-1]
-        elif selector.startswith("[gpt-retest:"):
-            match = re.fullmatch(r"\[gpt-retest:([^\]]+)\]", selector)
-            pairs = match.group(1).split(",") if match else []
-            if not pairs or any(not re.fullmatch(r"[a-z0-9_.-]+:[a-z0-9_.-]+", pair) for pair in pairs):
-                raise ValueError("Malformed staging retest selector")
-            selected["build_matrix"] = json.dumps({"include": [
-                dict(zip(("app_branch", "tag_repo"), pair.split(":"))) for pair in pairs]})
-            route = "test"
-        patterns = [(r"\[gpt-dev:([a-z0-9_.-]+):([a-z0-9_.-]+)\]", "dev-verify"),
-                    (r"\[gpt-container:([a-z0-9_.-]+):([a-z0-9_.-]+)\]", "container-verify"),
-                    (r"\[gpt-build:([a-z0-9_.-]+):([a-z0-9_.-]+)\]", "build"),
-                    (r"\[gpt-monitor:([a-z0-9_.-]+):([a-z0-9_.-]+)\]", "monitor")]
-        for pattern, candidate in patterns:
-            match = re.fullmatch(pattern, selector)
-            if match:
-                route = candidate
-                selected["app_branch"], selected["tag_repo"] = match.groups()
-                break
-        if selector and route == "validate" and selector != "[gpt-validate]":
-            raise ValueError("Unknown or malformed staging selector")
-    elif event_name == "schedule":
-        # Replaces the independent daily monitor. Never route a schedule to publication.
-        route = "monitor"
-        selected = {"execution_route": "monitor", "force_build": "false"}
-    elif event_name != "workflow_dispatch":
+    """Select catalog-only matrices; no event or input can enable publication."""
+    if event_name not in {"push", "schedule", "workflow_dispatch"}:
         raise ValueError("Core accepts push/schedule/workflow_dispatch only")
-    if route not in ROUTES:
-        raise ValueError("Unknown or prohibited execution_route: " + str(route))
-    if route == "dev" and selected.get("dev_mode", "preflight") != "preflight":
-        raise ValueError("Dev build/promotion is prohibited in gpt_dev.yml")
-    acceptance_routes = {"acceptance", "dev-verify", "container-verify"}
-    if route in {"dev-verify", "container-verify"} and any(
-            selected.get(key) for key in ("platform", "custom_env", "build_matrix")):
-        raise ValueError("Dev/Container acceptance uses one unmodified catalog target")
-    if route == "acceptance" and any(selected.get(key) for key in
-                                     ("app_branch", "tag_repo", "target_id", "build_matrix", "platform", "custom_env")):
-        raise ValueError("Full acceptance cannot be combined with target filters")
-    if route in {"dev-verify", "container-verify"} and not any(
-            selected.get(key) for key in ("app_branch", "target_id", "build_matrix")):
-        selected.update(app_branch="vlmcsd", tag_repo="latest")
-    if route == "build" and not any(selected.get(key) for key in
-                                   ("app_branch", "tag_repo", "target_id", "build_matrix")):
-        selected.update(app_branch="vlmcsd", tag_repo="latest")
-    selected["execution_route"] = "test" if route in acceptance_routes | {"verification"} else route
-    result = _target_plan(config, selected, runner)
-    if route in acceptance_routes:
-        if route == "acceptance":
-            target = next(t for t in result["build_targets"]["include"]
-                          if t["app_branch"] == "vlmcsd" and t["tag_repo"] == "latest")
-        else:
-            if len(result["build_targets"]["include"]) != 1:
-                raise ValueError("Dev/Container acceptance requires exactly one configured target")
-            target = result["build_targets"]["include"][0]
-        dev = _target_plan(config,
-                           dict(execution_route="dev", dev_mode="build", target_id=target["target_id"]), runner)
-        result.update(dev_mode="build", target_id=target["target_id"],
-                      dev_matrix=dev["dev_matrix"], build_targets={"include": [target]},
-                      force_build="true", fetch_versions="false")
-    if route == "build" and len(result["build_targets"]["include"]) != 1:
-        raise ValueError("Staged build requires exactly one configured target")
-    if route in {"verification", "build"}:
-        result["force_build"] = "true"
-    if route == "verification":
-        samples = {("aria2", "latest"), ("samba", "alpine"),
-                   ("vlmcsd", "latest"), ("runner", "actions-slim")}
-        result["test_matrix"]["include"] = [t for t in result["test_matrix"]["include"]
-                                             if (t["app"], t["tag"]) in samples]
-        actual = {(t["app"], t["tag"]) for t in result["test_matrix"]["include"]}
-        if actual != samples:
-            raise ValueError("Configured representative test target missing")
-        result["build_targets"]["include"] = [t for t in result["build_targets"]["include"]
-                                               if t["app_branch"] == "vlmcsd"]
-        result["version_matrix"]["include"] = [dict(app_branch="vlmcsd", tag_repo="latest",
-                                                      custom_env="", runner_image=runner)]
-        result["fetch_versions"] = "true"
-        result["diagnostic_mode"] = "both"
-        result["images"] = ["alpine:latest"]
-        result["image_platforms"] = [dict(image_name="alpine:latest", arch=arch)
-                                     for arch in ["amd64", "arm64"]]
-    result.update(route=route, publish="false", may_publish="false")
-    return result
+    if not isinstance(inputs, dict) or set(inputs) - {"targets", "verify"}:
+        raise ValueError("Only targets and verify inputs are supported")
+    if event_name == "push" and "[gpt-" in (event.get("head_commit") or {}).get("message", ""):
+        raise ValueError("Commit selectors are retired; use workflow_dispatch targets/verify")
+    all_targets = [_target(config, app, catalog.target_tag(target), runner)
+                   for app, meta in config["apps"].items() for target in meta["targets"]]
+    if not all_targets or len({t["target_id"] for t in all_targets}) != len(all_targets):
+        raise ValueError("Empty or duplicated catalog target_id")
+    manual = event_name == "workflow_dispatch"
+    verify = manual and _verify(inputs.get("verify", False))
+    monitor = event_name == "schedule" or (manual and not verify)
+    selected = (_select(config, inputs.get("targets", "vlmcsd"), all_targets, runner)
+                if manual else all_targets)
+    if manual and not verify and (len(selected) != 1 or inputs.get("targets", "").strip() == "all"):
+        raise ValueError("Multiple targets or all require verify=true")
+    representative = None
+    if verify:
+        representative = selected[0] if len(selected) == 1 else _target(config, "vlmcsd", "latest", runner)
+    test_matrix = [{"app": t["app_branch"], "tag": t["build_tag"], "platform": platform}
+                   for t in selected for platform in t["arch_branch"].split(",")] if verify else []
+    if len(test_matrix) > 256:
+        raise ValueError("Test matrix exceeds GitHub's 256-job limit")
+    # novnc_alpine keeps its historical Dev destination; Container uses its configured latest tag.
+    dev_target = (dict(representative, tag_repo="alpine") if representative and
+                  representative["app_branch"] == "novnc_alpine" else representative)
+    version_targets = [representative] if verify else selected
+    versions = [dict(app_branch=t["app_branch"], tag_repo="latest" if event_name == "schedule" else t["build_tag"],
+                     custom_env="", runner_image=runner)
+                for t in {t["app_branch"]: t for t in version_targets}.values()]
+    return {
+        "build": str(manual and not verify).lower(), "verify": str(verify).lower(),
+        "monitor": str(monitor).lower(), "fetch_versions": str(monitor or verify).lower(),
+        "force_build": str(manual).lower(), "publish": "false", "may_publish": "false",
+        "version_matrix": {"include": versions},
+        "build_targets": {"include": [representative] if verify else selected},
+        "dev_matrix": {"include": [dev_target] if verify else []},
+        "test_matrix": {"include": test_matrix},
+        "images": list(DIAGNOSTIC_IMAGES),
+        "image_platforms": [{"image_name": image, "arch": arch}
+                            for image in DIAGNOSTIC_IMAGES for arch in ("amd64", "arm64")],
+    }
 
 
 def main() -> None:
@@ -248,9 +115,9 @@ def main() -> None:
         for key, value in result.items():
             text = json.dumps(value, separators=(",", ":")) if not isinstance(value, str) else value
             stream.write(key + "=" + text + "\n")
-    print(json.dumps({"route": result["route"], "targets": len(result["build_targets"]["include"]),
-                      "tests": len(result["test_matrix"]["include"]),
-                      "standard_publish": result["publish"], "may_publish": result["may_publish"]}))
+    print(json.dumps({key: result[key] for key in ("build", "verify", "monitor", "publish", "may_publish")} |
+                     {"targets": len(result["build_targets"]["include"]),
+                      "tests": len(result["test_matrix"]["include"])}))
 
 
 if __name__ == "__main__":

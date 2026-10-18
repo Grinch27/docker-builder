@@ -6,11 +6,11 @@
 
 当前唯一保留的 Workflow 文件为 `.github/workflows/gpt_dev.yml` 与 `.github/workflows/download_artifact.yml`。
 此前 13 个工作流已从 main 树中移除，Git 历史保留其源码，非 Workflow 执行脚本继续保留。
-新核心使用 15 个普通 Jobs、10 个非发布路由，不再引用旧的可复用 Workflow；独立工具提供 URL 下载以及指定平台 Docker 镜像拉取、校验、压缩和 Artifact 上传两种手动模式。
+新核心使用 15 个普通 Jobs，仅公开 `targets`、`verify` 两个输入，不再维护路线枚举或引用旧的可复用 Workflow；独立工具提供 URL 下载以及指定平台 Docker 镜像拉取、校验、压缩和 Artifact 上传两种手动模式。
 
 **当前 CI 结构验收（2026-10-18）：** P1–P4 已完成；`scripts/ci` 保留 9 个业务脚本，`tests/ci` 集中 8 个测试文件。111 项测试、8/8 代表性构建组合、vlmcsd 三架构 Dev 与 Container 非发布全链路均通过，具体 Commit/Run/Artifact 见文末 CI 精简记录。没有重跑全量 52 组合，不替换历史应用统计。
 
-**后续精简（2026-10-18）：** 重复 `smoke` 路线已退休；仅 `build` 未指定任何目标时默认 `vlmcsd:latest`，其他路由的全量范围不变。本轮以 `b022f40` 为基线，本地 116 项测试通过；新 Commit 的远端结果以对应 Run 为准。上面的 CI 成功证据属于 P1–P4，不代表本轮新版本已通过远端验收。
+**当前两输入精简（2026-10-18）：** 基线 `cddb439`，用户已批准 `targets + verify`、诊断固定并入验收、取消单架构和独立 Dev/Container 入口，并要求提交 main。当前本地 121 项测试通过；新 Commit 的远端结果以对应 Run 为准。`cddb439` 的 [39081337359](https://github.com/Grinch27/docker-builder/actions/runs/39081337359) 为上一轮轻量校验，116 项测试、2 成功/13 跳过，不代表本轮综合验收已经运行。
 
 **发布边界：** 当前 `gpt_dev.yml` 仍是非发布实现。普通 Push 只作轻量验证；
 每日 01:00 UTC 的 schedule 只进行版本监控，不执行生产 Docker Hub/GHCR/Release 发布。
@@ -110,7 +110,7 @@ python3 scripts/ci/materialize_test_hooks.py --app APP --kind test
 | `scripts/ci/catalog.py` | 读取表格 JSON、生成矩阵和展示列、维护配置与标签策略 |
 | `scripts/ci/materialize_test_hooks.py` | 从表格恢复 Meta-app / Test 的完整源码 |
 | `scripts/ci/build-image.sh` | 共用 Buildx 命令，Registry 验收仅推送本地 Registry，Dev/GPT 使用 `load` |
-| `scripts/ci/workflow_plan.py` | 唯一非发布 `plan()` 负责路由与矩阵选择；不存在生产规划分支 |
+| `scripts/ci/workflow_plan.py` | 唯一非发布 `plan()` 按事件及两输入生成执行标志与矩阵；不存在生产规划分支 |
 | `scripts/ci/monitor_state.py` | 监控状态、变更矩阵及稳定 README 展示 |
 | `tests/ci/test_workflow_contracts.py` | 在单元测试中统一检查两工作流布局、依赖图、调用引用和非发布门禁 |
 | `scripts/ci/verify_image_archive.py` | 不解压、不执行归档；验证唯一 manifest、平台配置和层文件 |
@@ -147,35 +147,56 @@ README 改写需比较全部 JSON 配置、监控记录、应用行和 Meta-app 
 
 验收环境使用 actionlint v1.7.12。它不识别 `concurrency.queue`，且对候选隔离用的 `if: false` 报常量提示；仅可精确忽略这两类已知提示。缺少 shellcheck / pyflakes 时应明确说明相应检查未执行，不把它们计为通过。不能为消除提示启用禁用的发布步骤。
 
-## 单应用非发布构建与 Smoke 退役（2026-10-18）
+## 两输入与固定非发布验收（2026-10-18）
 
-`smoke` 与更早的 `registry-smoke` 独立 Job、手动 Route 均已退役。`[gpt-smoke:TARGET]`、内部 `smoke-target` 模式直接拒绝，不静默转换为成功路线；独立 smoke 的标签模拟 JSON 和压缩 Artifact 不再生成，不保留兼容副本。旧源码与历史产物记录仅供 Git 历史追溯，外部消费者是否存在尚未确认。
+`workflow_dispatch` 只接受 `targets`（string，默认 `vlmcsd`）与 `verify`（boolean，默认 false）。规划器接受实际布尔值及精确的字符串 `true`/`false`，拒绝 null、数字和其他值，不能把字符串 false 当成真值。没有新 Python 依赖；9 个业务脚本、8 个集中测试文件及 15 个普通 Job 保留。
 
-使用 `workflow_dispatch` 的 `execution_route=build`：仅当 `app_branch`、`tag_repo`、`target_id`、`build_matrix` 都未指定或为空时，默认 `vlmcsd:latest`，按 Catalog 构建 amd64/arm64/386 三平台。默认值在规划器按路由应用，不能将全局输入的 `app_branch` 默认值改成 vlmcsd。显式筛选保留原语义：仅配置一个 Tag 的应用可省略 Tag；仅提供 Tag 时仍在全部 Catalog 中筛选，结果必须唯一；多 Target、未知或冲突筛选仍拒绝，不能回退到默认应用。
+| 触发与输入 | 实际范围 |
+|---|---|
+| 普通 push | 校验配置、单元测试与 Job 依赖图；不构建镜像 |
+| 每日 01:00 UTC schedule | 全部 24 个应用版本监控，保留原版本记录 Tag 策略；非强制构建 |
+| 手动 `verify=false` | 一个配置 Target，默认 vlmcsd:latest 三平台；强制构建、本地 Registry 检查/Test/逐平台归档 |
+| 手动 `verify=true`，单目标 | 该 Target 的全部配置平台 Test、Dev 比较与归档、Container 全链路及固定诊断 |
+| 手动 `verify=true`，列表或 all | 所选 Target 的全部平台 Test；Dev/Container/版本诊断的代表目标固定为 vlmcsd:latest；all 当前为 24 应用/30 Target/52 组合 |
 
-`build` 仅接受一个 Catalog Target，强制构建；使用本地 Registry `localhost:5000`，经过版本采集、monitor、check、Buildx 构建、Skopeo 检查、按平台 `docker pull`、README Test 和逐平台归档校验，不等同于直接 `--load` 的快速构建。示例：`gh workflow run gpt_dev.yml --ref main -f execution_route=build`；指定其他目标：`gh workflow run gpt_dev.yml --ref main -f execution_route=build -f app_branch=samba -f tag_repo=alpine`。
+`targets` 支持 `app`、`app:tag`、逗号分隔列表及独立关键字 `all`，保留输入顺序。省略 Tag 只允许该应用恰好配置一个 Target；runner、samba 等必须指定 Tag。未知、重复（包括 vlmcsd 与 vlmcsd:latest 别名重复）、空列表项、非法 Tag、换行及 NUL 直接失败。多目标和 all 必须开启 verify；不默默删减矩阵，不把子集称为全量。默认目标或多目标验收的代表目标缺失时失败，不选择其他应用代替。
 
-远端基线检查、实际版本/配置比较及 UNKNOWN 失败门禁继续由 `dev-inspect` / `dev-build` 承担，使用 `execution_route=dev-verify`；比较器行为不变。Dev 保留逐平台原始 tar 归档及平台校验，xz/分卷能力保留在既有 Container 验收路径，不将已退休 smoke 的产物视为接口等价替换。
+示例：
 
-如只要求按所选平台快速构建并运行 Test，可使用 `execution_route=test` 及可选的 `platform`，它采用 Buildx `--load`，**不测试 Registry 推拉**。`test` 不带筛选仍生成全部 52 组合；`acceptance` 仍覆盖 24 应用/30 Target/52 组合，`verification` 保留 8 个代表性组合，monitor/schedule 保留全部应用。上述路径均禁止外部 Registry Push、Release 和晋升，不为冻结应用追加修复。
+```bash
+# 默认单目标三平台构建
+gh workflow run gpt_dev.yml --ref main
+# 指定单目标
+gh workflow run gpt_dev.yml --ref main -f targets=samba:alpine
+# vlmcsd 三平台综合非发布验收
+gh workflow run gpt_dev.yml --ref main -f verify=true
+# 全配置 52 组合及代表性 Dev/Container/诊断；仅在明确要求全量时执行
+gh workflow run gpt_dev.yml --ref main -f targets=all -f verify=true
+# 原 8 组合的覆盖由配置选择表达，不再有 verification 专用路线
+gh workflow run gpt_dev.yml --ref main -f targets=aria2,samba:alpine,vlmcsd,runner:actions-slim -f verify=true
+```
 
-两工作流的所有 `retention-days` 固定为 1，所有显式 `max-parallel` 固定为 10，删除 Job/步骤的 `timeout-minutes` 配置及旧注释。步骤键顺序固定为 `name > id > if > uses > with > env > working-directory > run`；存在 `shell` 时放在 `working-directory` 后、`run` 前。
+旧 execution_route、app_branch、tag_repo、target_id、build_matrix、platform、force_build、diagnostic_mode、layer_profile、image_name、dev_mode、custom_env、version/revision 等公开/隐藏输入全部拒绝。旧 `[gpt-*]` 提交消息选择器一律报错并提示迁移，不保留影子路线、JSON 通用配置或自由命令入口。独立 test、Dev、Container、diagnostics 和 dev/preflight 手动路线均退休；内部矩阵仍包含现有业务所需的 app_branch/tag_repo/target_id 等字段，这些不是公开参数。
 
-本轮基于 `b022f40`，删除配置调整后独立 smoke Job 的 175 行及仅供它使用的 inspect 对外计数输出，Jobs 16 → 15、路由 11 → 10；9 个业务脚本、8 个测试文件保持不变。增加默认选择、显式选择优先、非法/歧义目标拒绝、默认目标缺失、全量路由隔离及退休入口拒绝的回归覆盖，现为 116 项测试。
+`build` 保留版本采集、monitor、check、Buildx、本地 Registry `localhost:5000`、Skopeo、逐平台 pull、README Test 和归档校验，仍非直接 --load 的快速测试。验收的 Dev 固定使用 build 模式并保留 UNKNOWN 门禁，既有 Container 强制构建/测试/导出/xz/分卷/最终完整性门禁保留。novnc_alpine 的 Dev 目标标签 alpine 与 Container 配置目标 latest 保持区别。常规构建和验收均禁止外部 Registry Push、Release、README 推送及晋升；硬禁用步骤不得启用。
 
-本地验证：874 组规划对照仅出现 65 处预期的退休/默认选择差异，其余完整结果一致；Dev 比较器 AST 不变，所有保留 Job 的 Shell 除指定 inspect 清理外均逐字节不变。实际 CLI 的默认 build 输出为 1 个 Target、3 个平台、发布关闭，退休 smoke 不生成 Job 输出。actionlint（沿用既有精确提示豁免）、84 段 Shell 语法、Catalog 与展示幂等检查通过；未运行 shellcheck/pyflakes。未触发全量构建，未重新检查冻结/耗时应用；本地验证不能替代新 Commit 的实际 Actions 构建结果。
+固定诊断镜像为 debian:latest、ubuntu:latest、alpine:latest、debian:sid、ubuntu:devel；逐镜像枚举全部 Linux 平台层，详细检查 amd64/arm64，保持这两种覆盖的区别。版本探针、层聚合、详细平台信息及代表应用逐平台 Meta-app 都在 verify=true 时执行；不再选择诊断 profile、任意镜像或单架构。新增 meta-platforms-APP-TAG-aATTEMPT Artifact 保存平台/版本记录，保留 1 天；最终诊断门禁检查全部依赖成功、版本探针成功、五镜像及十详细平台证据完整、Meta-app 目标与全部平台匹配。Meta-app 管道启用 pipefail，失败不能被 tee 覆盖。
+
+两工作流所有 retention-days 为 1，所有显式 max-parallel 为 10，无 timeout-minutes 字段或旧注释。步骤键顺序为 name > id > if > uses > with > env > working-directory > run；shell 位于 working-directory 后、run 前。全局 permissions: write-all 及既定 Action main/master 引用保持。
+
+历史 smoke 与 registry-smoke 已退休，原标签模拟 JSON/独立压缩 Artifact 不再生成；外部消费者未确认。历史 `cddb439` 退休独立 smoke Job 的 175 行（按先前配置调整后的工作区计），旧源码与验收记录保留在 Git 历史中。当前修改不恢复任何退休接口，不修复冻结应用，不自动重跑全量或重新检查耗时应用。
+
+本轮本地验证：121 项测试通过；全部 30 个 Target 的常规 build 与旧入口的目标/版本矩阵一致，综合验收与旧 Dev/Container/Test 的目标设置和平台矩阵一致；schedule 的全应用矩阵及版本记录 Tag 策略不变。两工作流 141 步骤符合键顺序，83 段 Bash 语法、Python 语法、Catalog、展示幂等及 actionlint 通过（沿用既有精确提示豁免）；未运行 shellcheck/pyflakes。业务 Shell 仅调整 Dev inspect 的失效参数/分支、诊断 Meta-app 的 Tag/失败证据以及固定诊断门禁，其余构建/check/Test/Dev 归档/Container 脚本保持原文。README 与 application 源码未修改；新综合重型验收尚未实跑，不能引用历史 Run 冒充本轮成功。
 
 ## 发布边界与下一步
 
 用户已授权两工作流收敛及本次 Tag 目录迁移、main 提交、非发布测试、读取日志和结构回归修正；未授权 Registry/Release 发布或密钥操作。
 
-用户本轮追加授权完整 52 组合及 Dev/Container 验收。`acceptance`（push 标记 `[gpt-acceptance]`）从配置生成全量矩阵，并以 `vlmcsd:latest` 三架构运行 Dev 和 Container 路径；`dev-verify` / `container-verify` 可定向选择一个配置目标。结果与未通过项见上表；不能预先计为通过。
+历史全量与定向 Dev/Container 的证据见上表。现行全量使用 targets=all、verify=true；单目标综合验收使用 targets=APP:TAG、verify=true。独立 Dev/Container 和提交消息控制不再可用，不能沿用旧命令触发新版本验收。
 
 规划器无条件拒绝生产、容器发布和 Dev 晋升路由；`WORKFLOW_READ_ONLY` 不再是启用生产规划的开关。Dev 仅运行本地构建、比较及归档，Release 创建/上传已从该构建步骤移除；晋升、外部 Registry 登录/推送、README 推送及 Release 发布步骤硬禁用。Container 构建启用后同样保留逐步骤发布禁用。这里描述的是执行门禁，候选 YAML 的全局 token 权限仍为用户既定的 `write-all`；验收 Jobs 仅请求 `contents: read`。
 
-普通 push 默认 `validate`，也可显式使用 `[gpt-validate]`；代表性完整验证需手动选 `verification` 或使用 `[gpt-verification]`，全量仍为 `[gpt-acceptance]`。保留 `[gpt-retest:APP:TAG]`、`[gpt-dev:APP:TAG]`、`[gpt-container:APP:TAG]` 等既有定向路由，每次 push 仅接受一个标记。retest 支持逗号分隔的多个 `APP:TAG`，逐项从配置验证，拒绝重复或未知目标。全量验收拒绝目标筛选，不能用子集冒充全部。每个组合上传含 SHA、平台、阶段和退出码的证据；Dev/Container 归档只上传 Actions Artifact。定向重测不同 SHA 的历史成功不能替代同一 SHA 的全量通过。
-
-当前 `execution_route=dev` 仅接受 `dev_mode=preflight`；外部 `auto` / `build` / `promote-*` 全部拒绝。`dev-verify` / `container-verify` 是独立的非发布验收入口。旧发布实现仅在 Git 历史和 YAML 硬禁用步骤中追溯，不能当作 dry run。检查、构建、镜像内测试、发布是不同验收等级；报告必须给出 Commit、Run、实际范围、跳过项及限制。
+普通 push 仅轻量校验；所有重型验收由 workflow_dispatch 的 targets/verify 显式选择。每个 Test 组合继续上传 SHA、平台、阶段和退出码；Dev/Container 归档只上传 Actions Artifact。不同 SHA 的定向成功不能替代同一 SHA 全量通过。新入口合并了 Test、Dev、Container 和固定诊断，一次验收的工作量高于旧独立路线，减少参数不代表运行成本下降。
 
 待办顺序：Tag 目录迁移与本次 CI 精简已按授权范围收尾，历史失败只记录；后续按需核对外部调用方和未选路由。旧工作流已退役，不恢复重复定时任务。正式发布和 Dev 晋升须未来另行实现并验收；既有代表性 Dev/Container 成功不能代替新目录版本的实测。
 
@@ -263,7 +284,7 @@ P2 将行为测试集中到 `tests/ci/`；运行脚本固定保留 9 个。旧 p
 
 P3 对每次 Catalog 加载只读取一个 README 快照，复用已经解码的测试覆盖集合，去除 validate CLI 的第二次完整校验及 monitor 的重复整表渲染；脚本恢复复用同一快照。无持久缓存，无新 Python 依赖；文件存在性、符号链接、行归属与监控校验继续执行。
 
-P4 退休通用生产规划器和 fenced README 兼容读取。`workflow_plan.plan()` 是唯一入口，允许 push/schedule/workflow_dispatch；当时保留 11 个非发布路由、16 个 Job 以及 Dev/Container 的内部构建参数，后续 smoke 退役后的现行数量见上方单应用规则。production/container 发布路由、promotion、PR/workflow_call/repository_dispatch 直接失败，环境变量不能恢复发布。旧 app-config/app-version-json 存储明确报错，不回退读取；内部 config 的 schema_version=1 保留，当前 README 行存储仍派生 schema_version=2 文档。
+P4 退休通用生产规划器和 fenced README 兼容读取。`workflow_plan.plan()` 是唯一入口，允许 push/schedule/workflow_dispatch；当时保留 11 个非发布路由、16 个 Job 以及 Dev/Container 的内部构建参数，后续 smoke 退役及两输入迁移后的现行规则见上方两输入契约。production/container 发布路由、promotion、PR/workflow_call/repository_dispatch 直接失败，环境变量不能恢复发布。旧 app-config/app-version-json 存储明确报错，不回退读取；内部 config 的 schema_version=1 保留，当前 README 行存储仍派生 schema_version=2 文档。
 
 本地验收：111 项测试通过；相对基线保存的 333 组当前入口规划夹具（退休 probe 输出除外）完全一致；README 配置、监控、24 份 Test、23 份 Meta-app、相同/变化监控渲染逐字节一致，68 个 application 文件哈希未变化。实验 codec 的 5 项和退休 probe 的 5 项专属测试移除；新增手动工作流引用保护、两项 README 真实脚本夹具、两项单快照/单次校验测试、一项环境变量不能恢复发布的测试，业务约束继续覆盖。没有运行全量 52 组合，也未重新检查冻结/耗时应用。
 
@@ -289,4 +310,4 @@ P4 退休通用生产规划器和 fenced README 兼容读取。`workflow_plan.pl
 | staging_plan() / --workflow-name | Python 调用使用 plan()；删除失效 CLI 参数，不提供兼容回退 |
 | app-config / app-version-json fenced 存储 | 先迁移为现行 Applications 表格的 JSON 列；旧标记会直接失败 |
 
-测试移动后的脚本路径必须从仓库根目录定位 scripts/ci，不能再假定测试和业务脚本同目录。普通 Push 仍只运行轻量校验；代表性 verification、Dev 和 Container 构建需显式标记。当前仅验证本地 Registry，不恢复 Docker Hub/GHCR/Release 发布；不要用已退休的 registry-smoke Route 调用代替现行 build Route。
+测试移动后的脚本路径必须从仓库根目录定位 scripts/ci，不能再假定测试和业务脚本同目录。普通 Push 仍只运行轻量校验；现行手动构建/综合验收必须使用上方 targets/verify 契约，旧路线及标记仅作历史记录。当前仅验证本地 Registry，不恢复 Docker Hub/GHCR/Release 发布。

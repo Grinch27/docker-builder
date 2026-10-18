@@ -1,15 +1,14 @@
-# Requirements: single retained core workflow; all jobs stay in this file and publishing remains disabled pending explicit authorization.
-# Unknowns/research: deferred application failures and live publication equivalence remain separate work.
-# Optimization: ordinary pushes validate only; unselected build defaults to vlmcsd; Dev acceptance owns remote comparison.
-# Risks/verification: scheduled monitoring is nonpublishing; push validates only; publication and promotion remain hard-disabled.
+# Requirements: targets/verify are the only inputs; push validates, schedule monitors, manual builds never publish.
+# Unknowns/research: retired callers must migrate; deferred application failures stay frozen.
+# Optimization: event flags replace routes; fixed diagnostics join combined Dev/Container acceptance.
+# Risks/verification: full catalog coverage, strict diagnostic failures and hard publication/promotion gates remain required.
 name: Docker Builder - Unified Jobs (Nonpublishing)
-run-name: GPT Dev - ${{ github.event_name }} - ${{ inputs.execution_route || github.event.head_commit.message || 'verification' }}
+run-name: Docker Builder - ${{ github.event_name }} - ${{ inputs.targets || github.event.head_commit.message || 'monitor' }} - verify=${{ inputs.verify || false }}
 'on':
   # Single daily monitor; not the legacy scheduled publication route.
   schedule:
   - cron: '0 1 * * *'
-  # Push selectors require a path below to change; AGENTS-only commits do not start a run.
-  # Targeted nonpublishing acceptance also supports [gpt-container:APP:TAG].
+  # Ordinary pushes validate only; AGENTS-only commits do not start a run.
   push:
     branches:
     - main
@@ -21,68 +20,14 @@ run-name: GPT Dev - ${{ github.event_name }} - ${{ inputs.execution_route || git
     - application/**
   workflow_dispatch:
     inputs:
-      execution_route:
-        description: Nonpublishing verification profile; production/promotion prohibited
-        type: choice
-        default: verification
-        options:
-        - verification
-        - acceptance
-        - dev-verify
-        - container-verify
-        - validate
-        - monitor
-        - build
-        - test
-        - diagnostics
-        - dev
-      app_branch:
-        description: Optional configured application; build without target selectors defaults to vlmcsd
+      targets:
+        description: Configured app[:tag], comma-separated list, or all; lists/all require verify
         type: string
-        default: ''
-      tag_repo:
-        description: Optional configured tag; empty selects all tags of the application
-        type: string
-        default: ''
-      force_build:
-        description: Force selected targets through change checks
-        type: choice
-        default: 'false'
-        options:
-        - 'true'
-        - 'false'
-      target_id:
-        description: Optional configured target_id instead of application/tag selectors
-        type: string
-        default: ''
-      build_matrix:
-        description: Optional JSON include list of configured app_branch/tag_repo/custom_env
-        type: string
-        default: ''
-      platform:
-        description: Optional configured platform for test Jobs only
-        type: string
-        default: ''
-      diagnostic_mode:
-        description: Diagnostics Jobs to run
-        type: choice
-        default: both
-        options:
-        - version
-        - layers
-        - both
-        - all-platforms
-      layer_profile:
-        description: Default diagnostic images
-        type: choice
-        default: stable
-        options:
-        - stable
-        - base
-      image_name:
-        description: Single diagnostic image override
-        type: string
-        default: ''
+        default: vlmcsd
+      verify:
+        description: Run configured-platform tests, Dev/Container acceptance and fixed diagnostics; no publish
+        type: boolean
+        default: false
 permissions: write-all
 defaults:
   run:
@@ -120,17 +65,13 @@ jobs:
     permissions:
       contents: read
     outputs:
-      route: ${{ steps.plan.outputs.route }}
-      dev_mode: ${{ steps.plan.outputs.dev_mode }}
-      target_id: ${{ steps.plan.outputs.target_id }}
+      build: ${{ steps.plan.outputs.build }}
+      verify: ${{ steps.plan.outputs.verify }}
+      monitor: ${{ steps.plan.outputs.monitor }}
       force_build: ${{ steps.plan.outputs.force_build }}
       publish: ${{ steps.plan.outputs.publish }}
       may_publish: ${{ steps.plan.outputs.may_publish }}
-      version: ${{ steps.plan.outputs.version }}
-      revision: ${{ steps.plan.outputs.revision }}
-      custom_env: ${{ steps.plan.outputs.custom_env }}
       fetch_versions: ${{ steps.plan.outputs.fetch_versions }}
-      diagnostic_mode: ${{ steps.plan.outputs.diagnostic_mode }}
       version_matrix: ${{ steps.plan.outputs.version_matrix }}
       build_targets: ${{ steps.plan.outputs.build_targets }}
       dev_matrix: ${{ steps.plan.outputs.dev_matrix }}
@@ -150,7 +91,6 @@ jobs:
       env:
         WORKFLOW_INPUTS: ${{ toJSON(inputs) }}
         RUNNER_IMAGE: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
-        WORKFLOW_READ_ONLY: 'true'
       run: |
         python3 scripts/ci/workflow_plan.py
   fetch-versions:
@@ -406,13 +346,13 @@ jobs:
             --build-targets-json "${BUILD_TARGETS}" \
             --force-build "${FORCE_BUILD}"
         done
-    if: ${{ contains(fromJSON('["monitor","build","verification"]'), needs.plan.outputs.route) }}
+    if: ${{ needs.plan.outputs.monitor == 'true' }}
   check:
     name: Check ${{ matrix.app_branch }}:${{ matrix.tag_repo }}
     needs:
     - plan
     - monitor
-    if: ${{ contains(fromJSON('["build","verification"]'), needs.plan.outputs.route) && needs.monitor.result == 'success' && needs.monitor.outputs.changed_count != '0' }}
+    if: ${{ needs.plan.outputs.build == 'true' && needs.monitor.result == 'success' && needs.monitor.outputs.changed_count != '0' }}
     runs-on: ${{ matrix.runner_image }}
     strategy:
       fail-fast: false
@@ -806,7 +746,7 @@ jobs:
     - plan
     - monitor
     - check
-    if: ${{ always() && !cancelled() && contains(fromJSON('["build","verification"]'), needs.plan.outputs.route) && needs.monitor.result == 'success' && needs.monitor.outputs.changed_count != '0' }}
+    if: ${{ always() && !cancelled() && needs.plan.outputs.build == 'true' && needs.monitor.result == 'success' && needs.monitor.outputs.changed_count != '0' }}
     runs-on: ${{ matrix.runner_image }}
     strategy:
       fail-fast: false
@@ -1313,14 +1253,13 @@ jobs:
         target_ext: ${{ env.target_ext }}
         release_md: ${{ env.release_md }}
   dev-inspect:
-    if: ${{ contains(fromJSON('["acceptance","dev-verify"]'), needs.plan.outputs.route) || (needs.plan.outputs.route == 'dev' && needs.plan.outputs.dev_mode != 'preflight') }}
+    if: ${{ needs.plan.outputs.verify == 'true' }}
     name: ${{ needs.runner-image.outputs.RUNNER_IMAGE }} - inspect
     needs:
     - runner-image
     - plan
     runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
     outputs:
-      mode: ${{ steps.inspect.outputs.mode }}
       target_matrix: ${{ steps.inspect.outputs.target_matrix }}
       artifact_name: ${{ steps.inspect.outputs.artifact_name }}
       fatal_count: ${{ steps.inspect.outputs.fatal_count }}
@@ -1335,45 +1274,15 @@ jobs:
     - name: Inspect targets and published images
       id: inspect
       env:
-        MODE_INPUT: ${{ needs.plan.outputs.dev_mode }}
-        TARGET_INPUT: ${{ needs.plan.outputs.target_id }}
-        VERSION_INPUT: ${{ needs.plan.outputs.version }}
-        REVISION_INPUT: ${{ needs.plan.outputs.revision }}
-        FORCE_INPUT: ${{ needs.plan.outputs.force_build }}
         DEV_TARGETS: ${{ needs.plan.outputs.dev_matrix }}
       run: |
         set -euo pipefail
 
-        mode="${MODE_INPUT:-auto}"
-        target_input="${TARGET_INPUT:-}"
-        version_input="${VERSION_INPUT:-}"
-        revision_input="${REVISION_INPUT:-}"
-        force_input="${FORCE_INPUT:-false}"
         revision="r${GITHUB_RUN_ID}-a${GITHUB_RUN_ATTEMPT}"
         artifact_name="docker-inspect-${GITHUB_RUN_ID}-a${GITHUB_RUN_ATTEMPT}"
         inspect_dir="${RUNNER_TEMP}/inspect-data"
         work_dir="${RUNNER_TEMP}/inspect-work"
         mkdir -p "${inspect_dir}" "${work_dir}"
-
-        case "${mode}" in
-          auto|build|promote-dockerhub|promote-ghcr|promote-all) ;;
-          *)
-            printf 'Unsupported mode: %s\n' "${mode}" >&2
-            exit 2
-            ;;
-        esac
-
-        case "${force_input,,}" in
-          true|false) ;;
-          *)
-            printf 'Invalid force_build: %s\n' "${force_input}" >&2
-            exit 2
-            ;;
-        esac
-
-        if [[ "${force_input,,}" == true && ("${mode}" == auto || "${mode}" == build) ]]; then
-          echo 'force_build is retained only for compatibility; every selected candidate is already built.'
-        fi
 
         targets="${DEV_TARGETS}"
 
@@ -1381,18 +1290,6 @@ jobs:
         if [[ -n "${duplicates}" ]]; then
           printf 'Duplicate target_id(s):\n%s\n' "${duplicates}" >&2
           exit 1
-        fi
-
-        if [[ -n "${target_input}" ]] && ! jq -e --arg id "${target_input}" '.include[] | select(.target_id == $id)' <<< "${targets}" >/dev/null; then
-          printf 'Unknown target_id: %s\n' "${target_input}" >&2
-          exit 2
-        fi
-
-        if [[ "${mode}" == promote-* ]]; then
-          if [[ -z "${target_input}" || -z "${version_input}" || -z "${revision_input}" ]]; then
-            echo 'Promotion-only modes require target_id, version and revision.' >&2
-            exit 2
-          fi
         fi
 
         selected_jsonl="${work_dir}/selected.jsonl"
@@ -1403,9 +1300,6 @@ jobs:
           tag_repo=$(jq -r '.tag_repo' <<< "${target}")
           target_id=$(jq -r '.target_id' <<< "${target}")
 
-          if [[ -n "${target_input}" && "${target_id}" != "${target_input}" ]]; then
-            continue
-          fi
           dir_app="application/${app_branch}"
           if [[ ! -d "${dir_app}" ]]; then
             printf 'Missing application directory: %s\n' "${dir_app}" >&2
@@ -1442,9 +1336,9 @@ jobs:
             --arg build_tag "${build_tag}" \
             --arg build_arg "${build_arg}" \
             --arg legacy_tag_policy "${legacy_tag_policy}" \
-            --arg revision "$([[ "${mode}" == promote-* ]] && printf '%s' "${revision_input}" || printf '%s' "${revision}")" \
-            --arg version "$([[ "${mode}" == promote-* ]] && printf '%s' "${version_input}" || true)" \
-            --arg version_assertion "$([[ "${mode}" == promote-* ]] && true || printf '%s' "${version_input}")" '
+            --arg revision "${revision}" \
+            --arg version "" \
+            --arg version_assertion "" '
               {
                 target_id: $target_id,
                 app_branch: $app_branch,
@@ -1631,38 +1525,35 @@ jobs:
           rm -rf "${dir}"
         }
 
-        if [[ "${mode}" == auto || "${mode}" == build ]]; then
-          while IFS= read -r target; do
-            target_id=$(jq -r '.target_id' <<< "${target}")
-            tag_repo=$(jq -r '.tag_repo' <<< "${target}")
-            arch_branch=$(jq -r '.arch_branch' <<< "${target}")
-            repo_dockerhub=$(jq -r '.repo_dockerhub' <<< "${target}")
-            ghcr_repo=$(jq -r '.ghcr_repo' <<< "${target}")
-            target_work="${work_dir}/${target_id}"
-            mkdir -p "${target_work}"
+        while IFS= read -r target; do
+          target_id=$(jq -r '.target_id' <<< "${target}")
+          tag_repo=$(jq -r '.tag_repo' <<< "${target}")
+          arch_branch=$(jq -r '.arch_branch' <<< "${target}")
+          repo_dockerhub=$(jq -r '.repo_dockerhub' <<< "${target}")
+          ghcr_repo=$(jq -r '.ghcr_repo' <<< "${target}")
+          target_work="${work_dir}/${target_id}"
+          mkdir -p "${target_work}"
 
-            dockerhub_ref="${repo_dockerhub}:${tag_repo}"
-            ghcr_ref="${ghcr_repo}:${tag_repo}"
-            inspect_registry dockerhub "${dockerhub_ref}" "${arch_branch}" "${target_work}/dockerhub.json"
-            inspect_registry ghcr "${ghcr_ref}" "${arch_branch}" "${target_work}/ghcr.json"
+          dockerhub_ref="${repo_dockerhub}:${tag_repo}"
+          ghcr_ref="${ghcr_repo}:${tag_repo}"
+          inspect_registry dockerhub "${dockerhub_ref}" "${arch_branch}" "${target_work}/dockerhub.json"
+          inspect_registry ghcr "${ghcr_ref}" "${arch_branch}" "${target_work}/ghcr.json"
 
-            jq -cn \
-              --argjson target "${target}" \
-              --slurpfile dockerhub "${target_work}/dockerhub.json" \
-              --slurpfile ghcr "${target_work}/ghcr.json" '
-                {
-                  schema_version: 1,
-                  target: $target,
-                  registries: {
-                    dockerhub: $dockerhub[0],
-                    ghcr: $ghcr[0]
-                  }
-                }' > "${inspect_dir}/${target_id}.json"
-          done < "${selected_jsonl}"
-        fi
+          jq -cn \
+            --argjson target "${target}" \
+            --slurpfile dockerhub "${target_work}/dockerhub.json" \
+            --slurpfile ghcr "${target_work}/ghcr.json" '
+              {
+                schema_version: 1,
+                target: $target,
+                registries: {
+                  dockerhub: $dockerhub[0],
+                  ghcr: $ghcr[0]
+                }
+              }' > "${inspect_dir}/${target_id}.json"
+        done < "${selected_jsonl}"
 
         {
-          echo "mode=${mode}"
           echo "artifact_name=${artifact_name}"
           echo "fatal_count=${fatal_count}"
           echo "unobservable_count=${unobservable_count}"
@@ -1674,7 +1565,7 @@ jobs:
         {
           echo "## Inspect"
           echo
-          echo "- Mode: \`${mode}\`"
+          echo "- Mode: \`build\` (fixed nonpublishing acceptance)"
           echo "- Targets: ${target_count}"
           echo "- Fatal inspect results: ${fatal_count}"
           echo "- Unobservable registry results: ${unobservable_count}"
@@ -1683,7 +1574,6 @@ jobs:
           echo "- Hash calculations: NONE"
         } >> "${GITHUB_STEP_SUMMARY}"
     - name: Upload inspect metadata
-      if: steps.inspect.outputs.mode == 'auto' || steps.inspect.outputs.mode == 'build'
       uses: actions/upload-artifact@main
       with:
         name: ${{ steps.inspect.outputs.artifact_name }}
@@ -1701,7 +1591,7 @@ jobs:
     - runner-image
     - plan
     - dev-inspect
-    if: ${{ contains(fromJSON('["acceptance","dev-verify"]'), needs.plan.outputs.route) }}
+    if: ${{ needs.plan.outputs.verify == 'true' }}
     permissions:
       contents: read
     runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
@@ -1715,7 +1605,7 @@ jobs:
       matrix:
         include: ${{ fromJSON(needs.dev-inspect.outputs.target_matrix).include }}
     env:
-      MODE: ${{ needs.dev-inspect.outputs.mode }}
+      MODE: build
       TARGET_ID: ${{ matrix.target_id }}
       APP_BRANCH: ${{ matrix.app_branch }}
       TAG_REPO: ${{ matrix.tag_repo }}
@@ -1742,14 +1632,12 @@ jobs:
     - name: Configure Buildx
       uses: docker/setup-buildx-action@master
     - name: Download inspect metadata
-      if: env.MODE == 'auto' || env.MODE == 'build'
       uses: actions/download-artifact@main
       with:
         name: ${{ needs.dev-inspect.outputs.artifact_name }}
         path: ${{ runner.temp }}/inspect-baseline
     - name: Build, test, compare and archive locally
       id: build-release
-      if: env.MODE == 'auto' || env.MODE == 'build'
       run: |
         set -euo pipefail
 
@@ -2375,7 +2263,7 @@ jobs:
     needs:
     - runner-image
     - plan
-    if: ${{ contains(fromJSON('["verification","acceptance","test"]'), needs.plan.outputs.route) }}
+    if: ${{ needs.plan.outputs.verify == 'true' }}
     runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
     permissions:
       contents: read
@@ -2555,13 +2443,13 @@ jobs:
       max-parallel: 10
       matrix:
         image_name: ${{ fromJSON(needs.plan.outputs.images) }}
-    if: ${{ needs.plan.outputs.route == 'verification' || (needs.plan.outputs.route == 'diagnostics' && (needs.plan.outputs.diagnostic_mode == 'layers' || needs.plan.outputs.diagnostic_mode == 'both')) }}
+    if: ${{ needs.plan.outputs.verify == 'true' }}
   diagnostic-platforms:
     name: Detailed OCI inspect ${{ matrix.image_name }} / ${{ matrix.arch }}
     needs:
     - runner-image
     - plan
-    if: ${{ needs.plan.outputs.route == 'verification' || (needs.plan.outputs.route == 'diagnostics' && (needs.plan.outputs.diagnostic_mode == 'layers' || needs.plan.outputs.diagnostic_mode == 'both')) }}
+    if: ${{ needs.plan.outputs.verify == 'true' }}
     runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
     strategy:
       fail-fast: false
@@ -2606,7 +2494,7 @@ jobs:
     - runner-image
     - plan
     - diagnostic-layers
-    if: ${{ needs.plan.outputs.route == 'verification' || (needs.plan.outputs.route == 'diagnostics' && (needs.plan.outputs.diagnostic_mode == 'layers' || needs.plan.outputs.diagnostic_mode == 'both')) }}
+    if: ${{ needs.plan.outputs.verify == 'true' }}
     runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
     steps:
     - name: Checkout repository
@@ -2662,15 +2550,8 @@ jobs:
       id: env-app
       run: |
         set -euo pipefail
-        python3 scripts/ci/catalog.py env --app "${app_branch}" --app-only --output "${GITHUB_ENV}"
+        python3 scripts/ci/catalog.py env --app "${app_branch}" --tag "${tag_repo}" --output "${GITHUB_ENV}"
         echo "status=success" >> "${GITHUB_OUTPUT}"
-    - name: Load Custom Environment Variables
-      id: env-custom
-      if: ${{ env.custom_env != '' }}
-      env:
-        flag_split: ;
-      run: |
-        echo "${{ env.custom_env }}" | tr "${flag_split}" '\n' | tee -a $GITHUB_ENV
     - name: Setup Docker
       id: docker
       env:
@@ -2713,6 +2594,9 @@ jobs:
         dir_container: /tmp
       working-directory: ${{ github.workspace }}/${{ env.dir_app }}
       run: |
+        set -euo pipefail
+        cleanup() { docker rm -f "${container_name}" >/dev/null 2>&1 || true; }
+        trap cleanup EXIT
         echo "Current working directory: $(pwd)"
 
         metadata='{"${{ env.category }}":[]}'
@@ -2737,14 +2621,6 @@ jobs:
           if [ -d "${dir_step}" ]; then
             cd ./${dir_step}
             echo "Changed to directory: $(pwd)"
-
-            env_temp=$(mktemp)
-            if [ ${{ env.custom_env != '' }} ]; then
-              flag_split=";"
-              # | sed "s|='|=\"|g" | sed "s|'$|\"|g" | sed "s|^|export '|" | sed "s|$|'|"
-              echo "${{ env.custom_env }}" | tr "${flag_split}" '\n' | tee -a ${env_temp}
-              docker cp ${env_temp} ${{ env.container_name }}:/tmp/build.env
-            fi
 
             for script_file in ./*.sh; do
               container_script="${{ env.dir_container }}/$(basename ${script_file})"
@@ -2774,13 +2650,22 @@ jobs:
             '.${{ env.category }} += [{platform: $platform, version: $version}]' <<< "${metadata}")
         done
         echo "metadata=${metadata}"
-        # echo "${metadata}" | jq . > ${{ env.metadata_app_path }}
+        mkdir -p "${RUNNER_TEMP}/meta-platforms"
+        jq --arg app "${app_branch}" --arg tag "${tag_repo}" \
+          '. + {app:$app,tag:$tag}' <<< "${metadata}" > "${RUNNER_TEMP}/meta-platforms/platforms.json"
         echo "status=success" | tee -a ${GITHUB_OUTPUT}
-    if: ${{ needs.plan.outputs.route == 'diagnostics' && needs.plan.outputs.diagnostic_mode == 'all-platforms' }}
+    - name: Upload meta-app platform evidence
+      if: always()
+      uses: actions/upload-artifact@main
+      with:
+        name: meta-platforms-${{ env.app_branch }}-${{ env.tag_repo }}-a${{ github.run_attempt }}
+        path: ${{ runner.temp }}/meta-platforms
+        if-no-files-found: error
+        retention-days: 1
+    if: ${{ needs.plan.outputs.verify == 'true' }}
     env:
       app_branch: ${{ fromJSON(needs.plan.outputs.version_matrix).include[0].app_branch }}
       tag_repo: ${{ fromJSON(needs.plan.outputs.version_matrix).include[0].tag_repo }}
-      custom_env: ${{ needs.plan.outputs.custom_env }}
       dir_app: application/${{ fromJSON(needs.plan.outputs.version_matrix).include[0].app_branch }}
   diagnostic-validate:
     name: Validate diagnostic Artifact contracts
@@ -2791,8 +2676,9 @@ jobs:
     - diagnostic-layers
     - diagnostic-platforms
     - diagnostic-collect
+    - diagnostic-meta-platforms
     runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
-    if: ${{ always() && !cancelled() && needs.plan.result == 'success' && (needs.plan.outputs.route == 'diagnostics' || needs.plan.outputs.route == 'verification') && needs.plan.outputs.diagnostic_mode != 'all-platforms' }}
+    if: ${{ always() && !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.verify == 'true' }}
     steps:
     - name: Download diagnostic evidence
       uses: actions/download-artifact@main
@@ -2800,7 +2686,8 @@ jobs:
         path: ${{ runner.temp }}/diagnostic-contracts
     - name: Check selected diagnostic contracts
       env:
-        DIAGNOSTIC_MODE: ${{ needs.plan.outputs.diagnostic_mode }}
+        DIAGNOSTIC_IMAGES: ${{ needs.plan.outputs.images }}
+        META_TARGET: ${{ toJSON(fromJSON(needs.plan.outputs.build_targets).include[0]) }}
         JOB_RESULTS: ${{ toJSON(needs) }}
       run: |
         set -euo pipefail
@@ -2808,29 +2695,43 @@ jobs:
         import json
         import os
         from pathlib import Path
-        mode = os.environ['DIAGNOSTIC_MODE']
+        images = json.loads(os.environ['DIAGNOSTIC_IMAGES'])
+        target = json.loads(os.environ['META_TARGET'])
         needs = json.loads(os.environ['JOB_RESULTS'])
         root = Path(os.environ['RUNNER_TEMP']) / 'diagnostic-contracts'
-        if mode in {'version', 'both'}:
-            assert needs['fetch-versions']['result'] == 'success', 'Version Job failed'
-            files = list(root.glob('app-version-*/version-*.json'))
-            assert files, 'Version artifact missing'
-            for path in files:
-                row = json.loads(path.read_text())
-                assert row.get('app_branch') and row.get('status') and row.get('version'), path
-        if mode in {'layers', 'both'}:
-            for job in ['diagnostic-layers', 'diagnostic-platforms', 'diagnostic-collect']:
-                assert needs[job]['result'] == 'success', job + ' failed'
-            summary = root / 'diagnostics-layer-summary/aggregated_layers.json'
-            assert json.loads(summary.read_text())['Layers'], 'Empty aggregate layers'
-            layers = list(root.glob('layers-*/layers.json'))
-            details = list(root.glob('layer-info-*/image_*.json'))
-            assert layers and len(layers) == len(details), 'Per-platform artifacts missing'
-            for path in layers:
-                assert json.loads(path.read_text()), path
-            for path in details:
-                assert json.loads(path.read_text())['raw_data']['Layers'], path
-        print('Selected diagnostic Artifact contracts: PASS')
+        for job in ['fetch-versions', 'diagnostic-layers', 'diagnostic-platforms',
+                    'diagnostic-collect', 'diagnostic-meta-platforms']:
+            assert needs[job]['result'] == 'success', job + ' failed'
+        def version_ok(value):
+            return (isinstance(value, str) and value.strip().lower() not in {'', 'unknown', 'null'}
+                    and not any(c in value for c in '\r\n\0'))
+        versions = list(root.glob('app-version-*/version-*.json'))
+        assert len(versions) == 1, 'Expected representative version artifact'
+        row = json.loads(versions[0].read_text())
+        assert row['app_branch'] == target['app_branch'] and row['tag_repo'] == target['build_tag']
+        assert row['status'] == 'success' and version_ok(row['version']), 'Version probe failed'
+        summary = root / 'diagnostics-layer-summary'
+        assert json.loads((summary / 'aggregated_layers.json').read_text())['Layers'], 'Empty aggregate layers'
+        base_layers = json.loads((summary / 'base_layers.json').read_text())
+        assert set(base_layers) == set(images) and all(base_layers.values()), 'Per-image evidence missing'
+        layers = list(root.glob('layers-*/layers.json'))
+        details = list(root.glob('layer-info-*/image_*.json'))
+        expected = {(image, arch) for image in images for arch in ['amd64', 'arm64']}
+        assert len(layers) == len(details) == len(expected), 'Per-platform artifacts missing'
+        for path in layers:
+            assert json.loads(path.read_text()), path
+        records = [json.loads(path.read_text()) for path in details]
+        assert {(r['image'], r['architecture']) for r in records} == expected
+        assert all(r['raw_data']['Layers'] for r in records), 'Empty platform layers'
+        files = list(root.glob('meta-platforms-*/platforms.json'))
+        assert len(files) == 1, 'Meta-app platform evidence missing'
+        meta = json.loads(files[0].read_text())
+        assert (meta['app'], meta['tag']) == (target['app_branch'], target['build_tag'])
+        rows = meta['platforms']
+        platforms = target['arch_branch'].split(',')
+        assert len(rows) == len(platforms) and {r['platform'] for r in rows} == set(platforms)
+        assert all(version_ok(r['version']) for r in rows), 'Meta-app version missing'
+        print('Fixed diagnostic Artifact contracts: version/all-platform layers/details/meta-app PASS')
         PYTHON
   container-build:
     name: Container build ${{ matrix.app_branch }}:${{ matrix.tag_repo }}
@@ -3750,7 +3651,7 @@ jobs:
           /builder/release.md
         if-no-files-found: error
         retention-days: 1
-    if: ${{ contains(fromJSON('["acceptance","container-verify"]'), needs.plan.outputs.route) }}
+    if: ${{ needs.plan.outputs.verify == 'true' }}
     strategy:
       fail-fast: false
       matrix:
