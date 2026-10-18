@@ -27,7 +27,7 @@ gh workflow run gpt_dev.yml --ref main -f targets=all
 - 记录实际 DockerRootDir、daemon 所在文件系统和产物目录磁盘。需要 Docker API 1.49+（逐平台 inspect；save 要求 1.48+）；不宣称 Docker 数据已迁移到其他磁盘。大应用磁盘容量仍须实测。
 - 每 Target 一次 Buildx 多平台构建，仅推送 **127.0.0.1:5000 本地 Registry**。每个平台分别拉取、核对实际 OS/架构/Variant、执行 README Test、比较和导出。
 - Test 用 `/bin/sh` 覆盖 ENTRYPOINT，复制整个 test 目录并执行原始 test.sh；保留业务脚本退出码。该检查不代表服务默认启动、VPN、GUI 或 GPU 实机验收。
-- 每个平台 Meta-app 必须产生有效版本；缺失探针直接报错，不能伪造版本。Test 必须成功并产生有效实际版本；所有配置平台的实际版本须一致。
+- 每个平台 Meta-app 必须产生有效版本；缺失探针直接报错，不能伪造版本。Test 必须成功并产生有效实际版本，与选定的构建版本及镜像 version Label 完全一致后才允许比较/导出；所有配置平台的实际版本须一致。
 - Docker Hub/GHCR 均匿名读取原 OCI/平台配置；比较器保留 SAME、CHANGED、MISSING、UNOBSERVABLE、UNKNOWN 语义，UNKNOWN 失败。不因缺少匿名权限伪装成镜像不存在。
 - `docker image save --platform` 后先核对归档内的平台、单一 manifest 和层文件，再记录原 tar SHA256。压缩和分卷后，门禁检查完整平台集合、全部文件、连续分卷、xz 解码完整性及解压流与原 tar 的 SHA256；不在磁盘重建大型 tar。
 - 产物为 `container-acceptance-APP-TAG-aATTEMPT`，包含 output、metadata、离线 release.md。普通归档保持 APP_TAG_VERSION_PLATFORM.tar.xz 格式；版本中的文件名不安全字符替换为连字符，原始版本保存在元数据。分卷使用现有 file-split/*.partNNN，校验和记录相对路径。
@@ -80,7 +80,12 @@ actionlint v1.7.12 仅需精确豁免独立下载工具两个既有未使用锚�
 本轮基线 f83e6bf。本地已通过 108 项测试和 9 Job 图检查；覆盖实际 Container Test/导出 Shell 的成功及失败、平台变体、UNKNOWN、Meta-app 管道失败、最终步骤门禁、真实 tar/xz/分卷的损坏/缺失/额外文件/校验和不匹配。移除旧路线专属测试不计为新能力丢失。
 本地没有 Docker，不宣称进行了真实镜像构建。新 Container-only、全量 52 组合和监控远端执行均以对应 SHA/Run 为准；普通 push 成功只证明轻量验证。
 
-本轮代码 ce5fb46 / [39091135553](https://github.com/Grinch27/docker-builder/actions/runs/39091135553)：远端轻量 CI success，2 成功/7 跳过，已读 Job 117567972095 日志确认 108 项测试、9 Job 图及 build=false/monitor=false；另有全部 30 个 Target 的真实 Bash 构建参数夹具通过（未调用 Docker）。后续收尾删除未消费的目标字段/检查参数、将精简监控状态升级为 schema_version=2，并补充本记录，最终提交仍须看自身 CI；不视为真实 Container 构建通过。
+迁移代码 ce5fb46 / [39091135553](https://github.com/Grinch27/docker-builder/actions/runs/39091135553) 与收尾 9a3d00f / [39091332259](https://github.com/Grinch27/docker-builder/actions/runs/39091332259)：远端轻量 CI 均 success，2 成功/7 跳过。已读最终 Job 117568565889 日志确认 108 项测试、9 Job 图及 build=false/monitor=false；另有全部 30 个 Target 的真实 Bash 构建参数夹具通过（未调用 Docker），不视为真实 Container 构建通过。
+
+## 再检查与修正（2026-10-18，基线 9a3d00f）
+原始 Shell 夹具确认两个缺口：监控探针打印版本后退出 7 仍记录 success；Test 实测 2.0 仍能导出带 1.0 版本名的归档。本轮修正监控显式失败状态、完整探针日志及实际版本/镜像 Label/构建版本一致性；不修改应用源码，不追加应用专项修复。
+监控分别记录 materialize_failed、meta_app_missing、pull_failed、run_failed、copy_failed、probe_failed、version_invalid；失败时 version=unknown，部分输出不作为有效版本。每个应用上传独立 probe-APP.log，不复制宿主环境，不保留失效的自定义环境及无消费者步骤输出。监控 Job 成功表示记录及 Artifact 完成，不表示全部应用探针成功或镜像构建成功。
+新增真实 Shell 回归覆盖上述失败、缺失/未知/CR/NUL 版本、平台选择和 actual/label 版本不匹配；本地共 112 项测试通过，9 个业务脚本、8 个测试文件、9 Job 和全部 30/52 配置保留。最终提交的 CI 必须另读对应 Run；本轮没有真实 Docker 构建或全量运行。浏览器登录请求曾被拒绝，不自动重试登录。
 
 ## 历史验收与冻结应用
 约八成可构建标准继续有效：失败只记录原因和状态，不追加冻结应用修复，不删除其配置，不重跑全部矩阵或继续等待耗时应用，除非用户另行指定。

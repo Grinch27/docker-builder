@@ -1,7 +1,7 @@
 # Requirements: targets selects the sole Container builder; push validates and schedule monitors.
 # Unknowns/research: deferred applications and live daemon capacity need separate evidence.
 # Optimization: one build per Target, minimal Docker client tools and shared fixed diagnostics.
-# Risks/verification: preserve all platforms, UNKNOWN comparison failures and complete archive integrity; no publishing.
+# Risks/verification: truthful probe failures, actual/label version parity, all platforms and complete archives; no publishing.
 name: Docker Builder - Container (Nonpublishing)
 run-name: Docker Builder - ${{ github.event_name }} - ${{ inputs.targets || 'monitor/validate' }}
 'on':
@@ -94,7 +94,6 @@ jobs:
       tag_repo: ${{ matrix.tag_repo || 'latest' }}
       dir_app: application/${{ matrix.app_branch }}
       platform_prefer: linux/amd64
-      fallback_version: unknown
     steps:
     - name: Checkout ${{ github.repository }}
       uses: actions/checkout@main
@@ -107,109 +106,75 @@ jobs:
       id: meta-app
       env:
         container_name: version-meta-app
-        dir_container: /tmp
       working-directory: ${{ github.workspace }}/${{ env.dir_app }}
       run: |
-        set +e
-        printf 'Current working directory: %s\n' "$(pwd)"
-
-        arch_branch="${arch_branch:-linux/amd64}"
-        base_image="${base_image:-ubuntu:latest}"
-
-        platform_used="${platform_prefer}"
-        if ! grep -q ",${platform_prefer}," <<< ",${arch_branch},"; then
-          platform_used=$(cut -d',' -f1 <<< "${arch_branch}")
-        fi
-
-        printf 'Using base_image=%s\nUsing arch_branch=%s\nUsing platform=%s\n' \
-          "${base_image}" "${arch_branch}" "${platform_used}"
-
-        log_container=$(mktemp)
-        status="success"
-        version="${fallback_version}"
-
-        docker pull --platform "${platform_used}" "${base_image}" >/dev/null 2>&1
-        if [[ $? -ne 0 ]]; then
-          status="pull_failed"
-        else
-          docker run \
-            --name "${container_name}" \
-            --rm \
-            --detach \
-            --platform "${platform_used}" \
-            "${base_image}" \
-            /bin/sh -c "uname -a && sleep infinity" >/dev/null 2>&1
-
-          if [[ $? -ne 0 ]]; then
-            status="run_failed"
-          else
-            docker exec "${container_name}" mkdir -p "${dir_container}" >/dev/null 2>&1
-
-            shopt -s nullglob
-            python3 "${GITHUB_WORKSPACE}/scripts/ci/materialize_test_hooks.py" --app "$(basename "$PWD")" --kind meta
-            meta_scripts=(./meta-app/*.sh)
-            if ((${#meta_scripts[@]} > 0)); then
-              for script_file in "${meta_scripts[@]}"; do
-                container_script="${dir_container}/$(basename "${script_file}")"
-                docker cp "${script_file}" "${container_name}:${container_script}" >/dev/null 2>&1
-                docker exec "${container_name}" chmod +x "${container_script}" >/dev/null 2>&1
-                docker exec "${container_name}" sh -c "${container_script}" |
-                  tee -a "${log_container}" >/dev/null
-              done
-            else
-              status="meta_app_missing"
-            fi
-
-            docker stop "${container_name}" >/dev/null 2>&1 || true
-          fi
-        fi
-
-        parsed_version=$(awk -F= '/^version=/{print $2}' "${log_container}" | tail -n 1)
-        if [[ -n "${parsed_version}" ]]; then
-          version="${parsed_version}"
-        fi
-
-        now_utc=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+        set -euo pipefail
         version_dir="${RUNNER_TEMP}/app-version"
-        version_json="${version_dir}/version-${app_branch}.json"
-        mkdir -p "${version_dir}"
-
-        jq -n \
-          --arg app_branch "${app_branch}" \
-          --arg tag_repo "${tag_repo}" \
-          --arg repo_dockerhub "${repo_dockerhub:-}" \
-          --arg base_image "${base_image}" \
-          --arg arch_branch "${arch_branch}" \
-          --arg platform_used "${platform_used}" \
-          --arg version "${version}" \
-          --arg status "${status}" \
-          --arg updated_at "${now_utc}" \
-          '{
-            app_branch: $app_branch,
-            tag_repo: $tag_repo,
-            repo_dockerhub: $repo_dockerhub,
-            base_image: $base_image,
-            arch_branch: $arch_branch,
-            platform_used: $platform_used,
-            version: $version,
-            status: $status,
-            updated_at: $updated_at
-          }' > "${version_json}"
-
-        {
-          echo "version=${version}"
-          echo "repo_dockerhub=${repo_dockerhub:-}"
-          echo "base_image=${base_image}"
-          echo "arch_branch=${arch_branch}"
-          echo "platform_used=${platform_used}"
-          echo "status=${status}"
-          echo "artifact_file=${version_json}"
-        } >> "${GITHUB_OUTPUT}"
+        mkdir -p "$version_dir"
+        log_container="$version_dir/probe-${app_branch}.log"
+        : > "$log_container"
+        status=success
+        version=unknown
+        platform_used="$platform_prefer"
+        if [[ ",$arch_branch," != *",$platform_prefer,"* ]]; then
+          platform_used="${arch_branch%%,*}"
+        fi
+        cleanup() { docker rm -f "$container_name" >/dev/null 2>&1 || true; }
+        trap cleanup EXIT
+        collect_version() {
+          if ! python3 "$GITHUB_WORKSPACE/scripts/ci/materialize_test_hooks.py" --app "$app_branch" --kind meta >> "$log_container" 2>&1; then
+            status=materialize_failed
+            return
+          fi
+          local script="meta-app/meta-app.sh"
+          if [[ ! -s "$script" ]]; then
+            status=meta_app_missing
+            return
+          fi
+          if ! docker pull --platform "$platform_used" "$base_image" >> "$log_container" 2>&1; then
+            status=pull_failed
+            return
+          fi
+          if ! docker run --name "$container_name" --rm --detach --platform "$platform_used" --entrypoint /bin/sh "$base_image" -c 'sleep infinity' >> "$log_container" 2>&1; then
+            status=run_failed
+            return
+          fi
+          if ! docker cp "$script" "$container_name:/tmp/meta-app.sh" >> "$log_container" 2>&1; then
+            status=copy_failed
+            return
+          fi
+          if ! docker exec --user 0 --workdir /tmp "$container_name" /bin/sh /tmp/meta-app.sh >> "$log_container" 2>&1; then
+            status=probe_failed
+            return
+          fi
+          local parsed_version
+          if ! parsed_version=$(jq -ern --rawfile log "$log_container" '
+            $log | split("\n") | map(select(startswith("version=")) | ltrimstr("version=")) | (last // "") |
+            select((gsub("^[[:space:]]+|[[:space:]]+$"; "") | ascii_downcase) as $v | $v != "" and $v != "unknown" and $v != "null") |
+            select(test("[\r\n\u0000]") | not)'); then
+            status=version_invalid
+            return
+          fi
+          version="$parsed_version"
+        }
+        collect_version
+        cat "$log_container"
+        version_json="$version_dir/version-${app_branch}.json"
+        jq -n --arg app_branch "$app_branch" --arg tag_repo "$tag_repo" \
+          --arg repo_dockerhub "$repo_dockerhub" --arg base_image "$base_image" \
+          --arg arch_branch "$arch_branch" --arg platform_used "$platform_used" \
+          --arg version "$version" --arg status "$status" --arg updated_at "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+          '{app_branch:$app_branch,tag_repo:$tag_repo,repo_dockerhub:$repo_dockerhub,base_image:$base_image,
+            arch_branch:$arch_branch,platform_used:$platform_used,version:$version,status:$status,updated_at:$updated_at}' > "$version_json"
+        jq . "$version_json"
+        printf 'artifact_file=%s\n' "$version_json" >> "$GITHUB_OUTPUT"
     - name: Upload app version artifact
       uses: actions/upload-artifact@main
       with:
         name: app-version-${{ matrix.app_branch }}
-        path: ${{ steps.meta-app.outputs.artifact_file }}
+        path: |
+          ${{ steps.meta-app.outputs.artifact_file }}
+          ${{ runner.temp }}/app-version/probe-${{ matrix.app_branch }}.log
         if-no-files-found: error
         retention-days: 1
     if: ${{ needs.plan.outputs.monitor == 'true' }}
@@ -728,13 +693,21 @@ jobs:
           docker cp "$PATH_app/test" image-test:/tmp/test
           docker exec --user 0 --workdir /tmp/test image-test /bin/sh /tmp/test/test.sh | tee "$evidence/test.log"
           cleanup
-          phase=compare
+          phase=version
           actual_version=$(awk '/^version=/{sub(/^version=/, ""); v=$0} END{print v}' "$evidence/test.log")
-          python3 - "$actual_version" <<'VERSION'
+          python3 - "$actual_version" "$evidence/image.json" <<'VERSION'
+        import json
+        import os
         import sys
         value = sys.argv[1]
         assert value.strip().lower() not in {'', 'unknown', 'null'} and not any(c in value for c in '\r\n\0'), 'Actual test version missing/invalid'
+        expected = os.environ['version']
+        assert value == expected, f'Actual version {value!r} differs from build metadata {expected!r}'
+        image = json.load(open(sys.argv[2]))[0]
+        label = (image.get('Config', {}).get('Labels') or {}).get('version')
+        assert label == expected, f'Image version label {label!r} differs from build metadata {expected!r}'
         VERSION
+          phase=compare
           jq -n --arg platform "$platform" --arg actual_version "$actual_version" --slurpfile image "$evidence/image.json" --slurpfile history "$evidence/history.json" '{platform:$platform,actual_version:$actual_version,test_result:"success",source:{image_inspect:$image[0],image_history:$history[0]}}' > "$evidence/snapshot.json"
           python3 scripts/ci/compare_image_snapshot.py "$PATH_metadata/baseline.json" "$evidence/snapshot.json" "$platform" "$evidence/comparison.json"
           [[ "$(jq -r '.comparison.result' "$evidence/comparison.json")" != UNKNOWN ]] || { echo '::error::OCI comparison UNKNOWN'; exit 1; }

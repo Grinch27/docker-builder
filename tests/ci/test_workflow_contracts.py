@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Requirements: one input, one Container builder, shared diagnostics and strict evidence gates.
 # Unknowns/research: GitHub-hosted execution and registry publication remain unverified locally.
-# Risks/verification: execute real platform/Test/diagnostic gates with success and failure fixtures.
+# Risks/verification: exercise probe statuses, exact actual/label versions and platform/Test/diagnostic failure gates.
 # Optimization: one standard-library graph/contract gate; actionlint validates YAML separately.
 """Verify failure boundaries and executable shell in the single core workflow."""
 
@@ -202,7 +202,7 @@ class WorkflowContractTests(unittest.TestCase):
                                       env=dict(os.environ,evidence=directory,platform=platform))
                 self.assertEqual(result.returncode==0,accepted,result.stderr)
 
-    def pipeline(self,root,test_exit='0',baseline='missing',platforms='linux/amd64'):
+    def pipeline(self,root,test_exit='0',baseline='missing',platforms='linux/amd64',test_version='1.0',image_version='1.0'):
         import io
         import tarfile
         tools=root/'bin'
@@ -226,12 +226,12 @@ class WorkflowContractTests(unittest.TestCase):
             if a[:2]==['image','inspect']:
                 assert '--platform' in a, 'Inspect must select a platform explicitly'
                 platform=a[a.index('--platform')+1]
-                print(json.dumps([dict(Os='linux',Architecture=platform.split('/')[1],Config={})]))
+                print(json.dumps([dict(Os='linux',Architecture=platform.split('/')[1],Config={'Labels':{'version':os.environ['IMAGE_VERSION']}})]))
             elif a[:2]==['image','save']:
                 platform=a[a.index('--platform')+1]
                 shutil.copyfile(os.path.join(os.environ['FIXTURE_ROOT'],platform.replace('/','_')+'.tar'),a[a.index('--output')+1])
             elif a and a[0]=='exec':
-                print('version=1.0')
+                print('version='+os.environ['TEST_VERSION'])
                 sys.exit(int(os.environ['TEST_EXIT']))
         '''))
         docker.chmod(0o755)
@@ -246,7 +246,7 @@ class WorkflowContractTests(unittest.TestCase):
         env=dict(os.environ,PATH=str(tools)+':'+os.environ['PATH'],PATH_app=str(work.parent),PATH_self=str(ROOT),
                  PATH_output=str(output),PATH_metadata=str(metadata),arch_branch=platforms,registry_local='127.0.0.1:5000',
                  repo_dockerhub='example/image',tag_repo='latest',app_branch='fixture',version='1.0',GITHUB_SHA='fixture-sha',
-                 FIXTURE_ROOT=str(root),TEST_EXIT=test_exit)
+                 FIXTURE_ROOT=str(root),TEST_EXIT=test_exit,TEST_VERSION=test_version,IMAGE_VERSION=image_version)
         return subprocess.run(['bash','-e','-u','-o','pipefail'],cwd=ROOT,env=env,capture_output=True,text=True,
                               input=script_for('container-build','Test, compare and export every configured platform'))
 
@@ -281,6 +281,81 @@ class WorkflowContractTests(unittest.TestCase):
                 self.assertEqual(record['phase'],phase)
                 self.assertNotEqual(record['exit_code'],0)
                 self.assertEqual(json.loads((root/'metadata/exports.json').read_text())['archives'],[])
+
+    def test_actual_and_image_label_versions_must_match_build_metadata(self):
+        for actual,label in [('2.0','1.0'),('1.0','2.0'),('1.0',''),('unknown','1.0')]:
+            with self.subTest(actual=actual,label=label), tempfile.TemporaryDirectory() as directory:
+                root=Path(directory)
+                result=self.pipeline(root,test_version=actual,image_version=label)
+                self.assertNotEqual(result.returncode,0)
+                record=json.loads((root/'metadata/linux_amd64/result.json').read_text())
+                self.assertEqual(record['phase'],'version')
+                self.assertNotEqual(record['exit_code'],0)
+                self.assertEqual(json.loads((root/'metadata/exports.json').read_text())['archives'],[])
+                self.assertEqual(list((root/'output').iterdir()),[])
+
+    def monitor_probe(self,root,fail_stage='',probe_output='version=1.0',probe_exit='0',missing=False,platforms='linux/amd64,linux/arm64'):
+        tools=root/'bin'
+        tools.mkdir()
+        work=root/'application/fixture'
+        (work/'meta-app').mkdir(parents=True)
+        if not missing:
+            (work/'meta-app/meta-app.sh').write_text('echo fixture\n')
+        docker=tools/'docker'
+        docker.write_text('#!'+sys.executable+'\n'+textwrap.dedent("""
+            import os,sys
+            stage=sys.argv[1]
+            with open(os.environ['CALLS'], 'a') as log:
+                log.write(stage+'\\n')
+            if stage=='exec':
+                sys.stdout.buffer.write(bytes.fromhex(os.environ['PROBE_HEX'])+b'\\n')
+                sys.exit(int(os.environ['PROBE_EXIT']))
+            if stage==os.environ['FAIL_STAGE']:
+                print('fixture '+stage+' failed',file=sys.stderr)
+                sys.exit(7)
+        """))
+        docker.chmod(0o755)
+        python=tools/'python3'
+        python.write_text('#!/bin/sh\nexit "$MATERIALIZE_EXIT"\n')
+        python.chmod(0o755)
+        env=dict(os.environ,PATH=str(tools)+':'+os.environ['PATH'],CALLS=str(root/'calls'),
+                 GITHUB_WORKSPACE=str(ROOT),GITHUB_OUTPUT=str(root/'output'),RUNNER_TEMP=str(root),
+                 app_branch='fixture',tag_repo='latest',repo_dockerhub='example/image',platform_prefer='linux/amd64',
+                 container_name='version-meta-app',arch_branch=platforms,base_image='fixture:base',
+                 FAIL_STAGE=fail_stage,PROBE_HEX=probe_output.encode().hex(),PROBE_EXIT=probe_exit,
+                 MATERIALIZE_EXIT='7' if fail_stage=='materialize' else '0')
+        result=subprocess.run(['bash','-e','-o','pipefail'],input=script_for('fetch-versions','Collect version from meta-app scripts'),
+                              env=env,cwd=work,capture_output=True,text=True)
+        self.assertEqual(result.returncode,0,result.stderr)
+        return json.loads((root/'app-version/version-fixture.json').read_text())
+
+    def test_monitor_success_preserves_version_and_platform_selection(self):
+        for platforms,expected in [('linux/amd64,linux/arm64','linux/amd64'),('linux/arm64','linux/arm64')]:
+            with self.subTest(platforms=platforms), tempfile.TemporaryDirectory() as directory:
+                root=Path(directory)
+                record=self.monitor_probe(root,probe_output='version=old\nversion=1.0=build',platforms=platforms)
+                self.assertEqual((record['status'],record['version'],record['platform_used']),('success','1.0=build',expected))
+                self.assertIn('rm',(root/'calls').read_text().splitlines())
+                self.assertIn('version=1.0=build',(root/'app-version/probe-fixture.log').read_text())
+
+    def test_monitor_failures_keep_status_and_do_not_trust_partial_versions(self):
+        cases=[('materialize','0','materialize_failed'),('pull','0','pull_failed'),
+               ('run','0','run_failed'),('cp','0','copy_failed'),('','7','probe_failed')]
+        for stage,code,expected in cases:
+            with self.subTest(stage=stage,code=code), tempfile.TemporaryDirectory() as directory:
+                root=Path(directory)
+                record=self.monitor_probe(root,fail_stage=stage,probe_output='version=9.9',probe_exit=code)
+                self.assertEqual((record['status'],record['version']),(expected,'unknown'))
+                self.assertIn('rm',(root/'calls').read_text().splitlines())
+
+    def test_monitor_missing_and_invalid_versions_are_explicit(self):
+        cases=[(True,'version=1.0','meta_app_missing'),(False,'','version_invalid'),
+               (False,'version= UNKNOWN ','version_invalid'),(False,'version=null','version_invalid'),
+               (False,'version=1.0\r','version_invalid'),(False,'version=1.0\0suffix','version_invalid')]
+        for missing,output,status in cases:
+            with self.subTest(missing=missing,output=output), tempfile.TemporaryDirectory() as directory:
+                record=self.monitor_probe(Path(directory),missing=missing,probe_output=output)
+                self.assertEqual((record['status'],record['version']),(status,'unknown'))
 
     def test_meta_probe_failure_cannot_emit_valid_platform_evidence(self):
         with tempfile.TemporaryDirectory() as directory:
