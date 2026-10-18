@@ -565,6 +565,7 @@ class CatalogTests(unittest.TestCase):
                      '--readme-path',str(readme),'--output-dir',str(output)]
             subprocess.run(command,check=True,capture_output=True)
             state=json.loads((output/'monitor-state.json').read_text())
+            self.assertEqual(state['schema_version'],2)
             self.assertEqual(state['changed_apps'],[])
             self.assertFalse(state['readme_changed'])
             self.assertEqual(readme.read_text(),original)

@@ -462,7 +462,6 @@ jobs:
         work_dir="$PATH_metadata/inspect-work"
         mkdir -p "$work_dir"
         fatal_count=0
-        unobservable_count=0
         classify_error() {
           local log="$1"
           if grep -Eiq 'manifest unknown|name unknown|not found|does not exist' "${log}"; then
@@ -492,10 +491,9 @@ jobs:
         }
 
         inspect_registry() {
-          local registry="$1"
-          local ref="$2"
-          local arch_branch="$3"
-          local out="$4"
+          local ref="$1"
+          local arch_branch="$2"
+          local out="$3"
           local dir="${work_dir}/registry-${RANDOM}-${RANDOM}"
           local raw_file="${dir}/raw.json"
           local parsed_file="${dir}/parsed.json"
@@ -510,8 +508,6 @@ jobs:
             write_registry_status "${out}" "${ref}" "${status}" "${error_file}"
             if [[ "${status}" == inspect_failed ]]; then
               fatal_count=$((fatal_count + 1))
-            elif [[ "${status}" == unobservable ]]; then
-              unobservable_count=$((unobservable_count + 1))
             fi
             rm -rf "${dir}"
             return 0
@@ -623,8 +619,8 @@ jobs:
 
         repo_name="${repo_dockerhub##*/}"
         owner_lower=$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')
-        inspect_registry dockerhub "${repo_dockerhub}:${tag_repo}" "$arch_branch" "$work_dir/dockerhub.json"
-        inspect_registry ghcr "ghcr.io/${owner_lower}/${repo_name}:${tag_repo}" "$arch_branch" "$work_dir/ghcr.json"
+        inspect_registry "${repo_dockerhub}:${tag_repo}" "$arch_branch" "$work_dir/dockerhub.json"
+        inspect_registry "ghcr.io/${owner_lower}/${repo_name}:${tag_repo}" "$arch_branch" "$work_dir/ghcr.json"
         jq -n --slurpfile dockerhub "$work_dir/dockerhub.json" --slurpfile ghcr "$work_dir/ghcr.json" '{schema_version:1,registries:{dockerhub:$dockerhub[0],ghcr:$ghcr[0]}}' > "$PATH_metadata/baseline.json"
         [[ "$fatal_count" == 0 ]] || { echo '::error::Published-image inspection failed'; exit 1; }
     - name: Probe Meta-app on every configured platform

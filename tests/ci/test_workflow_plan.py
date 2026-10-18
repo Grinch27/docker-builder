@@ -32,7 +32,7 @@ class WorkflowPlanTests(unittest.TestCase):
         self.assertEqual(expected['monitor'], 'false')
         self.assertEqual(expected['version_matrix'], {'include': []})
         rows = expected['build_targets']['include']
-        self.assertEqual([t['target_id'] for t in rows], ['vlmcsd'])
+        self.assertEqual([(t['app_branch'],t['build_tag']) for t in rows], [('vlmcsd','latest')])
         self.assertEqual(rows[0]['arch_branch'], 'linux/amd64,linux/arm64,linux/386')
         for value in ['', ' ', '\t']:
             self.assertEqual(self.make(targets=value), expected)
@@ -50,6 +50,7 @@ class WorkflowPlanTests(unittest.TestCase):
             self.assertEqual(row[key], value)
         self.assertNotIn('custom_env', row)
         self.assertNotIn('runner_image', row)
+        self.assertNotIn('target_id', row)
 
     def test_unknown_malformed_and_nonstring_targets_fail(self):
         for value in [None, False, 5, [], {}, 'missing', '../vlmcsd', 'vlmcsd:missing', 'vlmcsd:',
@@ -90,11 +91,10 @@ class WorkflowPlanTests(unittest.TestCase):
             workflow_plan.plan(config, 'workflow_dispatch', {})
         self.assertEqual(len(workflow_plan.plan(config, 'workflow_dispatch', {'targets':'all'})['build_targets']['include']), 29)
 
-    def test_target_id_collisions_fail_before_outputs(self):
+    def test_duplicate_catalog_targets_fail_before_outputs(self):
         config = copy.deepcopy(self.config)
-        config['apps']['runner-actions'] = copy.deepcopy(config['apps']['runner'])
-        config['apps']['runner-actions']['targets'] = [{'tag':'latest'}]
-        with self.assertRaisesRegex(ValueError, 'duplicated catalog target_id'):
+        config['apps']['vlmcsd']['targets'].append({'tag':'latest'})
+        with self.assertRaises(ValueError):
             workflow_plan.plan(config, 'workflow_dispatch', {})
 
     def test_push_only_validates_and_does_not_parse_commit_messages(self):

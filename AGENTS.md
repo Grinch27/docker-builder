@@ -10,7 +10,7 @@
 | 每日 01:00 UTC schedule | 24 个应用版本监控、生成 Artifact；不构建，不推送 README |
 | workflow_dispatch | 所选 Target 的全部配置平台经过 Container 构建、Test、比较、导出和压缩验收；固定基础镜像诊断每次运行一次 |
 
-targets 默认/空值为 vlmcsd。接受 `app`、`app:tag`、逗号列表或 `all`；多 Tag 应用必须指定 Tag，重复/未知/显式空 Tag 直接失败。`all` 当前为 **24 应用、30 Target、52 Target/平台组合**，全部直接进入 Container 矩阵，不替换成代表应用。按 30 个 Target 展开 Job，每个 Job 包含该 Target 的平台列表；单 Target 失败即停止后续步骤，其他 Target 因 fail-fast=false 继续，未执行的平台不计为通过。没有单架构或其他构建路线开关；提交消息不参与规划。
+targets 默认/空值为 vlmcsd。接受 `app`、`app:tag`、逗号列表或 `all`；多 Tag 应用必须指定 Tag，重复/未知/显式空 Tag 直接失败。`all` 当前为 **24 应用、30 Target、52 Target/平台组合**，全部直接进入 Container 矩阵，不替换成代表应用。矩阵仅携带实际构建配置，已删除无人消费的 target_id 字段。按 30 个 Target 展开 Job，每个 Job 包含该 Target 的平台列表；单 Target 失败即停止后续步骤，其他 Target 因 fail-fast=false 继续，未执行的平台不计为通过。没有单架构或其他构建路线开关；提交消息不参与规划。
 
 ```bash
 gh workflow run gpt_dev.yml --ref main -f targets=vlmcsd
@@ -56,7 +56,7 @@ python3 scripts/ci/materialize_test_hooks.py --app APP --kind test
 |---|---|
 | catalog.py | 唯一表格配置、严格 Tag/文件解析、维护与展示生成 |
 | workflow_plan.py | 按事件和 targets 生成 Container/共享诊断或监控矩阵，不读取提交消息 |
-| monitor_state.py | 语义监控记录、README 临时渲染和报告；不生成构建矩阵，不接受 force/build-targets 参数 |
+| monitor_state.py | 语义监控记录、README 临时渲染和报告；monitor-state schema_version=2；不生成构建矩阵，不接受 force/build-targets 参数 |
 | materialize_test_hooks.py | 从 README 恢复完整 Meta-app/Test，不执行 Shell，拒绝异内容/符号链接覆盖 |
 | build-image.sh | 单一 Buildx 本地 Registry 导出；拒绝非本地 Registry，不保留 load 模式 |
 | compare_image_snapshot.py | 纯 JSON OCI 比较，无网络和发布行为 |
@@ -79,6 +79,8 @@ git diff --check
 actionlint v1.7.12 仅需精确豁免独立下载工具两个既有未使用锚点提示。新核心不再需要 queue/常量 false 豁免。未安装或未执行 shellcheck/pyflakes 时明确说明，不计作通过。
 本轮基线 f83e6bf。本地已通过 108 项测试和 9 Job 图检查；覆盖实际 Container Test/导出 Shell 的成功及失败、平台变体、UNKNOWN、Meta-app 管道失败、最终步骤门禁、真实 tar/xz/分卷的损坏/缺失/额外文件/校验和不匹配。移除旧路线专属测试不计为新能力丢失。
 本地没有 Docker，不宣称进行了真实镜像构建。新 Container-only、全量 52 组合和监控远端执行均以对应 SHA/Run 为准；普通 push 成功只证明轻量验证。
+
+本轮代码 ce5fb46 / [39091135553](https://github.com/Grinch27/docker-builder/actions/runs/39091135553)：远端轻量 CI success，2 成功/7 跳过，已读 Job 117567972095 日志确认 108 项测试、9 Job 图及 build=false/monitor=false；另有全部 30 个 Target 的真实 Bash 构建参数夹具通过（未调用 Docker）。后续收尾删除未消费的目标字段/检查参数、将精简监控状态升级为 schema_version=2，并补充本记录，最终提交仍须看自身 CI；不视为真实 Container 构建通过。
 
 ## 历史验收与冻结应用
 约八成可构建标准继续有效：失败只记录原因和状态，不追加冻结应用修复，不删除其配置，不重跑全部矩阵或继续等待耗时应用，除非用户另行指定。

@@ -126,7 +126,7 @@ def main() -> int:
     state = {
         "changed_apps": changed_apps,
         "readme_changed": readme_changed,
-        "schema_version": 1,
+        "schema_version": 2,
         "versions": new_records,
     }
 

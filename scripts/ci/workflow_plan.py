@@ -17,12 +17,6 @@ import catalog
 DIAGNOSTIC_IMAGES = ("debian:latest", "ubuntu:latest", "alpine:latest", "debian:sid", "ubuntu:devel")
 
 
-def _target(config: dict, app: str, tag: str) -> dict:
-    item = catalog.get(config, app, tag)
-    target_id = app if tag == "latest" or app.endswith(("-" + tag, "_" + tag)) else app + "-" + tag
-    return dict(item, target_id=target_id)
-
-
 def _select(config: dict, text: str, all_targets: list[dict]) -> list[dict]:
     if not isinstance(text, str) or any(c in text for c in "\r\n\0"):
         raise ValueError("targets must be a single-line string")
@@ -42,7 +36,7 @@ def _select(config: dict, text: str, all_targets: list[dict]) -> list[dict]:
             tag = catalog.target_tag(targets[0])
         else:
             tag = parts[1]
-        item = _target(config, app, tag)
+        item = catalog.get(config, app, tag)
         identity = (app, tag)
         if identity in seen:
             raise ValueError("Duplicate target: " + app + ":" + tag)
@@ -57,10 +51,10 @@ def plan(config: dict, event_name: str, inputs: dict) -> dict:
         raise ValueError("Core accepts push/schedule/workflow_dispatch only")
     if not isinstance(inputs, dict) or set(inputs) - {"targets"}:
         raise ValueError("Only targets input is supported")
-    all_targets = [_target(config, app, catalog.target_tag(target))
+    all_targets = [catalog.get(config, app, catalog.target_tag(target))
                    for app, meta in config["apps"].items() for target in meta["targets"]]
-    if not all_targets or len({t["target_id"] for t in all_targets}) != len(all_targets):
-        raise ValueError("Empty or duplicated catalog target_id")
+    if not all_targets:
+        raise ValueError("Empty catalog")
     manual = event_name == "workflow_dispatch"
     monitor = event_name == "schedule"
     selected = _select(config, inputs.get("targets", "vlmcsd"), all_targets) if manual else []
