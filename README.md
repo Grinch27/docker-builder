@@ -1,17 +1,4 @@
-# docker-builder
-
-基于 GitHub Actions 构建、测试和发布多架构 Docker 镜像。
-
-[统一核心工作流（当前禁止发布）](.github/workflows/gpt_dev.yml) · [手动下载 / 镜像归档工具](.github/workflows/download_artifact.yml) · [维护规范与进展](AGENTS.md)
-
-下表保存应用配置及脚本源码；Build 列仅提供非发布构建示例。
-
-构建文件固定为 `application/<app>/<tag>.Dockerfile`，上下文为 `application/<app>/`。仅缺失 Tag 时默认 `latest`；禁止共享、回退和独立配置 Dockerfile 文件名。
-
-## Applications / 应用清单
-
 <!-- app-summary:start -->
-**24 applications / 30 build targets** (generated from the JSON column).
 
 | Application | JSON | Build | Meta-app | Test |
 |---|---|---|---|---|

@@ -349,9 +349,8 @@ def render_build_preview(name, app):
     return '\n'.join(commands)
 
 def render_summary(c, records=None, scripts=None, meta_scripts=None):
-    n=sum(len(a['targets']) for a in c['apps'].values())
-    rows=[f'**{len(c["apps"])} applications / {n} build targets** (generated from the JSON column).',
-          '', '| Application | JSON | Build | Meta-app | Test |',
+    # Keep README's rendered content to the table; markers remain machine-readable.
+    rows=['', '| Application | JSON | Build | Meta-app | Test |',
           '|---|---|---|---|---|']
     if scripts is None or set(scripts)!=set(c['apps']):
         raise ValueError('Application test scripts must cover configured apps')

@@ -297,8 +297,8 @@ class CatalogTests(unittest.TestCase):
             (directory/'application').symlink_to(ROOT/'application',target_is_directory=True)
             path=directory/'README.md'
             current=(ROOT/'README.md').read_text(encoding='utf-8')
-            path.write_text(current.replace('24 applications / 30 build targets',
-                '23 applications / 30 build targets',1),encoding='utf-8')
+            path.write_text(current.replace('| Application | JSON | Build | Meta-app | Test |',
+                '| Application | JSON | Build | Meta-app | Broken |',1),encoding='utf-8')
             with self.assertRaisesRegex(ValueError,'stale'):
                 catalog.check_summary(path,catalog.catalog_from_readme(path))
             self.assertEqual(catalog.write_summary(path,catalog.catalog_from_readme(path)),'updated')
@@ -315,7 +315,9 @@ class CatalogTests(unittest.TestCase):
         self.assertNotIn(catalog.START,text)
         self.assertNotIn(catalog.END,text)
         self.assertTrue(text.endswith(catalog.SUMMARY_END+'\n'))
-        self.assertEqual(text.count('## Applications / 应用清单'), 1)
+        self.assertTrue(text.startswith(catalog.SUMMARY_START+'\n\n| Application | JSON | Build | Meta-app | Test |\n'))
+        self.assertNotIn('## Applications / 应用清单',text)
+        self.assertNotIn('applications / 30 build targets',text)
 
     def test_readonly_json_shadows_match_canonical_apps(self):
         source=(ROOT/'README.md').read_text(encoding='utf-8')
