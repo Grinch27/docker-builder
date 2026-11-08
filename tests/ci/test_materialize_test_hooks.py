@@ -173,5 +173,71 @@ class EmbeddedTests(unittest.TestCase):
                                     env=env, capture_output=True, text=True, check=True)
             self.assertEqual(result.stdout, 'version=2.1.18\n')
 
+
+    def test_direct_version_scripts_have_posix_shell_syntax(self):
+        cases = [('curl', 'meta'), ('doh-nosni', 'meta'), ('novnc_alpine', 'meta'),
+                 ('novnc', 'test'), ('baidunetdisk', 'test')]
+        for app, kind in cases:
+            with self.subTest(app=app, kind=kind):
+                source = hooks.scripts(ROOT, kind)[app]
+                result = subprocess.run(['sh', '-n'], input=source,
+                                        capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_direct_installed_version_fixtures(self):
+        import json
+        test_sources = hooks.scripts(ROOT)
+        meta = hooks.scripts(ROOT, 'meta')
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            bindir = root / 'bin'
+            bindir.mkdir()
+            for name in ('apk', 'apt-get'):
+                cmd = bindir / name
+                cmd.write_text('#!/bin/sh\nexit 0\n')
+                cmd.chmod(0o755)
+            env = dict(os.environ, PATH=str(bindir) + os.pathsep + os.environ.get('PATH', ''))
+            for app, command, output, expected in [
+                ('curl', 'curl', 'curl 8.12.0 (Alpine)\n', '8.12.0'),
+                ('doh-nosni', 'dnscrypt-proxy', '2.1.18\n', '2.1.18'),
+            ]:
+                with self.subTest(app=app):
+                    cmd = bindir / command
+                    cmd.write_text('#!/bin/sh\nprintf %s ' +
+                                   __import__('shlex').quote(output) + '\n')
+                    cmd.chmod(0o755)
+                    result = subprocess.run(['sh', '-c', meta[app]], capture_output=True,
+                                            text=True, env=env)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(result.stdout, 'version=' + expected + '\n')
+            apk_db = root / 'installed'
+            apk_db.write_text('P:other\nV:0.1\n\nP:novnc\nV:1.6.0-r0\n\n')
+            script = meta['novnc_alpine'].replace('/lib/apk/db/installed', str(apk_db))
+            result = subprocess.run(['sh', '-c', script], capture_output=True, text=True, env=env)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout, 'version=1.6.0-r0\n')
+            apk_db.write_text('P:other\nV:0.1\n\n')
+            self.assertNotEqual(subprocess.run(['sh', '-c', script], env=env,
+                                               capture_output=True).returncode, 0)
+            manifest = root / 'package.json'
+            script = test_sources['novnc'].replace('/opt/bin/noVNC/package.json', str(manifest))
+            manifest.write_text(json.dumps({'name': '@novnc/novnc', 'version': '1.7.0'}, indent=2))
+            result = subprocess.run(['sh', '-c', script], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout, 'version=1.7.0\n')
+            manifest.write_text('{"name":"@novnc/novnc"}')
+            self.assertNotEqual(subprocess.run(['sh', '-c', script],
+                                               capture_output=True).returncode, 0)
+            cmd = bindir / 'dpkg-query'
+            cmd.write_text('#!/bin/sh\nprintf "4.17.7\n"\n')
+            cmd.chmod(0o755)
+            result = subprocess.run(['sh', '-c', test_sources['baidunetdisk']],
+                                    capture_output=True, text=True, env=env)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout, 'version=4.17.7\n')
+            cmd.write_text('#!/bin/sh\nexit 4\n')
+            self.assertNotEqual(subprocess.run(['sh', '-c', test_sources['baidunetdisk']],
+                                               env=env, capture_output=True).returncode, 0)
+
 if __name__=='__main__':
     unittest.main(verbosity=2)
