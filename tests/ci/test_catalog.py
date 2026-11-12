@@ -2,7 +2,7 @@
 # Requirement: preserve the table while deriving independent Dockerfiles from Target Tags.
 # Unknown/research: external consumers of former display columns and build paths.
 # Optimization: exercise real Buildx argument generation and native-file scripts.
-# Risks/verification: no shared fallback, no Dockerfile override, unchanged monitor/Shell sources.
+# Risks/verification: preserve Shell sources through refresh and escape Markdown in Test cells.
 """Offline regression tests for the README catalog. No Docker or network access."""
 from __future__ import annotations
 
@@ -91,6 +91,28 @@ class CatalogTests(unittest.TestCase):
         edited=text.replace('<!-- app-test:runner:start -->','<!-- app-test:openwrt:start -->',1)
         with self.assertRaisesRegex(ValueError,'Malformed|wrong application'):
             catalog.embedded_tests_from_text(edited)
+
+    def test_legacy_test_edit_is_escaped_without_changing_script(self):
+        import monitor_state
+
+        source = (ROOT / 'README.md').read_text(encoding='utf-8')
+        scripts = catalog.embedded_tests_from_text(source)
+        old_cell = catalog.encode_test_cell(scripts['aria2'])
+        added_line = r'# *[![:print:]]* __version__ \( `cmd` ~~x~~ $x$ @user #123 & | < > &#10;'
+        scripts['aria2'] += added_line + '\n'
+        legacy_cell = catalog.encode_embedded_test(scripts['aria2'])
+        edited = source.replace(old_cell, legacy_cell, 1)
+        self.assertEqual(catalog.embedded_tests_from_text(edited), scripts)
+
+        refreshed = monitor_state.render_readme(edited, catalog.snapshot_from_readme(source))
+        new_cell = catalog.encode_test_cell(scripts['aria2'])
+        self.assertIn(new_cell, refreshed)
+        self.assertNotIn(legacy_cell, refreshed)
+        for char in r'!#$*:[\]_`~@':
+            self.assertNotIn(char, new_cell.replace('&#', ''))
+            self.assertIn(f'&#{ord(char)};', new_cell)
+        self.assertEqual(catalog.embedded_tests_from_text(refreshed), scripts)
+        self.assertEqual(catalog.updated_summary(refreshed, self.config), refreshed)
 
     def test_catalog_covers_exactly_all_app_directories(self):
         stats = catalog.validate(self.config, ROOT)

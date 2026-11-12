@@ -2,8 +2,8 @@
 # Requirement: Tag alone selects application/<app>/<tag>.Dockerfile; missing Tag means latest.
 # Unknown/research: external consumers of retired storage and matrix runner/env fields must migrate.
 # Optimization: read one README snapshot per load; reuse decoded script coverage without global caches.
-# Risk: explicit empty/invalid Tags, symlinks, shared fallbacks and expanded contexts.
-# Verify: strict resolution, unchanged 24/30/52 configuration, scripts and monitor records.
+# Risk: invalid Tags, unsafe paths and GitHub Markdown altering copied Test scripts.
+# Verify: strict resolution, unchanged 24/30/52 configuration and lossless Test rendering.
 """Read or update the application catalog embedded in README.md.
 
 The application table contains canonical per-row config and monitor JSON.
@@ -123,9 +123,19 @@ TEST_CELL = re.compile(
     r'<!-- app-test:([a-z0-9_.-]+):start --><details><summary>Test</summary>' +
     r'<pre><code>(.*?)</code></pre></details><!-- app-test:\1:end -->')
 
+_TABLE_CODE_ESCAPES = str.maketrans({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '|': '&#124;', '\n': '&#10;', '\r': '&#13;',
+})
+# GitHub still parses Markdown inline inside the raw HTML tags of a GFM table cell.
+_TEST_CODE_ESCAPES = _TABLE_CODE_ESCAPES | {
+    ord(char): f'&#{ord(char)};' for char in r'!#$*:[\]_`~@'
+}
+
 def encode_embedded_test(script):
-    return (script.replace('&','&amp;').replace('<','&lt;').replace('>','&gt;')
-            .replace('|','&#124;').replace('\n','&#10;').replace('\r','&#13;'))
+    return script.translate(_TABLE_CODE_ESCAPES)
+
+def encode_test_cell(script):
+    return script.translate(_TEST_CODE_ESCAPES)
 
 def embedded_tests_from_text(text):
     """Read all 24 exact script bodies from the main application table."""
@@ -143,7 +153,8 @@ def embedded_tests_from_text(text):
         script=html.unescape(encoded)
         if not script.startswith('#!/bin/sh\n') or '\0' in script or '\r' in script:
             raise ValueError('Invalid embedded shell test: '+name)
-        if encode_embedded_test(script)!=encoded:
+        # Existing README snapshots can still be read and refreshed to the new encoding.
+        if encoded != encode_test_cell(script) and encoded != encode_embedded_test(script):
             raise ValueError('Noncanonical HTML test cell: '+name)
         scripts[name]=script
     if not scripts or region.count('<!-- app-test:')!=2*len(scripts):
@@ -369,7 +380,7 @@ def render_summary(c, records=None, scripts=None, meta_scripts=None):
                    if name in meta_scripts else '<!-- app-meta:'+name+':missing -->—')
         rows.append('| ['+name+'](application/'+name+'/) | '+json_cell+' | '+build_cell+' | '+meta_cell+' | '+
                     '<!-- app-test:'+name+':start --><details><summary>Test</summary><pre><code>'+
-                    encode_embedded_test(scripts[name])+
+                    encode_test_cell(scripts[name])+
                     '</code></pre></details><!-- app-test:'+name+':end --> |')
     return '\n'.join(rows)
 
