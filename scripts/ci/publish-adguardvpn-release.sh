@@ -41,7 +41,7 @@ for arch in amd64 arm64; do
     files[$index]="$artifact_dir/output/${files[$index]}"
   done
   cat -- "${files[@]}" | xz --decompress --stdout > "$work_dir/$arch.tar"
-  "$regctl" image import "$layout:$arch" "$work_dir/$arch.tar"
+  "$regctl" image import "$layout:$arch" "$work_dir/$arch.tar" --name release
   rm -- "$work_dir/$arch.tar"
 done
 
