@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Requirements: preserve Container OCI comparison schema and UNKNOWN failure boundary.
+# Requirements: compare saved OCI metadata and observed legacy-image versions.
 # Unknowns/research: live publication and deferred application failures remain separate work.
 # Optimization: keep the saved-evidence comparison algorithm separate from registry or Docker access.
 # Risks: malformed input must fail; missing/unobservable registry evidence must retain its existing meaning.
@@ -135,6 +135,11 @@ def main():
                 remote_version = image_version_label(published_image)
                 if not remote_version:
                     remote_version = recursive_oci_version(registry.get("source", {}).get("parsed", {}))
+                if not remote_version:
+                    observed = platform_data.get("observed_version")
+                    if (isinstance(observed, str) and observed.strip().lower() not in {"", "unknown", "null"}
+                            and not any(char in observed for char in "\r\n\0")):
+                        remote_version = observed.strip()
                 published_view = {
                     "platform": platform_view(published_image),
                     "actual_version": remote_version,

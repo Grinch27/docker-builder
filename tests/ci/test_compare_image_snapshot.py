@@ -2,7 +2,7 @@
 # Requirements: preserve Container comparison decisions and JSON schema through the saved-evidence CLI.
 # Unknowns/research: registry visibility is represented by saved evidence, not live network requests.
 # Optimization: small JSON fixtures need no Docker, package installation or external services.
-# Risks/verification: platform/version/config differences, unknown evidence, missing data and malformed JSON.
+# Risks/verification: platform/version differences, missing labels, runtime evidence and malformed JSON.
 """Exercise the actual saved-evidence comparison command from an unrelated directory."""
 
 import copy
@@ -102,6 +102,19 @@ class ImageSnapshotComparisonTests(unittest.TestCase):
         for registry in self.baseline["registries"].values():
             registry["source"]["parsed"] = {"nested": [{"org.opencontainers.image.version": "1.0"}]}
         self.assertEqual(self.compare()["comparison"]["result"], "SAME")
+
+    def test_measured_legacy_version_resolves_missing_label_without_weakening_unknown(self):
+        self.baseline["registries"]["ghcr"] = {"status": "unobservable"}
+        evidence = self.baseline["registries"]["dockerhub"]["source"]["platforms"][PLATFORM]
+        evidence["image"]["Config"]["Labels"] = {}
+        for invalid in ("unknown", "1.0\n2.0", None):
+            with self.subTest(invalid=invalid):
+                evidence["observed_version"] = invalid
+                self.assertEqual(self.compare()["comparison"]["result"], "UNKNOWN")
+        evidence["observed_version"] = "0.9"
+        result = self.compare()
+        self.assertEqual(result["comparison"]["result"], "CHANGED")
+        self.assertEqual(result["registries"]["dockerhub"]["published_view"]["actual_version"], "0.9")
 
     def test_malformed_json_fails_without_emitting_a_success_record(self):
         with tempfile.TemporaryDirectory() as directory:

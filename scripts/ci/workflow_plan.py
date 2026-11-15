@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# Requirements: targets selects the sole Container builder; push validates and schedule monitors.
+# Requirements: select the sole Container builder for manual checks and AdGuard release changes.
 # Unknowns/research: deferred applications and external consumers require separate evidence.
 # Optimization: select each Target once; diagnostics are shared across the selected builds.
-# Risks/verification: reject ambiguous/duplicate targets; cover every configured platform without publication.
+# Risks/verification: reject ambiguous targets and confine automatic publication to the release Target.
 """Plan Container builds and shared diagnostics from one public input."""
 
 from __future__ import annotations
@@ -10,11 +10,51 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import re
+import subprocess
 
 import catalog
 
 
 DIAGNOSTIC_IMAGES = ("debian:latest", "ubuntu:latest", "alpine:latest", "debian:sid", "ubuntu:devel")
+ADGUARD_RELEASE = ("adguardvpn-cli", "release")
+ADGUARD_RELEASE_PATHS = (
+    ".github/workflows/gpt_dev.yml",
+    "application/adguardvpn-cli/.dockerignore",
+    "application/adguardvpn-cli/release.Dockerfile",
+    "scripts/ci/build-image.sh",
+    "scripts/ci/catalog.py",
+    "scripts/ci/compare_image_snapshot.py",
+    "scripts/ci/materialize_test_hooks.py",
+    "scripts/ci/publish-adguardvpn-release.sh",
+    "scripts/ci/verify_image_archive.py",
+    "scripts/ci/workflow_plan.py",
+)
+
+
+def _adguard_release_inputs(source: str) -> tuple:
+    app, tag = ADGUARD_RELEASE
+    return (catalog.get(catalog.catalog_data_from_text(source), app, tag),
+            catalog.embedded_meta_from_text(source).get(app),
+            catalog.embedded_tests_from_text(source)[app])
+
+
+def adguard_release_changed(before: str, readme: Path) -> bool:
+    """Detect release inputs changed across the entire push, including embedded scripts."""
+    if not re.fullmatch(r"[0-9a-f]{40}", before):
+        raise ValueError("Expected a push base commit SHA")
+    if before == "0" * 40:
+        return True
+    changed = subprocess.check_output(
+        ["git", "diff", "--name-only", before, "HEAD", "--", *ADGUARD_RELEASE_PATHS, "README.md"],
+        text=True,
+    ).splitlines()
+    if any(path != "README.md" for path in changed):
+        return True
+    if not changed:
+        return False
+    previous = subprocess.check_output(["git", "show", f"{before}:README.md"], text=True)
+    return _adguard_release_inputs(previous) != _adguard_release_inputs(readme.read_text(encoding="utf-8"))
 
 
 def _select(config: dict, text: str, all_targets: list[dict]) -> list[dict]:
@@ -45,8 +85,8 @@ def _select(config: dict, text: str, all_targets: list[dict]) -> list[dict]:
     return selected
 
 
-def plan(config: dict, event_name: str, inputs: dict) -> dict:
-    """Select catalog-only matrices; no event or input can enable publication."""
+def plan(config: dict, event_name: str, inputs: dict, *, release_changed: bool = False) -> dict:
+    """Keep manual builds separate from the automatic AdGuard release push."""
     if event_name not in {"push", "schedule", "workflow_dispatch"}:
         raise ValueError("Core accepts push/schedule/workflow_dispatch only")
     if not isinstance(inputs, dict) or set(inputs) - {"targets"}:
@@ -57,12 +97,23 @@ def plan(config: dict, event_name: str, inputs: dict) -> dict:
         raise ValueError("Empty catalog")
     manual = event_name == "workflow_dispatch"
     monitor = event_name == "schedule"
-    selected = _select(config, inputs.get("targets", "vlmcsd"), all_targets) if manual else []
+    publish_release = event_name == "push" and release_changed
+    selected = []
+    if manual:
+        selected = _select(config, inputs.get("targets", "vlmcsd"), all_targets)
+    if publish_release:
+        release = catalog.get(config, *ADGUARD_RELEASE)
+        if (release["repo_dockerhub"] != "grinch27/adguardvpn-cli" or
+                set(release["arch_branch"].split(",")) != {"linux/amd64", "linux/arm64"} or
+                release["build_arg"] != "update_channel=release"):
+            raise ValueError("AdGuard Docker Hub destination, platforms or channel changed")
+        selected = [release]
     if len(selected) > 256:
         raise ValueError("Container matrix exceeds GitHub's 256-job limit")
     versions = [dict(app_branch=app, tag_repo="latest") for app in config["apps"]] if monitor else []
     return {
-        "build": str(manual).lower(), "monitor": str(monitor).lower(),
+        "build": str(bool(selected)).lower(), "monitor": str(monitor).lower(),
+        "publish_adguard_release": str(publish_release).lower(),
         "version_matrix": {"include": versions},
         "build_targets": {"include": selected},
         "images": list(DIAGNOSTIC_IMAGES),
@@ -73,13 +124,18 @@ def plan(config: dict, event_name: str, inputs: dict) -> dict:
 
 def main() -> None:
     inputs = json.loads(os.environ.get("WORKFLOW_INPUTS", "{}"))
-    result = plan(catalog.catalog_from_readme(Path("README.md")),
-                  os.environ["GITHUB_EVENT_NAME"], inputs)
+    readme = Path("README.md")
+    event = os.environ["GITHUB_EVENT_NAME"]
+    release_changed = (event == "push" and os.environ.get("GITHUB_REF") == "refs/heads/main"
+                       and os.environ.get("GITHUB_REPOSITORY") == "Grinch27/docker-builder"
+                       and adguard_release_changed(os.environ["PUSH_BEFORE"], readme))
+    result = plan(catalog.catalog_from_readme(readme), event, inputs,
+                  release_changed=release_changed)
     with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as stream:
         for key, value in result.items():
             text = json.dumps(value, separators=(",", ":")) if not isinstance(value, str) else value
             stream.write(key + "=" + text + "\n")
-    print(json.dumps({key: result[key] for key in ("build", "monitor")} |
+    print(json.dumps({key: result[key] for key in ("build", "monitor", "publish_adguard_release")} |
                      {"targets": len(result["build_targets"]["include"]),
                       "platforms": sum(len(t["arch_branch"].split(","))
                                        for t in result["build_targets"]["include"])}))

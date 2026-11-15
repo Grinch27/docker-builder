@@ -1,8 +1,8 @@
-# Requirements: targets selects the sole Container builder; push validates and schedule monitors.
+# Requirements: use one Container builder for manual checks and AdGuard releases on main.
 # Unknowns/research: deferred applications and live daemon capacity need separate evidence.
 # Optimization: one build per Target, minimal Docker client tools and shared fixed diagnostics.
-# Risks/verification: truthful probe failures, actual/label version parity, all platforms and complete archives; no publishing.
-name: Docker Builder - Container (Nonpublishing)
+# Risks/verification: publish only the accepted AdGuard release archives after shared diagnostics pass.
+name: Docker Builder - Container
 run-name: Docker Builder - ${{ github.event_name }} - ${{ inputs.targets || 'monitor/validate' }}
 'on':
   schedule:
@@ -60,12 +60,15 @@ jobs:
     outputs:
       build: ${{ steps.plan.outputs.build }}
       monitor: ${{ steps.plan.outputs.monitor }}
+      publish_adguard_release: ${{ steps.plan.outputs.publish_adguard_release }}
       version_matrix: ${{ steps.plan.outputs.version_matrix }}
       build_targets: ${{ steps.plan.outputs.build_targets }}
       images: ${{ steps.plan.outputs.images }}
       image_platforms: ${{ steps.plan.outputs.image_platforms }}
     steps:
     - uses: actions/checkout@main
+      with:
+        fetch-depth: 0
     - name: Check catalog, unit tests and Job dependencies
       run: |
         set -euo pipefail
@@ -76,6 +79,7 @@ jobs:
       id: plan
       env:
         WORKFLOW_INPUTS: ${{ toJSON(inputs) }}
+        PUSH_BEFORE: ${{ github.event.before }}
       run: |
         python3 scripts/ci/workflow_plan.py
   fetch-versions:
@@ -101,7 +105,11 @@ jobs:
       id: env-app
       run: |
         set -euo pipefail
-        python3 scripts/ci/catalog.py env --app "${app_branch}" --tag "${tag_repo}" --app-only --output "${GITHUB_ENV}"
+        if [[ "$app_branch" == adguardvpn-cli ]]; then
+          python3 scripts/ci/catalog.py env --app "$app_branch" --tag release --output "$GITHUB_ENV"
+        else
+          python3 scripts/ci/catalog.py env --app "$app_branch" --tag "$tag_repo" --app-only --output "$GITHUB_ENV"
+        fi
     - name: Collect version from meta-app scripts
       id: meta-app
       env:
@@ -143,7 +151,11 @@ jobs:
             status=copy_failed
             return
           fi
-          if ! docker exec --user 0 --workdir /tmp "$container_name" /bin/sh /tmp/meta-app.sh >> "$log_container" 2>&1; then
+          local -a probe_env=()
+          if [[ "$app_branch" == adguardvpn-cli ]]; then
+            probe_env=(--env "build_arg=$build_arg")
+          fi
+          if ! docker exec --user 0 --workdir /tmp "${probe_env[@]}" "$container_name" /bin/sh /tmp/meta-app.sh >> "$log_container" 2>&1; then
             status=probe_failed
             return
           fi
@@ -363,6 +375,8 @@ jobs:
     runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
     permissions:
       contents: read
+    outputs:
+      acceptance_artifact_id: ${{ steps.acceptance-artifact.outputs.artifact-id }}
     strategy:
       fail-fast: false
       max-parallel: 10
@@ -581,11 +595,42 @@ jobs:
           rm -rf "${dir}"
         }
 
+        measure_legacy_adguard_release() {
+          local ref=$1 evidence=$2 platform digest banner observed
+          [[ "$app_branch" == adguardvpn-cli && "$tag_repo" == release ]] || return 0
+          for platform in linux/amd64 linux/arm64; do
+            if ! jq -e --arg platform "$platform" '
+              .source.platforms[$platform] | select(.status == "present") |
+              (.image.config // .image.Config) | (.Labels // .labels // {}) |
+              [."org.opencontainers.image.version", .version] | all(. == null or . == "")
+            ' "$evidence" >/dev/null; then
+              continue
+            fi
+            digest=$(jq -er --arg arch "${platform#linux/}" '
+              [.source.raw.manifests[] | select(.platform.os == "linux" and .platform.architecture == $arch)] |
+              select(length == 1) | .[0].digest | select(test("^sha256:[0-9a-f]{64}$"))
+            ' "$evidence")
+            banner=$(docker run --rm --platform "$platform" --network none --cap-drop ALL \
+              --security-opt no-new-privileges --entrypoint /usr/local/bin/adguardvpn-cli \
+              "${ref%:*}@$digest" --version)
+            if [[ ! "$banner" =~ ^AdGuard\ VPN\ CLI\ v([0-9]+(\.[0-9]+)+)$ ]]; then
+              printf '::error::Could not read the published AdGuard release version for %s (%s)\n' "$ref" "$platform"
+              return 1
+            fi
+            observed=${BASH_REMATCH[1]}
+            printf 'Published AdGuard baseline %s %s version=%s\n' "$ref" "$platform" "$observed"
+            jq --arg platform "$platform" --arg observed "$observed" \
+              '.source.platforms[$platform].observed_version = $observed' "$evidence" > "$evidence.tmp"
+            mv "$evidence.tmp" "$evidence"
+          done
+        }
 
         repo_name="${repo_dockerhub##*/}"
         owner_lower=$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')
         inspect_registry "${repo_dockerhub}:${tag_repo}" "$arch_branch" "$work_dir/dockerhub.json"
         inspect_registry "ghcr.io/${owner_lower}/${repo_name}:${tag_repo}" "$arch_branch" "$work_dir/ghcr.json"
+        measure_legacy_adguard_release "${repo_dockerhub}:${tag_repo}" "$work_dir/dockerhub.json"
+        measure_legacy_adguard_release "ghcr.io/${owner_lower}/${repo_name}:${tag_repo}" "$work_dir/ghcr.json"
         jq -n --slurpfile dockerhub "$work_dir/dockerhub.json" --slurpfile ghcr "$work_dir/ghcr.json" '{schema_version:1,registries:{dockerhub:$dockerhub[0],ghcr:$ghcr[0]}}' > "$PATH_metadata/baseline.json"
         [[ "$fatal_count" == 0 ]] || { echo '::error::Published-image inspection failed'; exit 1; }
     - name: Probe Meta-app on every configured platform
@@ -785,6 +830,7 @@ jobs:
         print('Container acceptance: all configured platforms/build/test/compare/export/xz PASS; external publication=0')
         CHECK
     - name: Upload Container acceptance evidence
+      id: acceptance-artifact
       if: always()
       uses: actions/upload-artifact@main
       with:
@@ -798,3 +844,48 @@ jobs:
         set -euo pipefail
         docker rm -fv meta-probe image-test registry-local >/dev/null 2>&1 || true
         docker buildx rm container-builder >/dev/null 2>&1 || true
+  publish-adguardvpn-release:
+    name: Publish adguardvpn-cli:release to Docker Hub
+    needs:
+    - runner-image
+    - plan
+    - container-build
+    - diagnostic-validate
+    if: >-
+      ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+          github.repository == 'Grinch27/docker-builder' &&
+          needs.plan.outputs.publish_adguard_release == 'true' }}
+    runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
+    permissions:
+      contents: read
+    concurrency:
+      group: dockerhub-adguardvpn-cli-release
+      cancel-in-progress: false
+    steps:
+    - name: Checkout accepted source
+      uses: actions/checkout@main
+    - name: Download accepted platform archives
+      uses: actions/download-artifact@main
+      with:
+        artifact-ids: ${{ needs.container-build.outputs.acceptance_artifact_id }}
+        path: ${{ runner.temp }}/adguardvpn-acceptance
+        merge-multiple: true
+    - name: Install regctl
+      run: |
+        set -euo pipefail
+        case "$RUNNER_ARCH" in
+          X64) arch=amd64 ;;
+          ARM64) arch=arm64 ;;
+          *) echo "::error::Unsupported runner architecture $RUNNER_ARCH"; exit 1 ;;
+        esac
+        curl -fsSL --retry 3 --connect-timeout 10 --max-time 120 \
+          -o "$RUNNER_TEMP/regctl" \
+          "https://github.com/regclient/regclient/releases/download/v0.11.7/regctl-linux-$arch"
+        chmod 0700 "$RUNNER_TEMP/regctl"
+    - name: Publish and verify release index
+      env:
+        DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+        DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+      run: |
+        set -euo pipefail
+        bash scripts/ci/publish-adguardvpn-release.sh "$RUNNER_TEMP/adguardvpn-acceptance"

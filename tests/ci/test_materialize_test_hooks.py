@@ -137,6 +137,58 @@ class EmbeddedTests(unittest.TestCase):
             hooks.materialize(ROOT,'unknown-app','meta')
 
 
+    def test_adguardvpn_meta_uses_configured_channel_and_rejects_failed_probes(self):
+        tag_list = ('[{"name":"v9.9-nightly"},{"name":"v1.2-release"},'
+                    '{"name":"v1.3-beta.2-beta"},{"name":"v1.1-release"}]')
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_temp(directory)
+            hooks.materialize(root, 'adguardvpn-cli', 'meta')
+            probe = root / 'application/adguardvpn-cli/meta-app/meta-app.sh'
+            bindir = root / 'bin'
+            bindir.mkdir()
+            commands = {
+                'apk': 'exit 0\n',
+                'curl': 'printf "%s" "$ADGUARD_TAGS_FIXTURE"\nexit "$ADGUARD_CURL_STATUS"\n',
+            }
+            for name, body in commands.items():
+                command = bindir / name
+                command.write_text('#!/bin/sh\n' + body, encoding='utf-8')
+                command.chmod(0o755)
+
+            def run_probe(build_arg, tags=tag_list, curl_status=0):
+                env = {
+                    'PATH': str(bindir) + os.pathsep + os.environ.get('PATH', os.defpath),
+                    'ADGUARD_TAGS_FIXTURE': tags,
+                    'ADGUARD_CURL_STATUS': str(curl_status),
+                }
+                if build_arg is not None:
+                    env['build_arg'] = build_arg
+                return subprocess.run(['/bin/sh', str(probe)], cwd=root, env=env,
+                                      capture_output=True, text=True)
+
+            for channel, expected in [('release', '1.2'), ('beta', '1.3'), ('nightly', '9.9')]:
+                with self.subTest(channel=channel):
+                    result = run_probe('update_channel=' + channel)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(result.stdout, 'version=' + expected + '\n')
+
+            release = 'update_channel=release'
+            failures = [
+                ('missing argument', None, tag_list, 0),
+                ('invalid channel', 'update_channel=latest', tag_list, 0),
+                ('duplicate channel', release + ',update_channel=nightly', tag_list, 0),
+                ('HTTP failure with response body', release, tag_list, 22),
+                ('malformed JSON after a valid match', release, tag_list + '\n[', 0),
+                ('non-array JSON', release, '{"first":{"name":"v1.2-release"}}', 0),
+                ('no match', release, '[{"name":"v9.9-nightly"}]', 0),
+                ('empty version', release, '[{"name":"v-release"}]', 0),
+            ]
+            for name, build_arg, tags, curl_status in failures:
+                with self.subTest(failure=name):
+                    result = run_probe(build_arg, tags, curl_status)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertNotIn('version=', result.stdout)
+
     def test_canonical_version_parsers_with_command_fixtures(self):
         # The retired shared probe was an oracle only. Test the maintained README scripts.
         samples = {'aria2': ('aria2c', 'aria2 version 1.37.0\nCopyright...\n', '1.37.0'), 'curl': ('curl', 'curl 8.12.0 (x86_64-alpine-linux)\n', '8.12.0'), 'privoxy': ('privoxy', 'Privoxy version 3.0.34 (stable)\n', '3.0.34'), 'squid': ('squid', 'Squid Cache: Version 7.6\nBuilt...\n', '7.6'), 'dnscrypt-proxy': ('dnscrypt-proxy', '2.1.18\n', '2.1.18')}

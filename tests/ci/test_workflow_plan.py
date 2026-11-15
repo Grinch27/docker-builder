@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# Requirements: targets drives every configured platform through the sole Container builder.
+# Requirements: manual targets and AdGuard release pushes share the sole Container builder.
 # Unknowns/research: live runner capacity and deferred applications require separate CI evidence.
 # Optimization: pure selection and CLI fixtures do not need Docker or network.
-# Risks/verification: reject ambiguous/duplicate selections and removed controls; no representative substitution.
+# Risks/verification: preserve all manual targets and restrict Docker Hub publication to release pushes.
 """Exercise the one-input Container plan and event isolation."""
 import copy
 import json
@@ -16,6 +16,12 @@ import catalog
 import workflow_plan
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def reencode_probe(source, app):
+    probe = catalog.embedded_meta_from_text(source)[app]
+    encoded = catalog.encode_embedded_test(probe)
+    return source.replace(encoded, catalog.encode_embedded_test(probe + '# fixture\n'), 1)
 
 
 class WorkflowPlanTests(unittest.TestCase):
@@ -102,6 +108,35 @@ class WorkflowPlanTests(unittest.TestCase):
         self.assertEqual((result['build'], result['monitor']), ('false', 'false'))
         self.assertEqual(result['build_targets'], {'include': []})
         self.assertEqual(result['version_matrix'], {'include': []})
+        self.assertEqual(result['publish_adguard_release'], 'false')
+
+    def test_release_push_selects_exactly_one_target_and_no_manual_publish(self):
+        result = workflow_plan.plan(self.config, 'push', {}, release_changed=True)
+        self.assertEqual(result['publish_adguard_release'], 'true')
+        self.assertEqual(result['build'], 'true')
+        self.assertEqual(result['monitor'], 'false')
+        release = catalog.get(self.config, 'adguardvpn-cli', 'release')
+        self.assertEqual(result['build_targets'], {'include': [release]})
+        for event in ('workflow_dispatch', 'schedule'):
+            result = workflow_plan.plan(self.config, event, {'targets': 'adguardvpn-cli:release'},
+                                        release_changed=True)
+            self.assertEqual(result['publish_adguard_release'], 'false')
+
+    def test_adguard_release_diff_ignores_other_apps_and_detects_embedded_probe(self):
+        readme = ROOT / 'README.md'
+        source = readme.read_text(encoding='utf-8')
+        changed_probe = reencode_probe(source, 'adguardvpn-cli')
+        other_app = reencode_probe(source, 'aria2')
+        before = '1' * 40
+        fixtures = [('README.md\n', other_app, False), ('README.md\n', changed_probe, True),
+                    ('application/adguardvpn-cli/release.Dockerfile\n', '', True),
+                    ('', '', False)]
+        for paths, previous, expected in fixtures:
+            with self.subTest(paths=paths, expected=expected), mock.patch(
+                    'workflow_plan.subprocess.check_output', side_effect=[paths, previous]) as command:
+                self.assertEqual(workflow_plan.adguard_release_changed(before, readme), expected)
+                self.assertIn(before, command.call_args_list[0].args[0])
+                self.assertNotIn('application/adguardvpn-cli/nightly.Dockerfile', command.call_args_list[0].args[0])
 
     def test_schedule_only_monitors_all_apps_with_existing_tag_policy(self):
         result = self.make('schedule', targets='aria2')
@@ -149,7 +184,9 @@ class WorkflowPlanTests(unittest.TestCase):
                 workflow_plan.main()
             values = dict(line.split('=',1) for line in output.read_text().splitlines())
             self.assertEqual(len(json.loads(values['build_targets'])['include']),30)
-            self.assertEqual(set(values),{'build','monitor','version_matrix','build_targets','images','image_platforms'})
+            self.assertEqual(set(values), {'build', 'monitor', 'publish_adguard_release',
+                                           'version_matrix', 'build_targets', 'images', 'image_platforms'})
+            self.assertEqual(values['publish_adguard_release'], 'false')
             output.unlink()
             with mock.patch.dict(os.environ,dict(env,WORKFLOW_INPUTS='{"verify":true}')), self.assertRaises(ValueError):
                 workflow_plan.main()

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Requirements: one input, one Container builder, shared diagnostics and strict evidence gates.
+# Requirements: one input and one Container builder, with a Docker Hub job for the accepted AdGuard release.
 # Unknowns/research: GitHub-hosted execution and registry publication remain unverified locally.
 # Risks/verification: exercise probe statuses, exact actual/label versions and platform/Test/diagnostic failure gates.
 # Optimization: one standard-library graph/contract gate; actionlint validates YAML separately.
@@ -47,7 +47,7 @@ def validate_workflow(root):
     blocks = job_blocks(text)
     required = {"runner-image", "plan", "fetch-versions", "monitor",
                 "diagnostic-layers", "diagnostic-platforms", "diagnostic-collect",
-                "diagnostic-validate", "container-build"}
+                "diagnostic-validate", "container-build", "publish-adguardvpn-release"}
     assert required == blocks.keys(), "Core Job set changed"
     planning = blocks["plan"]
     outputs = set(re.findall(r"^      ([a-zA-Z0-9_-]+): \$\{\{ steps\.plan\.outputs\.", planning, re.MULTILINE))
@@ -127,9 +127,18 @@ class WorkflowContractTests(unittest.TestCase):
         for name in ['fetch-versions','monitor']:
             self.assertIn("needs.plan.outputs.monitor == 'true'",job_blocks(TEXT)[name])
 
-    def test_no_external_write_implementation_or_legacy_marker_parser(self):
+    def test_publication_is_isolated_from_builds_and_requires_acceptance(self):
         self.assertNotRegex(TEXT,r'\b(?:docker\s+(?:login|push)|gh\s+release|git\s+push)\b')
-        self.assertNotRegex(TEXT,r'--dest-creds|release-action|secrets\.')
+        blocks = job_blocks(TEXT)
+        publisher = blocks.pop('publish-adguardvpn-release')
+        self.assertNotRegex(''.join(blocks.values()), r'--dest-creds|release-action|secrets\.')
+        self.assertEqual(dependencies(publisher), {'runner-image', 'plan', 'container-build', 'diagnostic-validate'})
+        for guard in ("github.event_name == 'push'", "github.ref == 'refs/heads/main'",
+                      "needs.plan.outputs.publish_adguard_release == 'true'"):
+            self.assertIn(guard, publisher)
+        self.assertIn('needs.container-build.outputs.acceptance_artifact_id', publisher)
+        self.assertEqual(set(re.findall(r'secrets\.([A-Z_]+)', publisher)),
+                         {'DOCKER_USERNAME', 'DOCKER_PASSWORD'})
         planner=(ROOT/'scripts/ci/workflow_plan.py').read_text()
         self.assertNotIn('head_commit',planner)
         self.assertNotIn('GITHUB_EVENT_PATH',planner)
