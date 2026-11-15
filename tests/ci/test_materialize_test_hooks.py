@@ -193,6 +193,9 @@ class EmbeddedTests(unittest.TestCase):
         # The retired shared probe was an oracle only. Test the maintained README scripts.
         samples = {'aria2': ('aria2c', 'aria2 version 1.37.0\nCopyright...\n', '1.37.0'), 'curl': ('curl', 'curl 8.12.0 (x86_64-alpine-linux)\n', '8.12.0'), 'privoxy': ('privoxy', 'Privoxy version 3.0.34 (stable)\n', '3.0.34'), 'squid': ('squid', 'Squid Cache: Version 7.6\nBuilt...\n', '7.6'), 'dnscrypt-proxy': ('dnscrypt-proxy', '2.1.18\n', '2.1.18')}
         samples['doh-nosni'] = samples['dnscrypt-proxy']
+        samples['adguardvpn-cli'] = ('adguardvpn-cli',
+                                    'Created data directory /root/.local/share/adguardvpn-cli\n'
+                                    'AdGuard VPN CLI v1.7.12\n', '1.7.12')
         for app, (command, output, expected) in samples.items():
             with self.subTest(app=app), tempfile.TemporaryDirectory() as directory:
                 root = self.make_temp(directory)

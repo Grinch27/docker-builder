@@ -233,7 +233,70 @@ jobs:
         sudo apt-get -qq install -y ca-certificates curl gpg skopeo jq
     - name: Fetch Layer Info
       id: fetch
-      run: "repo=\"${{ matrix.image_name }}\"\necho \"Inspecting image (all linux platforms): $repo\"\n\nraw=$(skopeo inspect --raw docker://docker.io/\"${repo}\" || true)\n\n# \u63D0\u53D6 multi-arch manifest \u4E2D\u7684 linux \u5E73\u53F0\nplatforms=$(echo \"$raw\" | jq -r '\n    (.manifests? // [])\n    | map(select(.platform.os==\"${{ env.OS }}\"))\n    | .[]\n    | \"\\(.platform.architecture) \\(.platform.variant // \"\")\"\n  ' | sort -u)\n\nif [ -z \"$platforms\" ]; then\n  echo \"No manifest list entries, fallback single inspect.\"\n  single_json=$(skopeo inspect docker://docker.io/\"${repo}\")\n  arch=$(echo \"$single_json\" | jq -r '.Architecture')\n  os=$(echo \"$single_json\" | jq -r '.Os')\n  if [ \"$os\" != \"${{ env.OS }}\" ]; then\n    echo \"Image OS ($os) \u4E0D\u662F ${{ env.OS }}\uFF0C\u9000\u51FA.\" >&2\n    exit 1\n  fi\n  platforms=\"$arch \"\nfi\n\necho \"Found ${{ env.OS }} platform variants:\"\necho \"$platforms\"\n\n# \u4EC5\u751F\u6210\u6587\u4EF6/\u5236\u54C1\u547D\u540D\u6240\u9700\u7684\u6E05\u6D17\u540D\nfile_base=$(echo \"${{ matrix.image_name }}\" | sed 's#[/: ]#-#g')\necho \"file_base=${file_base}\" >> $GITHUB_OUTPUT\n\n# \u805A\u5408\u6240\u6709\u67B6\u6784\u5C42\u5230\u5355\u4E00\u6570\u7EC4\naggregated_layers='[]'\nwhile read -r arch variant; do\n  [ -z \"$arch\" ] && continue\n  echo \"Processing ${{ env.OS }}/$arch${variant:+/$variant}\"\n  data_json=$(skopeo inspect \\\n    --override-os=\"${{ env.OS }}\" \\\n    --override-arch=\"$arch\" \\\n    ${variant:+--override-variant=\"$variant\"} \\\n    --format=json \\\n    docker://docker.io/\"${repo}\")\n  layers_array=$(echo \"$data_json\" | jq -r '.Layers[]' | jq -R -s 'split(\"\\n\")|map(select(length>0))')\n  aggregated_layers=$(echo \"$aggregated_layers\" | jq --argjson new \"$layers_array\" '. + $new')\ndone <<< \"$platforms\"\n\n# \u5E73\u53F0\u5217\u8868\u8F93\u51FA\uFF08\u4FDD\u7559\uFF09\necho \"platforms_json<<EOF\" >> $GITHUB_OUTPUT\necho \"$platforms\" | awk '{print \"${{ env.OS }}/\" $1 (length($2)?\"/\"$2:\"\")}' | jq -R -s 'split(\"\\n\")|map(select(length>0))' >> $GITHUB_OUTPUT\necho \"EOF\" >> $GITHUB_OUTPUT\n\n# \u53BB\u91CD\u5E76\u751F\u6210\u6700\u7EC8\u7ED3\u6784\nunique_layers=$(echo \"$aggregated_layers\" | jq 'unique')\nfinal_json=$(jq -n --arg name \"${{ matrix.image_name }}\" --argjson layers \"$unique_layers\" '{image_name:$name, Layers:$layers}')\n\n# \u5199\u805A\u5408\u6587\u4EF6 (\u4EC5\u6587\u4EF6\u540D\u4F7F\u7528\u6E05\u6D17)\nlayer_file=\"/tmp/layer-${file_base}.json\"\necho \"$final_json\" | jq '.' > \"$layer_file\"\nls -l /tmp/layer-*.json || true\n"
+      env:
+        IMAGE_NAME: ${{ matrix.image_name }}
+      run: |
+        set -euo pipefail
+        repo="$IMAGE_NAME"
+        echo "Inspecting image (all linux platforms): $repo"
+
+        raw=$(skopeo inspect --retry-times 4 --retry-delay 2s --raw docker://docker.io/"${repo}")
+
+        # 提取 multi-arch manifest 中的 linux 平台
+        platforms=$(echo "$raw" | jq -r '
+            (.manifests? // [])
+            | map(select(.platform.os=="${{ env.OS }}"))
+            | .[]
+            | "\(.platform.architecture) \(.platform.variant // "")"
+          ' | sort -u)
+
+        if [ -z "$platforms" ]; then
+          echo "No manifest list entries, fallback single inspect."
+          single_json=$(skopeo inspect --retry-times 4 --retry-delay 2s docker://docker.io/"${repo}")
+          arch=$(echo "$single_json" | jq -r '.Architecture')
+          os=$(echo "$single_json" | jq -r '.Os')
+          if [ "$os" != "${{ env.OS }}" ]; then
+            echo "Image OS ($os) 不是 ${{ env.OS }}，退出." >&2
+            exit 1
+          fi
+          platforms="$arch "
+        fi
+
+        echo "Found ${{ env.OS }} platform variants:"
+        echo "$platforms"
+
+        # 仅生成文件/制品命名所需的清洗名
+        file_base=$(echo "${{ matrix.image_name }}" | sed 's#[/: ]#-#g')
+        echo "file_base=${file_base}" >> $GITHUB_OUTPUT
+
+        # 聚合所有架构层到单一数组
+        aggregated_layers='[]'
+        while read -r arch variant; do
+          [ -z "$arch" ] && continue
+          echo "Processing ${{ env.OS }}/$arch${variant:+/$variant}"
+          data_json=$(skopeo inspect --retry-times 4 --retry-delay 2s \
+            --override-os="${{ env.OS }}" \
+            --override-arch="$arch" \
+            ${variant:+--override-variant="$variant"} \
+            --format=json \
+            docker://docker.io/"${repo}")
+          layers_array=$(echo "$data_json" | jq -r '.Layers[]' | jq -R -s 'split("\n")|map(select(length>0))')
+          aggregated_layers=$(echo "$aggregated_layers" | jq --argjson new "$layers_array" '. + $new')
+        done <<< "$platforms"
+
+        # 平台列表输出（保留）
+        echo "platforms_json<<EOF" >> $GITHUB_OUTPUT
+        echo "$platforms" | awk '{print "${{ env.OS }}/" $1 (length($2)?"/"$2:"")}' | jq -R -s 'split("\n")|map(select(length>0))' >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+
+        # 去重并生成最终结构
+        unique_layers=$(echo "$aggregated_layers" | jq 'unique')
+        final_json=$(jq -n --arg name "${{ matrix.image_name }}" --argjson layers "$unique_layers" '{image_name:$name, Layers:$layers}')
+
+        # 写聚合文件 (仅文件名使用清洗)
+        layer_file="/tmp/layer-${file_base}.json"
+        echo "$final_json" | jq '.' > "$layer_file"
+        ls -l /tmp/layer-*.json || true
     - name: Upload layer info
       uses: actions/upload-artifact@main
       with:
@@ -595,9 +658,11 @@ jobs:
           rm -rf "${dir}"
         }
 
+        declare -A observed_adguard_versions=()
         measure_legacy_adguard_release() {
           local ref=$1 evidence=$2 platform digest banner observed
           [[ "$app_branch" == adguardvpn-cli && "$tag_repo" == release ]] || return 0
+          python3 scripts/ci/materialize_test_hooks.py --app "$app_branch" --kind test
           for platform in linux/amd64 linux/arm64; do
             if ! jq -e --arg platform "$platform" '
               .source.platforms[$platform] | select(.status == "present") |
@@ -610,14 +675,16 @@ jobs:
               [.source.raw.manifests[] | select(.platform.os == "linux" and .platform.architecture == $arch)] |
               select(length == 1) | .[0].digest | select(test("^sha256:[0-9a-f]{64}$"))
             ' "$evidence")
-            banner=$(docker run --rm --platform "$platform" --network none --cap-drop ALL \
-              --security-opt no-new-privileges --entrypoint /usr/local/bin/adguardvpn-cli \
-              "${ref%:*}@$digest" --version)
-            if [[ ! "$banner" =~ ^AdGuard\ VPN\ CLI\ v([0-9]+(\.[0-9]+)+)$ ]]; then
-              printf '::error::Could not read the published AdGuard release version for %s (%s)\n' "$ref" "$platform"
-              return 1
+            if [[ ! -v 'observed_adguard_versions[$digest]' ]]; then
+              if ! banner=$(docker run --rm --interactive --platform "$platform" --network none --cap-drop ALL \
+                --security-opt no-new-privileges --entrypoint /bin/sh "${ref%:*}@$digest" \
+                -s < "$PATH_app/test/test.sh") || [[ ! "$banner" =~ ^version=([0-9]+(\.[0-9]+)+)$ ]]; then
+                printf '::error::Could not read the published AdGuard release version for %s (%s)\n' "$ref" "$platform"
+                return 1
+              fi
+              observed_adguard_versions[$digest]=${BASH_REMATCH[1]}
             fi
-            observed=${BASH_REMATCH[1]}
+            observed=${observed_adguard_versions[$digest]}
             printf 'Published AdGuard baseline %s %s version=%s\n' "$ref" "$platform" "$observed"
             jq --arg platform "$platform" --arg observed "$observed" \
               '.source.platforms[$platform].observed_version = $observed' "$evidence" > "$evidence.tmp"
