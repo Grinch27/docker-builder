@@ -1,0 +1,6 @@
+#!/bin/sh
+# Run Valve's launcher with the original arguments and executable path.
+# Recheck the launcher path if Valve changes its bootstrap layout.
+# Keep the launcher in charge of client updates and exit status.
+# Verify execution from outside STEAMCMDDIR with the unprivileged image user.
+exec "$STEAMCMDDIR/steamcmd.sh" "$@"

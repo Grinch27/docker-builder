@@ -1,99 +1,55 @@
-############################################################
-# SteamCMD base on Debian/Ubuntu
-# ref: 
-#   https://developer.valvesoftware.com/wiki/SteamCMD#Ubuntu
-#   https://github.com/CM2Walki/steamcmd/blob/master/bookworm/Dockerfile
-############################################################
+# syntax=docker/dockerfile:1
+# Bootstrap Valve's Linux client with 32-bit glibc, then run the amd64 client.
+# Game-specific dependencies and Squad licensing remain deployment checks.
+# Generate the locale SteamCMD requests and keep game data in a writable directory.
+# Verify that both Steam SDK libraries exist after the client updates.
 
-ARG base_image=debian:testing-slim
+ARG base_image=debian:trixie-slim
 FROM ${base_image}
 
-ARG USER=steam \
-    PUID=1001 \
-    LANGUAGE="en_US.UTF-8"
+ARG USER=steam
+ARG PUID=1001
 
-ENV USER=${USER} \
+ENV HOME=/home/${USER} \
+    USER=${USER} \
     PUID=${PUID} \
-    LANGUAGE=${LANGUAGE} \
-    LANG=${LANGUAGE} \
-	LC_ALL=${LANGUAGE} \
-    STEAMCMDDIR="/home/${USER}/steamcmd"
+    LANG=en_US.UTF-8 \
+    STEAMCMDDIR=/home/${USER}/steamcmd
 
-RUN set -x \
-    # ===== Create unprivileged user =====
-	&& useradd -u "${PUID}" -m "${USER}" \
-    # ===== apt dependencies =====
-	&& export DEBIAN_FRONTEND=noninteractive \
-	&& apt-get update --ignore-missing -y -qq \
-    && apt-get install --no-install-recommends --no-install-suggests --fix-missing -y -qq \
-		ca-certificates \
-		curl \
-        lib32stdc++6 \
-		lib32gcc-s1 \
-        locales \
-    # ===== System info =====
-    && OS_ARCH=$(dpkg --print-architecture) \
-    # ===== Setup Locale Encoding =====
-	&& locale-gen ${LANGUAGE} \
-	&& dpkg-reconfigure --frontend noninteractive locales \
-    # ===== Setup steamcmd =====
-    # ----- the multiverse repository and x86 packages must be enabled -----
-    # && add-apt-repository multiverse \
-    # && if [ "${OS_ARCH}" = "amd64" ]; then \
-    #     dpkg --add-architecture i386; \
-    # fi \
-    # && apt-get update --ignore-missing -y -qq \
-    # && echo steamcmd steam/question select "I AGREE" | debconf-set-selections \
-    # && echo steamcmd steam/license note '' | debconf-set-selections \
-    # && apt-get install --no-install-recommends --no-install-suggests --fix-missing -y -qq \
-    #     steamcmd \
-    # ----- dependencies required to run SteamCMD -----
-    && mkdir -p ${STEAMCMDDIR} \
-    && URL_steamcmd="https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz" \
-    && FILE_steamcmd="/tmp/steamcmd_linux.tar.gz" \
-    && curl -fsSL ${URL_steamcmd} -o ${FILE_steamcmd} \
-    # --strip-components=1: remove the first directory in the tarball
-    && tar xzf ${FILE_steamcmd} -C ${STEAMCMDDIR} \
-    && ls -lh ${STEAMCMDDIR} \
-    && rm -f ${FILE_steamcmd} \
-    # ===== Clean pre-install =====
-    && apt-get autoremove --purge -y -qq \
-        curl \
-    # ----- Download SteamCMD, execute as user -----
-    # https://github.com/CM2Walki/steamcmd/blob/master/bookworm/Dockerfile
-    # && mkdir -p "${STEAMCMDDIR}" \
-    # && curl -fsSL 'https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz' | tar xvzf - -C "${STEAMCMDDIR}" \
-    && "${STEAMCMDDIR}/steamcmd.sh" +quit \
-    && ln -s "${STEAMCMDDIR}/linux32/steamclient.so" "${STEAMCMDDIR}/steamservice.so" \
-    && mkdir -p "${HOMEDIR}/.steam/sdk32" \
-    && ln -s "${STEAMCMDDIR}/linux32/steamclient.so" "${HOMEDIR}/.steam/sdk32/steamclient.so" \
-    && ln -s "${STEAMCMDDIR}/linux32/steamcmd" "${STEAMCMDDIR}/linux32/steam" \
-    && mkdir -p "${HOMEDIR}/.steam/sdk64" \
-    && ln -s "${STEAMCMDDIR}/linux64/steamclient.so" "${HOMEDIR}/.steam/sdk64/steamclient.so" \
-    && ln -s "${STEAMCMDDIR}/linux64/steamcmd" "${STEAMCMDDIR}/linux64/steam" \
-    && ln -s "${STEAMCMDDIR}/steamcmd.sh" "${STEAMCMDDIR}/steam.sh" \
-	# ----- Symlink steamclient.so; So misconfigured dedicated servers can find it -----
- 	&& ln -s "${STEAMCMDDIR}/linux64/steamclient.so" "/usr/lib/x86_64-linux-gnu/steamclient.so" \
-    # ----- Symlink steamcmd -----
-    && ln -s "${STEAMCMDDIR}/linux32/steamcmd" "/usr/bin/steamcmd" \
-    # ----- Clean /root/Steam/logs -----
-    # && rm -rf /root/Steam/logs \
-    # ===== Clean apt =====
-    && apt-get autoremove --purge -y -qq \
-    && apt-get clean -y -qq \
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        ca-certificates curl lib32gcc-s1 lib32stdc++6 locales \
     && rm -rf /var/lib/apt/lists/* \
-    && rm -rf /var/log/*.log \
-	&& unset DEBIAN_FRONTEND \
-    # ===== docker-entrypoint.sh =====
-    && sh_entrypoint="/docker-entrypoint.sh" \
-    && echo "#!/usr/bin/env bash" >> ${sh_entrypoint} \
-    # ----- end of docker-entrypoint.sh -----
-    && echo "uname -a" >> ${sh_entrypoint} \
-	&& echo "sleep infinity" >> ${sh_entrypoint} \
-	&& chmod +x ${sh_entrypoint}
+    && localedef -i en_US -f UTF-8 en_US.UTF-8 \
+    && useradd --create-home --home-dir "$HOME" --uid "$PUID" --user-group "$USER" \
+    && install -d -o "$USER" -g "$USER" "$STEAMCMDDIR" /data
+
+COPY --chmod=0755 steamcmd /usr/bin/steamcmd
 
 USER ${USER}
-
 WORKDIR ${STEAMCMDDIR}
 
-ENTRYPOINT ["/docker-entrypoint.sh"]
+ARG STEAMCMD_MIRROR=
+RUN set -eu; \
+    installer_url=https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz; \
+    set --; \
+    if [ -n "$STEAMCMD_MIRROR" ]; then \
+        mirror="${STEAMCMD_MIRROR%/}"; \
+        installer_url="$mirror/steamcmd_linux.tar.gz"; \
+        set -- -overridepackageurl "$mirror"; \
+    fi; \
+    curl -fsSL --retry 3 --connect-timeout 15 "$installer_url" -o steamcmd_linux.tar.gz; \
+    tar -xzf steamcmd_linux.tar.gz; \
+    rm steamcmd_linux.tar.gz; \
+    steamcmd "$@" +quit; \
+    test -x linux64/steamcmd \
+    && test -s linux32/steamclient.so \
+    && test -s linux64/steamclient.so \
+    && mkdir -p "$HOME/.steam/sdk32" "$HOME/.steam/sdk64" \
+    && ln -sf "$STEAMCMDDIR/linux32/steamclient.so" "$HOME/.steam/sdk32/steamclient.so" \
+    && ln -sf "$STEAMCMDDIR/linux64/steamclient.so" "$HOME/.steam/sdk64/steamclient.so"
+
+ENV STEAM_PLATFORM=linux64
+
+ENTRYPOINT ["steamcmd"]
+CMD ["+quit"]
