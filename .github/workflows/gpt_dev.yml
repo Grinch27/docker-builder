@@ -663,16 +663,21 @@ jobs:
         measure_legacy_versions() {
           local ref=$1 evidence=$2 platform digest banner observed
           local version_pattern='^version=([0-9]+(\.[0-9]+)+)$'
-          local -a platforms probe_env=()
+          local -a platforms probe_options=()
           case "$app_branch:$tag_repo" in
-            adguardvpn-cli:release|runner:actions|runner:actions-slim) ;;
+            adguardvpn-cli:release) ;;
             curl:latest) version_pattern='^version=([0-9]+(\.[0-9]+)+([-+][A-Za-z0-9.+_-]+)?)$' ;;
             novnc_alpine:latest) version_pattern='^version=([0-9][A-Za-z0-9._+-]*)$' ;;
             openwrt:main) version_pattern='^version=([A-Za-z0-9._+-]+-r[0-9]+-[0-9a-f]+)$' ;;
+            runner:actions|runner:actions-slim)
+              # Old images could lack ICU or a writable diagnostics directory; only read their version.
+              probe_options=(--env DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
+                --tmpfs /actions-runner/_diag:rw,noexec,nosuid,nodev,mode=1777,size=16m)
+              ;;
             runner:dev|runner:slim) version_pattern='^version=([a-z0-9]+-[a-z0-9]+-gcc-[0-9A-Za-z.+:~_-]+)$' ;;
             steamcmd:dev)
               version_pattern='^version=([0-9]+)$'
-              probe_env=(--env STEAMCMD_LEGACY_VERSION=1)
+              probe_options=(--env STEAMCMD_LEGACY_VERSION=1)
               ;;
             *) return 0 ;;
           esac
@@ -705,7 +710,7 @@ jobs:
             fi
             if [[ ! -v 'observed_versions[$digest]' ]]; then
               if ! banner=$(docker run --rm --interactive --platform "$platform" --network none --cap-drop ALL \
-                --security-opt no-new-privileges "${probe_env[@]}" --entrypoint /bin/sh "${ref%:*}@$digest" \
+                --security-opt no-new-privileges "${probe_options[@]}" --entrypoint /bin/sh "${ref%:*}@$digest" \
                 -s < "$PATH_app/test/test.sh") || [[ ! "$banner" =~ $version_pattern ]]; then
                 printf '::error::Could not read the published image version for %s (%s)\n' "$ref" "$platform"
                 return 1
