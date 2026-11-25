@@ -110,7 +110,7 @@ class WorkflowPlanTests(unittest.TestCase):
         self.assertEqual(result['version_matrix'], {'include': []})
 
     def test_release_push_and_explicit_dispatch_select_the_same_release_target(self):
-        result = workflow_plan.plan(self.config, 'push', {}, release_changed=True)
+        result = workflow_plan.plan(self.config, 'push', {}, push_targets='adguardvpn-cli:release')
         self.assertEqual(result['build'], 'true')
         self.assertEqual(result['monitor'], 'false')
         release = catalog.get(self.config, 'adguardvpn-cli', 'release')
@@ -118,19 +118,21 @@ class WorkflowPlanTests(unittest.TestCase):
         manual = self.make(targets='adguardvpn-cli:release')
         self.assertEqual(manual['build_targets'], result['build_targets'])
 
-    def test_adguard_release_diff_ignores_other_apps_and_detects_embedded_probe(self):
+    def test_push_diff_selects_daily_for_shared_pipeline_and_detects_release_inputs(self):
         readme = ROOT / 'README.md'
         source = readme.read_text(encoding='utf-8')
         changed_probe = reencode_probe(source, 'adguardvpn-cli')
         other_app = reencode_probe(source, 'aria2')
         before = '1' * 40
-        fixtures = [('README.md\n', other_app, False), ('README.md\n', changed_probe, True),
-                    ('application/adguardvpn-cli/release.Dockerfile\n', '', True),
-                    ('', '', False)]
+        fixtures = [('README.md\n', other_app, None),
+                    ('README.md\n', changed_probe, 'adguardvpn-cli:release'),
+                    ('application/adguardvpn-cli/release.Dockerfile\n', '', 'adguardvpn-cli:release'),
+                    ('scripts/ci/publish-accepted-image.sh\n', '', 'daily'),
+                    ('', '', None)]
         for paths, previous, expected in fixtures:
             with self.subTest(paths=paths, expected=expected), mock.patch(
                     'workflow_plan.subprocess.check_output', side_effect=[paths, previous]) as command:
-                self.assertEqual(workflow_plan.adguard_release_changed(before, readme), expected)
+                self.assertEqual(workflow_plan.changed_push_targets(before, readme), expected)
                 self.assertIn(before, command.call_args_list[0].args[0])
                 self.assertNotIn('application/adguardvpn-cli/nightly.Dockerfile', command.call_args_list[0].args[0])
 
@@ -143,6 +145,9 @@ class WorkflowPlanTests(unittest.TestCase):
         manual = self.make(targets='daily')
         self.assertEqual((manual['build'], manual['monitor']), ('true', 'false'))
         self.assertEqual(result['build_targets'], manual['build_targets'])
+        push = workflow_plan.plan(self.config, 'push', {}, push_targets='daily')
+        self.assertEqual(push['monitor'], 'false')
+        self.assertEqual(push['build_targets'], result['build_targets'])
         rows = result['build_targets']['include']
         self.assertGreater(len({row['app_branch'] for row in rows}) * 2, len(self.config['apps']))
         self.assertGreater(len(rows) * 2, len(self.make(targets='all')['build_targets']['include']))

@@ -60,7 +60,8 @@ for platform in "${platforms[@]}"; do
     .archives[] | select(.platform == $platform) | .sha256 | select(test("^[a-f0-9]{64}$"))
   ' "$metadata_dir/metadata_sum.json")
   printf '%s  %s\n' "$expected_tar" "$work_dir/import.tar" | sha256sum --check --status
-  "$regctl" image import "$layout:$label" "$work_dir/import.tar" --name "$repo_dockerhub:$tag_repo"
+  # Docker save records the short tag as org.opencontainers.image.ref.name.
+  "$regctl" image import "$layout:$label" "$work_dir/import.tar" --name "$tag_repo"
   rm -- "$work_dir/import.tar"
   refs+=(--ref "$layout:$label")
 done

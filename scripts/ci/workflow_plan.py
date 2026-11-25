@@ -38,10 +38,10 @@ DAILY_TARGETS = (
     "vlmcsd",
 )
 ADGUARD_RELEASE = ("adguardvpn-cli", "release")
-ADGUARD_RELEASE_PATHS = (
+ADGUARD_RELEASE_PATHS = ("application/adguardvpn-cli/.dockerignore",
+                        "application/adguardvpn-cli/release.Dockerfile")
+DAILY_RELEASE_PATHS = (
     ".github/workflows/gpt_dev.yml",
-    "application/adguardvpn-cli/.dockerignore",
-    "application/adguardvpn-cli/release.Dockerfile",
     "scripts/ci/build-image.sh",
     "scripts/ci/catalog.py",
     "scripts/ci/compare_image_snapshot.py",
@@ -59,22 +59,26 @@ def _adguard_release_inputs(source: str) -> tuple:
             catalog.embedded_tests_from_text(source)[app])
 
 
-def adguard_release_changed(before: str, readme: Path) -> bool:
-    """Detect release inputs changed across the entire push, including embedded scripts."""
+def changed_push_targets(before: str, readme: Path) -> str | None:
+    """Verify the daily matrix after shared changes and the release target after its own changes."""
     if not re.fullmatch(r"[0-9a-f]{40}", before):
         raise ValueError("Expected a push base commit SHA")
     if before == "0" * 40:
-        return True
-    changed = subprocess.check_output(
-        ["git", "diff", "--name-only", before, "HEAD", "--", *ADGUARD_RELEASE_PATHS, "README.md"],
+        return "daily"
+    changed = set(subprocess.check_output(
+        ["git", "diff", "--name-only", before, "HEAD", "--",
+         *DAILY_RELEASE_PATHS, *ADGUARD_RELEASE_PATHS, "README.md"],
         text=True,
-    ).splitlines()
-    if any(path != "README.md" for path in changed):
-        return True
-    if not changed:
-        return False
-    previous = subprocess.check_output(["git", "show", f"{before}:README.md"], text=True)
-    return _adguard_release_inputs(previous) != _adguard_release_inputs(readme.read_text(encoding="utf-8"))
+    ).splitlines())
+    if changed.intersection(DAILY_RELEASE_PATHS):
+        return "daily"
+    if changed.intersection(ADGUARD_RELEASE_PATHS):
+        return ":".join(ADGUARD_RELEASE)
+    if "README.md" in changed:
+        previous = subprocess.check_output(["git", "show", f"{before}:README.md"], text=True)
+        if _adguard_release_inputs(previous) != _adguard_release_inputs(readme.read_text(encoding="utf-8")):
+            return ":".join(ADGUARD_RELEASE)
+    return None
 
 
 def _select(config: dict, text: str, all_targets: list[dict]) -> list[dict]:
@@ -107,7 +111,7 @@ def _select(config: dict, text: str, all_targets: list[dict]) -> list[dict]:
     return selected
 
 
-def plan(config: dict, event_name: str, inputs: dict, *, release_changed: bool = False) -> dict:
+def plan(config: dict, event_name: str, inputs: dict, *, push_targets: str | None = None) -> dict:
     """Plan daily monitoring/builds, manual builds and automatic release pushes."""
     if event_name not in {"push", "schedule", "workflow_dispatch"}:
         raise ValueError("Core accepts push/schedule/workflow_dispatch only")
@@ -119,18 +123,19 @@ def plan(config: dict, event_name: str, inputs: dict, *, release_changed: bool =
         raise ValueError("Empty catalog")
     manual = event_name == "workflow_dispatch"
     monitor = event_name == "schedule"
-    publish_release = event_name == "push" and release_changed
     selected = []
     if manual or monitor:
         selected = _select(config, "daily" if monitor else inputs.get("targets", "vlmcsd"), all_targets)
-    elif publish_release:
-        release = catalog.get(config, *ADGUARD_RELEASE)
+    elif push_targets is not None:
+        selected = _select(config, push_targets, all_targets)
+    for release in selected:
+        if (release["app_branch"], release["build_tag"]) != ADGUARD_RELEASE:
+            continue
         if (release["repo_dockerhub"] != "grinch27/adguardvpn-cli" or
                 release["publish_tag"] != "release" or
                 set(release["arch_branch"].split(",")) != {"linux/amd64", "linux/arm64"} or
                 release["build_arg"] != "update_channel=release"):
             raise ValueError("AdGuard Docker Hub destination, platforms or channel changed")
-        selected = [release]
     if len(selected) > 256:
         raise ValueError("Container matrix exceeds GitHub's 256-job limit")
     destinations = {(row["repo_dockerhub"], row["publish_tag"]) for row in selected}
@@ -151,11 +156,12 @@ def main() -> None:
     inputs = json.loads(os.environ.get("WORKFLOW_INPUTS", "{}"))
     readme = Path("README.md")
     event = os.environ["GITHUB_EVENT_NAME"]
-    release_changed = (event == "push" and os.environ.get("GITHUB_REF") == "refs/heads/main"
-                       and os.environ.get("GITHUB_REPOSITORY") == "Grinch27/docker-builder"
-                       and adguard_release_changed(os.environ["PUSH_BEFORE"], readme))
+    push_targets = None
+    if (event == "push" and os.environ.get("GITHUB_REF") == "refs/heads/main"
+            and os.environ.get("GITHUB_REPOSITORY") == "Grinch27/docker-builder"):
+        push_targets = changed_push_targets(os.environ["PUSH_BEFORE"], readme)
     result = plan(catalog.catalog_from_readme(readme), event, inputs,
-                  release_changed=release_changed)
+                  push_targets=push_targets)
     with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as stream:
         for key, value in result.items():
             text = json.dumps(value, separators=(",", ":")) if not isinstance(value, str) else value

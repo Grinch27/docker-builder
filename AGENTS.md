@@ -542,6 +542,7 @@ Part I 是面向未来设计的通用规范；不得据此自动恢复已经退�
 ## 4. 每日构建
 
 - `gpt_dev.yml` 在每日 01:17 UTC 调度 `DAILY_TARGETS` 和全应用版本监控。手动 `targets=daily` 走同一构建矩阵，`targets=all` 选择整个 Catalog。
+- `main` 上的共享工作流、规划、构建或发布脚本变更会验收整个每日矩阵。只改 AdGuard 稳定版输入时，推送验收对应 Target。
 - 新 Target 先在 `main` 独立通过构建、全平台测试、OCI 比较、归档与发布，再加入每日清单。README 定义平台、构建参数、探针和 Docker Hub 目标。noVNC Debian 版发布至 `grinch27/novnc:latest`，Alpine 版发布至 `grinch27/novnc:alpine`。
 - 仅 `Grinch27/docker-builder` 的 `main` 可以使用现有 Docker Hub 凭据。每个 Target 仅发布同一提交验收成功的归档，并回读 Docker Hub 核对所有平台的 manifest 摘要和版本。证据须分别记录构建与发布结果。
 
