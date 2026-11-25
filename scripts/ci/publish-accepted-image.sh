@@ -88,11 +88,12 @@ verify_versions() {
         ($platform | split("/")) as $p |
         .os == $p[0] and .architecture == $p[1] and
         ($p[2] == null or .variant == $p[2]) and .config.Labels.version == $version
-      ' >/dev/null
+      ' >/dev/null || return 1
   done
 }
 
 expected_index=$(index_platforms "$layout:accepted")
+expected_digest=$("$regctl" manifest head "$layout:accepted" --require-list)
 verify_versions "$layout:accepted"
 
 remote_sha=$(git ls-remote --exit-code origin refs/heads/main | cut -f1)
@@ -106,12 +107,21 @@ printf '%s\n' "$DOCKER_PASSWORD" |
 unset DOCKER_USERNAME DOCKER_PASSWORD
 
 "$regctl" image copy "$layout:accepted" "$target"
-observed_index=$(index_platforms "$target")
-if [[ "$observed_index" != "$expected_index" ]]; then
-  echo '::error::Docker Hub platform manifests differ from the accepted archives.'
-  exit 1
-fi
-verify_versions "$target"
-digest=$("$regctl" manifest head "$target" --require-list)
-printf 'Published %s version=%s platforms=%s %s\n' \
-  "$target" "$version" "$arch_branch" "$digest" | tee -a "$GITHUB_STEP_SUMMARY"
+# The registry can briefly return the previous tag after a successful push.
+published_ref="${target%:*}@$expected_digest"
+for delay in 0 2 4 8 16; do
+  sleep "$delay"
+  if digest=$("$regctl" manifest head "$target" --require-list) &&
+     [[ "$digest" == "$expected_digest" ]] &&
+     observed_index=$(index_platforms "$published_ref") &&
+     [[ "$observed_index" == "$expected_index" ]] &&
+     verify_versions "$published_ref"; then
+    printf 'Published %s version=%s platforms=%s %s\n' \
+      "$target" "$version" "$arch_branch" "$digest" | tee -a "$GITHUB_STEP_SUMMARY"
+    exit 0
+  fi
+  printf 'Waiting for Docker Hub read-back of %s index %s (tag returned %s)\n' \
+    "$target" "$expected_digest" "${digest:-no index}" >&2
+done
+echo '::error::Docker Hub read-back did not match the accepted platform manifests and versions.'
+exit 1

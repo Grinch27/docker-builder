@@ -3,7 +3,7 @@
 # Optimization: one build per Target, minimal Docker client tools and shared fixed diagnostics.
 # Risks/verification: wait for shared diagnostics and verify the remote index against the accepted archives.
 name: Docker Builder - Container
-run-name: Docker Builder - ${{ github.event_name }} - ${{ inputs.targets || (github.event_name == 'schedule' && 'daily build/monitor') || 'validate' }}
+run-name: Docker Builder - ${{ github.event_name }} - ${{ inputs.targets || (github.event_name == 'schedule' && 'daily build/monitor') || 'verify changes' }}
 'on':
   schedule:
   - cron: '17 1 * * *'
@@ -19,7 +19,7 @@ run-name: Docker Builder - ${{ github.event_name }} - ${{ inputs.targets || (git
   workflow_dispatch:
     inputs:
       targets:
-        description: Configured app[:tag], comma-separated list, daily, or all. Builds every configured platform.
+        description: Configured app[:tag], comma-separated list, daily, or all. Builds all configured platforms and publishes accepted images on main.
         type: string
         default: vlmcsd
 permissions: write-all

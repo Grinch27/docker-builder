@@ -30,11 +30,17 @@ DAILY_TARGETS = (
     "nordvpn",
     "novnc",
     "novnc_alpine",
+    "openwrt:main",
     "privoxy",
     "protonvpn",
+    "runner:actions",
+    "runner:actions-slim",
+    "runner:dev",
+    "runner:slim",
     "samba:alpine",
     "samba:latest",
     "squid",
+    "steamcmd:dev",
     "vlmcsd",
 )
 ADGUARD_RELEASE = ("adguardvpn-cli", "release")
