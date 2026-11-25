@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Requirement: Tag alone selects application/<app>/<tag>.Dockerfile; missing Tag means latest.
+# Requirement: build Tag selects the Dockerfile; an optional publish Tag selects the registry destination.
 # Unknown/research: external consumers of retired storage and matrix runner/env fields must migrate.
 # Optimization: read one README snapshot per load; reuse decoded script coverage without global caches.
 # Risk: invalid Tags, unsafe paths and GitHub Markdown altering copied Test scripts.
@@ -27,7 +27,7 @@ TAG = re.compile(r'^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$')
 NAME = re.compile(r'^[a-z0-9][a-z0-9_.-]*$')
 POLICIES = {'none', 'keep', 'strip_channel', 'strip_channel_and_spaces'}
 APP_KEYS = {'repository', 'base_image', 'platforms', 'tag_policy', 'targets'}
-TARGET_KEYS = {'tag', 'build_arg', 'base_image', 'tag_policy'}
+TARGET_KEYS = {'tag', 'build_arg', 'base_image', 'tag_policy', 'publish_tag'}
 
 def target_tag(target):
     value = target.get('tag', 'latest')
@@ -292,6 +292,7 @@ def validate(c, root, *, text=None):
             if unexpected:
                 raise ValueError(name+': unknown target fields: '+', '.join(sorted(unexpected)))
             tag = target_tag(t)
+            publish_tag = target_tag({'tag': t.get('publish_tag', tag)})
             resolve_dockerfile(root, name, tag)
             for key in ('build_arg','base_image'):
                 val=t.get(key,'')
@@ -301,7 +302,7 @@ def validate(c, root, *, text=None):
                 raise ValueError(name+': invalid target policy')
             if (name,tag) in seen: raise ValueError('Duplicate '+name+':'+tag)
             seen.add((name,tag))
-            refs.setdefault((repo,tag),[]).append(name)
+            refs.setdefault((repo,publish_tag),[]).append(name)
     return {'apps':len(apps),'targets':len(seen),
             'legacy_ref_conflicts':{r+':'+t:n for (r,t),n in refs.items() if len(n)>1}}
 
@@ -313,6 +314,7 @@ def get(c,app,tag='latest'):
     if len(ts)!=1: raise ValueError('Unknown target: '+app+':'+tag)
     t=ts[0]
     return {'app_branch':app,'tag_repo':tag,'build_tag':tag,'repo_dockerhub':a['repository'],
+            'publish_tag':target_tag({'tag':t.get('publish_tag',tag)}),
             'arch_branch':','.join(a['platforms']),
             'base_image':t.get('base_image',a['base_image']),
             'dockerfile':dockerfile,
@@ -435,7 +437,7 @@ def update(readme, c, app, field, value, *, scope='app', tag='latest'):
             raise ValueError('Unsupported app field: '+str(field))
         dest = c['apps'][app]
     elif scope == 'target':
-        if field not in ('base_image', 'build_arg', 'tag_policy'):
+        if field not in ('base_image', 'build_arg', 'tag_policy', 'publish_tag'):
             raise ValueError('Unsupported target field: '+str(field))
         targets = [t for t in c['apps'][app]['targets'] if t['tag'] == tag]
         if len(targets) != 1:
@@ -498,7 +500,7 @@ def main():
             elif args.command=='tags':
                 print(json.dumps(tags(item,args.version,args.consistent.lower()=='true')))
             else:
-                keys=('repo_dockerhub','arch_branch','base_image','dockerfile','build_arg','tag_policy','build_tag')
+                keys=('repo_dockerhub','arch_branch','base_image','dockerfile','build_arg','tag_policy','build_tag','publish_tag')
                 data=''.join(k+'='+item[k]+'\n' for k in keys if not args.app_only or k in ('repo_dockerhub','arch_branch','base_image'))
                 if args.output:
                     with open(args.output,'a',encoding='utf-8') as f: f.write(data)

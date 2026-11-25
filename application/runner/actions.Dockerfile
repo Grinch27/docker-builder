@@ -1,5 +1,8 @@
 ############################################################
 # base on Ubuntu
+# Select a validated upstream Runner tag and verify Runner.Listener in CI.
+# Latest may change between probe and build. Reuse the release JSON once per build.
+# Require the configured architecture and the packaged ICU runtime.
 ############################################################
 
 ARG base_image=ubuntu:devel
@@ -44,6 +47,7 @@ RUN set -x \
         libelf-dev \
         libglib2.0-dev \
         libgmp3-dev \
+        libicu-dev \
         libltdl-dev \
         libmpc-dev \
         libmpfr-dev \
@@ -111,8 +115,8 @@ RUN set -x \
     && apt list --upgradable \
     # ===== Setup runner =====
     # ----- Get latest version -----
-    && version=$(curl -s https://api.github.com/repos/actions/runner/releases/latest | grep 'tag_name' | cut -d ':' -f 2- | cut -d '"' -f 2) \
-    && version=${version#v} \
+    && release=$(curl -fsSL --retry 3 --connect-timeout 15 --max-time 60 https://api.github.com/repos/actions/runner/releases/latest) \
+    && version=$(printf '%s\n' "$release" | jq -er '.tag_name | strings | select(test("^v[0-9]+(\\.[0-9]+)+$")) | ltrimstr("v")') \
     # ----- Create folder -----
     && mkdir -p ${dir_actions} \
     && cd ${dir_actions} \

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# Requirements: manual targets and AdGuard release pushes share the sole Container builder.
+# Requirements: daily, manual and AdGuard release runs share the sole Container builder.
 # Unknowns/research: live runner capacity and deferred applications require separate CI evidence.
 # Optimization: pure selection and CLI fixtures do not need Docker or network.
-# Risks/verification: preserve all manual targets and restrict Docker Hub publication to release pushes.
+# Risks/verification: share daily selection across schedule and dispatch and keep destination tags distinct.
 """Exercise the one-input Container plan and event isolation."""
 import copy
 import json
@@ -108,19 +108,15 @@ class WorkflowPlanTests(unittest.TestCase):
         self.assertEqual((result['build'], result['monitor']), ('false', 'false'))
         self.assertEqual(result['build_targets'], {'include': []})
         self.assertEqual(result['version_matrix'], {'include': []})
-        self.assertEqual(result['publish_adguard_release'], 'false')
 
-    def test_release_push_selects_exactly_one_target_and_no_manual_publish(self):
+    def test_release_push_and_explicit_dispatch_select_the_same_release_target(self):
         result = workflow_plan.plan(self.config, 'push', {}, release_changed=True)
-        self.assertEqual(result['publish_adguard_release'], 'true')
         self.assertEqual(result['build'], 'true')
         self.assertEqual(result['monitor'], 'false')
         release = catalog.get(self.config, 'adguardvpn-cli', 'release')
         self.assertEqual(result['build_targets'], {'include': [release]})
-        for event in ('workflow_dispatch', 'schedule'):
-            result = workflow_plan.plan(self.config, event, {'targets': 'adguardvpn-cli:release'},
-                                        release_changed=True)
-            self.assertEqual(result['publish_adguard_release'], 'false')
+        manual = self.make(targets='adguardvpn-cli:release')
+        self.assertEqual(manual['build_targets'], result['build_targets'])
 
     def test_adguard_release_diff_ignores_other_apps_and_detects_embedded_probe(self):
         readme = ROOT / 'README.md'
@@ -138,13 +134,29 @@ class WorkflowPlanTests(unittest.TestCase):
                 self.assertIn(before, command.call_args_list[0].args[0])
                 self.assertNotIn('application/adguardvpn-cli/nightly.Dockerfile', command.call_args_list[0].args[0])
 
-    def test_schedule_only_monitors_all_apps_with_existing_tag_policy(self):
+    def test_schedule_builds_daily_and_monitors_all_apps_with_existing_tag_policy(self):
         result = self.make('schedule', targets='aria2')
-        self.assertEqual((result['build'], result['monitor']), ('false', 'true'))
+        self.assertEqual((result['build'], result['monitor']), ('true', 'true'))
         versions = result['version_matrix']['include']
         self.assertEqual({r['app_branch'] for r in versions}, set(self.config['apps']))
         self.assertTrue(all(r['tag_repo'] == 'latest' for r in versions))
-        self.assertEqual(result['build_targets'], {'include': []})
+        manual = self.make(targets='daily')
+        self.assertEqual((manual['build'], manual['monitor']), ('true', 'false'))
+        self.assertEqual(result['build_targets'], manual['build_targets'])
+        rows = result['build_targets']['include']
+        self.assertGreater(len({row['app_branch'] for row in rows}) * 2, len(self.config['apps']))
+        self.assertGreater(len(rows) * 2, len(self.make(targets='all')['build_targets']['include']))
+        for row in rows:
+            self.assertEqual(row, catalog.get(self.config, row['app_branch'], row['build_tag']))
+
+    def test_novnc_targets_use_distinct_publication_tags(self):
+        rows = self.make(targets='novnc,novnc_alpine')['build_targets']['include']
+        self.assertEqual([(row['build_tag'], row['publish_tag']) for row in rows],
+                         [('latest', 'latest'), ('latest', 'alpine')])
+        config = copy.deepcopy(self.config)
+        config['apps']['novnc_alpine']['targets'][0].pop('publish_tag')
+        with self.assertRaisesRegex(ValueError, 'share a Docker Hub destination'):
+            workflow_plan.plan(config, 'schedule', {})
 
     def test_removed_controls_and_non_objects_fail(self):
         for key in ['verify','execution_route','app_branch','tag_repo','target_id','build_matrix','platform',
@@ -184,9 +196,8 @@ class WorkflowPlanTests(unittest.TestCase):
                 workflow_plan.main()
             values = dict(line.split('=',1) for line in output.read_text().splitlines())
             self.assertEqual(len(json.loads(values['build_targets'])['include']),30)
-            self.assertEqual(set(values), {'build', 'monitor', 'publish_adguard_release',
+            self.assertEqual(set(values), {'build', 'monitor',
                                            'version_matrix', 'build_targets', 'images', 'image_platforms'})
-            self.assertEqual(values['publish_adguard_release'], 'false')
             output.unlink()
             with mock.patch.dict(os.environ,dict(env,WORKFLOW_INPUTS='{"verify":true}')), self.assertRaises(ValueError):
                 workflow_plan.main()

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# Requirements: select the sole Container builder for manual checks and AdGuard release changes.
-# Unknowns/research: deferred applications and external consumers require separate evidence.
-# Optimization: select each Target once; diagnostics are shared across the selected builds.
-# Risks/verification: reject ambiguous targets and confine automatic publication to the release Target.
+# Requirements: share the Container builder across daily, manual and AdGuard release runs.
+# Unknowns/research: qualify deferred Targets independently before adding them to the daily list.
+# Optimization: select each Target once and share the fixed OCI diagnostics across the build matrix.
+# Risks/verification: use the same daily matrix for schedule and dispatch and reject shared Docker Hub destinations.
 """Plan Container builds and shared diagnostics from one public input."""
 
 from __future__ import annotations
@@ -17,6 +17,26 @@ import catalog
 
 
 DIAGNOSTIC_IMAGES = ("debian:latest", "ubuntu:latest", "alpine:latest", "debian:sid", "ubuntu:devel")
+DAILY_TARGETS = (
+    "adguardvpn-cli:release",
+    "adguardvpn-cli:beta",
+    "adguardvpn-cli:nightly",
+    "aria2",
+    "baidunetdisk:dev",
+    "cloudflare-warp",
+    "curl",
+    "dnscrypt-proxy",
+    "doh-nosni",
+    "nordvpn",
+    "novnc",
+    "novnc_alpine",
+    "privoxy",
+    "protonvpn",
+    "samba:alpine",
+    "samba:latest",
+    "squid",
+    "vlmcsd",
+)
 ADGUARD_RELEASE = ("adguardvpn-cli", "release")
 ADGUARD_RELEASE_PATHS = (
     ".github/workflows/gpt_dev.yml",
@@ -26,7 +46,7 @@ ADGUARD_RELEASE_PATHS = (
     "scripts/ci/catalog.py",
     "scripts/ci/compare_image_snapshot.py",
     "scripts/ci/materialize_test_hooks.py",
-    "scripts/ci/publish-adguardvpn-release.sh",
+    "scripts/ci/publish-accepted-image.sh",
     "scripts/ci/verify_image_archive.py",
     "scripts/ci/workflow_plan.py",
 )
@@ -63,6 +83,8 @@ def _select(config: dict, text: str, all_targets: list[dict]) -> list[dict]:
     text = text.strip() or "vlmcsd"
     if text == "all":
         return list(all_targets)
+    if text == "daily":
+        text = ",".join(DAILY_TARGETS)
     selected, seen = [], set()
     for token in text.split(","):
         parts = token.strip().split(":")
@@ -86,7 +108,7 @@ def _select(config: dict, text: str, all_targets: list[dict]) -> list[dict]:
 
 
 def plan(config: dict, event_name: str, inputs: dict, *, release_changed: bool = False) -> dict:
-    """Keep manual builds separate from the automatic AdGuard release push."""
+    """Plan daily monitoring/builds, manual builds and automatic release pushes."""
     if event_name not in {"push", "schedule", "workflow_dispatch"}:
         raise ValueError("Core accepts push/schedule/workflow_dispatch only")
     if not isinstance(inputs, dict) or set(inputs) - {"targets"}:
@@ -99,21 +121,24 @@ def plan(config: dict, event_name: str, inputs: dict, *, release_changed: bool =
     monitor = event_name == "schedule"
     publish_release = event_name == "push" and release_changed
     selected = []
-    if manual:
-        selected = _select(config, inputs.get("targets", "vlmcsd"), all_targets)
-    if publish_release:
+    if manual or monitor:
+        selected = _select(config, "daily" if monitor else inputs.get("targets", "vlmcsd"), all_targets)
+    elif publish_release:
         release = catalog.get(config, *ADGUARD_RELEASE)
         if (release["repo_dockerhub"] != "grinch27/adguardvpn-cli" or
+                release["publish_tag"] != "release" or
                 set(release["arch_branch"].split(",")) != {"linux/amd64", "linux/arm64"} or
                 release["build_arg"] != "update_channel=release"):
             raise ValueError("AdGuard Docker Hub destination, platforms or channel changed")
         selected = [release]
     if len(selected) > 256:
         raise ValueError("Container matrix exceeds GitHub's 256-job limit")
+    destinations = {(row["repo_dockerhub"], row["publish_tag"]) for row in selected}
+    if len(destinations) != len(selected):
+        raise ValueError("Selected targets share a Docker Hub destination")
     versions = [dict(app_branch=app, tag_repo="latest") for app in config["apps"]] if monitor else []
     return {
         "build": str(bool(selected)).lower(), "monitor": str(monitor).lower(),
-        "publish_adguard_release": str(publish_release).lower(),
         "version_matrix": {"include": versions},
         "build_targets": {"include": selected},
         "images": list(DIAGNOSTIC_IMAGES),
@@ -135,7 +160,7 @@ def main() -> None:
         for key, value in result.items():
             text = json.dumps(value, separators=(",", ":")) if not isinstance(value, str) else value
             stream.write(key + "=" + text + "\n")
-    print(json.dumps({key: result[key] for key in ("build", "monitor", "publish_adguard_release")} |
+    print(json.dumps({key: result[key] for key in ("build", "monitor")} |
                      {"targets": len(result["build_targets"]["include"]),
                       "platforms": sum(len(t["arch_branch"].split(","))
                                        for t in result["build_targets"]["include"])}))

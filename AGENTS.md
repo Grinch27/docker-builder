@@ -535,9 +535,15 @@ Part I 是面向未来设计的通用规范；不得据此自动恢复已经退�
 
 ## 3. 不可突破的边界
 
-既有 `AGENTS.md` 中的非发布要求优先：不新增 Docker Hub/GHCR 登录与推送、Release、Dev 晋升、自动 README 提交或权限扩张。本次只部署说明文档，不变更真实构建、监控、导出、测试与发布逻辑。
+第 4 节记录当前授权的 Docker Hub 发布范围。GHCR 推送、GitHub Release、Dev 晋升、自动 README 提交、权限与密钥变更仍须独立授权。Part II-B 保留原迁移阶段的历史边界。
 
 既有临时 Registry、Docker Socket、容器权限、单 Target/全平台策略、版本一致性校验、tar/xz/分卷完整性检查，只能在独立授权与回归验证下调整。构建并非生产发布；历史 CI 绿色或旧 SHA 验收不能作为当前 SHA 的完整证明。
+
+## 4. 每日构建
+
+- `gpt_dev.yml` 在每日 01:17 UTC 调度 `DAILY_TARGETS` 和全应用版本监控。手动 `targets=daily` 走同一构建矩阵，`targets=all` 选择整个 Catalog。
+- 新 Target 先在 `main` 独立通过构建、全平台测试、OCI 比较、归档与发布，再加入每日清单。README 定义平台、构建参数、探针和 Docker Hub 目标。noVNC Debian 版发布至 `grinch27/novnc:latest`，Alpine 版发布至 `grinch27/novnc:alpine`。
+- 仅 `Grinch27/docker-builder` 的 `main` 可以使用现有 Docker Hub 凭据。每个 Target 仅发布同一提交验收成功的归档，并回读 Docker Hub 核对所有平台的 manifest 摘要和版本。证据须分别记录构建与发布结果。
 
 <!-- END: DOCKER-BUILDER PROJECT RULES -->
 

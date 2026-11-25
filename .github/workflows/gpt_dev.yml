@@ -1,12 +1,12 @@
-# Requirements: use one Container builder for manual checks and AdGuard releases on main.
-# Unknowns/research: deferred applications and live daemon capacity need separate evidence.
+# Requirements: build and publish accepted daily or manual Targets from the official main branch.
+# Unknowns/research: establish first scheduled-run timing and qualify deferred Targets separately.
 # Optimization: one build per Target, minimal Docker client tools and shared fixed diagnostics.
-# Risks/verification: publish only the accepted AdGuard release archives after shared diagnostics pass.
+# Risks/verification: wait for shared diagnostics and verify the remote index against the accepted archives.
 name: Docker Builder - Container
-run-name: Docker Builder - ${{ github.event_name }} - ${{ inputs.targets || 'monitor/validate' }}
+run-name: Docker Builder - ${{ github.event_name }} - ${{ inputs.targets || (github.event_name == 'schedule' && 'daily build/monitor') || 'validate' }}
 'on':
   schedule:
-  - cron: '0 1 * * *'
+  - cron: '17 1 * * *'
   push:
     branches:
     - main
@@ -19,7 +19,7 @@ run-name: Docker Builder - ${{ github.event_name }} - ${{ inputs.targets || 'mon
   workflow_dispatch:
     inputs:
       targets:
-        description: Configured app[:tag], comma-separated list, or all; builds every configured platform
+        description: Configured app[:tag], comma-separated list, daily, or all. Builds every configured platform.
         type: string
         default: vlmcsd
 permissions: write-all
@@ -60,7 +60,6 @@ jobs:
     outputs:
       build: ${{ steps.plan.outputs.build }}
       monitor: ${{ steps.plan.outputs.monitor }}
-      publish_adguard_release: ${{ steps.plan.outputs.publish_adguard_release }}
       version_matrix: ${{ steps.plan.outputs.version_matrix }}
       build_targets: ${{ steps.plan.outputs.build_targets }}
       images: ${{ steps.plan.outputs.images }}
@@ -105,11 +104,13 @@ jobs:
       id: env-app
       run: |
         set -euo pipefail
-        if [[ "$app_branch" == adguardvpn-cli ]]; then
-          python3 scripts/ci/catalog.py env --app "$app_branch" --tag release --output "$GITHUB_ENV"
-        else
-          python3 scripts/ci/catalog.py env --app "$app_branch" --tag "$tag_repo" --app-only --output "$GITHUB_ENV"
-        fi
+        case "$app_branch" in
+          adguardvpn-cli) catalog_args=(--tag release) ;;
+          runner) catalog_args=(--tag slim) ;;
+          sdnext-dev) catalog_args=(--tag dev) ;;
+          *) catalog_args=(--tag "$tag_repo" --app-only) ;;
+        esac
+        python3 scripts/ci/catalog.py env --app "$app_branch" "${catalog_args[@]}" --output "$GITHUB_ENV"
     - name: Collect version from meta-app scripts
       id: meta-app
       env:
@@ -152,8 +153,10 @@ jobs:
             return
           fi
           local -a probe_env=()
-          if [[ "$app_branch" == adguardvpn-cli ]]; then
+          if [[ "$app_branch" == adguardvpn-cli || "$app_branch" == sdnext-dev ]]; then
             probe_env=(--env "build_arg=$build_arg")
+          elif [[ "$app_branch" == runner ]]; then
+            probe_env=(--env "build_tag=$build_tag")
           fi
           if ! docker exec --user 0 --workdir /tmp "${probe_env[@]}" "$container_name" /bin/sh /tmp/meta-app.sh >> "$log_container" 2>&1; then
             status=probe_failed
@@ -438,8 +441,6 @@ jobs:
     runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
     permissions:
       contents: read
-    outputs:
-      acceptance_artifact_id: ${{ steps.acceptance-artifact.outputs.artifact-id }}
     strategy:
       fail-fast: false
       max-parallel: 10
@@ -658,34 +659,61 @@ jobs:
           rm -rf "${dir}"
         }
 
-        declare -A observed_adguard_versions=()
-        measure_legacy_adguard_release() {
+        declare -A observed_versions=()
+        measure_legacy_versions() {
           local ref=$1 evidence=$2 platform digest banner observed
-          [[ "$app_branch" == adguardvpn-cli && "$tag_repo" == release ]] || return 0
+          local version_pattern='^version=([0-9]+(\.[0-9]+)+)$'
+          local -a platforms probe_env=()
+          case "$app_branch:$tag_repo" in
+            adguardvpn-cli:release|runner:actions|runner:actions-slim) ;;
+            curl:latest) version_pattern='^version=([0-9]+(\.[0-9]+)+([-+][A-Za-z0-9.+_-]+)?)$' ;;
+            novnc_alpine:latest) version_pattern='^version=([0-9][A-Za-z0-9._+-]*)$' ;;
+            openwrt:main) version_pattern='^version=([A-Za-z0-9._+-]+-r[0-9]+-[0-9a-f]+)$' ;;
+            runner:dev|runner:slim) version_pattern='^version=([a-z0-9]+-[a-z0-9]+-gcc-[0-9A-Za-z.+:~_-]+)$' ;;
+            steamcmd:dev)
+              version_pattern='^version=([0-9]+)$'
+              probe_env=(--env STEAMCMD_LEGACY_VERSION=1)
+              ;;
+            *) return 0 ;;
+          esac
           python3 scripts/ci/materialize_test_hooks.py --app "$app_branch" --kind test
-          for platform in linux/amd64 linux/arm64; do
+          IFS=',' read -ra platforms <<< "$arch_branch"
+          for platform in "${platforms[@]}"; do
             if ! jq -e --arg platform "$platform" '
-              .source.platforms[$platform] | select(.status == "present") |
-              (.image.config // .image.Config) | (.Labels // .labels // {}) |
-              [."org.opencontainers.image.version", .version] | all(. == null or . == "")
+              .source as $source |
+              $source.platforms[$platform] | select(.status == "present") |
+              ((.image.config // .image.Config) | .Labels // .labels // {}) as $labels |
+              [$labels."org.opencontainers.image.version", $labels.version,
+               $source.parsed.manifest.annotations."org.opencontainers.image.version"] |
+              all(. == null or (tostring | test("^\\s*$")))
             ' "$evidence" >/dev/null; then
               continue
             fi
-            digest=$(jq -er --arg arch "${platform#linux/}" '
-              [.source.raw.manifests[] | select(.platform.os == "linux" and .platform.architecture == $arch)] |
-              select(length == 1) | .[0].digest | select(test("^sha256:[0-9a-f]{64}$"))
-            ' "$evidence")
-            if [[ ! -v 'observed_adguard_versions[$digest]' ]]; then
+            if ! digest=$(jq -er --arg platform "$platform" '
+              ($platform | split("/")) as $parts | .source |
+              if (.raw.manifests | type) == "array" then
+                [.raw.manifests[] | select(.platform.os == $parts[0] and
+                  .platform.architecture == $parts[1] and
+                  ($parts[2] == null or .platform.variant == $parts[2]))] |
+                select(length == 1) | .[0].digest
+              else
+                .parsed.manifest.digest
+              end | select(type == "string" and test("^sha256:[0-9a-f]{64}$"))
+            ' "$evidence"); then
+              printf '::error::Could not determine a published manifest digest for %s (%s)\n' "$ref" "$platform"
+              return 1
+            fi
+            if [[ ! -v 'observed_versions[$digest]' ]]; then
               if ! banner=$(docker run --rm --interactive --platform "$platform" --network none --cap-drop ALL \
-                --security-opt no-new-privileges --entrypoint /bin/sh "${ref%:*}@$digest" \
-                -s < "$PATH_app/test/test.sh") || [[ ! "$banner" =~ ^version=([0-9]+(\.[0-9]+)+)$ ]]; then
-                printf '::error::Could not read the published AdGuard release version for %s (%s)\n' "$ref" "$platform"
+                --security-opt no-new-privileges "${probe_env[@]}" --entrypoint /bin/sh "${ref%:*}@$digest" \
+                -s < "$PATH_app/test/test.sh") || [[ ! "$banner" =~ $version_pattern ]]; then
+                printf '::error::Could not read the published image version for %s (%s)\n' "$ref" "$platform"
                 return 1
               fi
-              observed_adguard_versions[$digest]=${BASH_REMATCH[1]}
+              observed_versions[$digest]=${BASH_REMATCH[1]}
             fi
-            observed=${observed_adguard_versions[$digest]}
-            printf 'Published AdGuard baseline %s %s version=%s\n' "$ref" "$platform" "$observed"
+            observed=${observed_versions[$digest]}
+            printf 'Published baseline %s %s version=%s\n' "$ref" "$platform" "$observed"
             jq --arg platform "$platform" --arg observed "$observed" \
               '.source.platforms[$platform].observed_version = $observed' "$evidence" > "$evidence.tmp"
             mv "$evidence.tmp" "$evidence"
@@ -694,10 +722,10 @@ jobs:
 
         repo_name="${repo_dockerhub##*/}"
         owner_lower=$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')
-        inspect_registry "${repo_dockerhub}:${tag_repo}" "$arch_branch" "$work_dir/dockerhub.json"
-        inspect_registry "ghcr.io/${owner_lower}/${repo_name}:${tag_repo}" "$arch_branch" "$work_dir/ghcr.json"
-        measure_legacy_adguard_release "${repo_dockerhub}:${tag_repo}" "$work_dir/dockerhub.json"
-        measure_legacy_adguard_release "ghcr.io/${owner_lower}/${repo_name}:${tag_repo}" "$work_dir/ghcr.json"
+        inspect_registry "${repo_dockerhub}:${publish_tag}" "$arch_branch" "$work_dir/dockerhub.json"
+        inspect_registry "ghcr.io/${owner_lower}/${repo_name}:${publish_tag}" "$arch_branch" "$work_dir/ghcr.json"
+        measure_legacy_versions "${repo_dockerhub}:${publish_tag}" "$work_dir/dockerhub.json"
+        measure_legacy_versions "ghcr.io/${owner_lower}/${repo_name}:${publish_tag}" "$work_dir/ghcr.json"
         jq -n --slurpfile dockerhub "$work_dir/dockerhub.json" --slurpfile ghcr "$work_dir/ghcr.json" '{schema_version:1,registries:{dockerhub:$dockerhub[0],ghcr:$ghcr[0]}}' > "$PATH_metadata/baseline.json"
         [[ "$fatal_count" == 0 ]] || { echo '::error::Published-image inspection failed'; exit 1; }
     - name: Probe Meta-app on every configured platform
@@ -716,7 +744,8 @@ jobs:
           docker pull --platform "$platform" "$base_image"
           docker run --name meta-probe --detach --platform "$platform" --entrypoint /bin/sh "$base_image" -c 'sleep infinity'
           docker cp "$script" meta-probe:/tmp/meta-app.sh
-          docker exec --user 0 --workdir /tmp --env "build_arg=$build_arg" meta-probe /bin/sh /tmp/meta-app.sh | tee "$PATH_metadata/$label.meta.log"
+          docker exec --user 0 --workdir /tmp --env "build_arg=$build_arg" --env "build_tag=$tag_repo" \
+            meta-probe /bin/sh /tmp/meta-app.sh | tee "$PATH_metadata/$label.meta.log"
           detected=$(awk '/^version=/{sub(/^version=/, ""); v=$0} END{print v}' "$PATH_metadata/$label.meta.log")
           jq --arg platform "$platform" --arg version "$detected" '.platforms += [{platform:$platform,version:$version}]' "$PATH_metadata/meta-app.json" > "$PATH_metadata/meta-app.tmp"
           mv "$PATH_metadata/meta-app.tmp" "$PATH_metadata/meta-app.json"
@@ -877,7 +906,7 @@ jobs:
         {
           printf '# %s:%s\n\n' "$app_branch" "$tag_repo"
           printf 'Source: `%s`\n\nPlatforms: `%s`\n\n' "$GITHUB_SHA" "$arch_branch"
-          printf 'Nonpublishing acceptance: local Registry, README Test, OCI comparison, platform archives and xz integrity.\n\n'
+          printf 'Container acceptance: local Registry, README Test, OCI comparison, platform archives and xz integrity.\n\n'
           printf 'For split files, concatenate `.partNNN` in numeric order, then decompress with `xz -d` and load with `docker load`.\n\n'
           printf 'Raw tar and uploaded-file SHA256 values: `metadata/metadata_sum.json`.\n'
         } > "$PATH_release"
@@ -891,10 +920,14 @@ jobs:
         python3 - <<'CHECK'
         import json
         import os
+        from pathlib import Path
         steps = json.loads(os.environ['STEP_RESULTS'])
         for key in ['meta-app', 'buildx', 'registry', 'build', 'test-export', 'free-storage', 'compress', 'split', 'verify-outputs', 'report']:
             assert steps[key]['conclusion'] == 'success', key + ' did not succeed'
-        print('Container acceptance: all configured platforms/build/test/compare/export/xz PASS; external publication=0')
+        accepted = {key: os.environ[key] for key in ('app_branch', 'tag_repo', 'repo_dockerhub', 'publish_tag', 'version')}
+        accepted.update(sha=os.environ['GITHUB_SHA'], platforms=os.environ['arch_branch'].split(','))
+        (Path(os.environ['PATH_metadata']) / 'acceptance.json').write_text(json.dumps(accepted) + '\n')
+        print('Container acceptance: all configured platforms/build/test/compare/export/xz PASS')
         CHECK
     - name: Upload Container acceptance evidence
       id: acceptance-artifact
@@ -911,32 +944,43 @@ jobs:
         set -euo pipefail
         docker rm -fv meta-probe image-test registry-local >/dev/null 2>&1 || true
         docker buildx rm container-builder >/dev/null 2>&1 || true
-  publish-adguardvpn-release:
-    name: Publish adguardvpn-cli:release to Docker Hub
+  publish-image:
+    name: Publish ${{ matrix.app_branch }}:${{ matrix.publish_tag }} to Docker Hub
     needs:
     - runner-image
     - plan
     - container-build
     - diagnostic-validate
     if: >-
-      ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+      ${{ !cancelled() && github.ref == 'refs/heads/main' &&
           github.repository == 'Grinch27/docker-builder' &&
-          needs.plan.outputs.publish_adguard_release == 'true' }}
+          needs.plan.outputs.build == 'true' && needs.diagnostic-validate.result == 'success' }}
     runs-on: ${{ needs.runner-image.outputs.RUNNER_IMAGE }}
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.build_targets).include }}
     concurrency:
-      group: dockerhub-adguardvpn-cli-release
+      group: dockerhub-${{ matrix.repo_dockerhub }}-${{ matrix.publish_tag }}
       cancel-in-progress: false
+    env:
+      app_branch: ${{ matrix.app_branch }}
+      tag_repo: ${{ matrix.tag_repo }}
+      repo_dockerhub: ${{ matrix.repo_dockerhub }}
+      publish_tag: ${{ matrix.publish_tag }}
+      arch_branch: ${{ matrix.arch_branch }}
     steps:
     - name: Checkout accepted source
       uses: actions/checkout@main
     - name: Download accepted platform archives
       uses: actions/download-artifact@main
       with:
-        artifact-ids: ${{ needs.container-build.outputs.acceptance_artifact_id }}
-        path: ${{ runner.temp }}/adguardvpn-acceptance
-        merge-multiple: true
+        pattern: container-acceptance-${{ matrix.app_branch }}-${{ matrix.tag_repo }}-a*
+        path: ${{ runner.temp }}/image-acceptance
+        merge-multiple: false
     - name: Install regctl
       run: |
         set -euo pipefail
@@ -955,4 +999,10 @@ jobs:
         DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
       run: |
         set -euo pipefail
-        bash scripts/ci/publish-adguardvpn-release.sh "$RUNNER_TEMP/adguardvpn-acceptance"
+        artifact_dir="$RUNNER_TEMP/image-acceptance"
+        mapfile -t artifacts < <(find "$artifact_dir" -mindepth 1 -maxdepth 1 \
+          -type d -name 'container-acceptance-*-a*' | sort -V)
+        if (( ${#artifacts[@]} > 0 )); then
+          artifact_dir=${artifacts[-1]}
+        fi
+        bash scripts/ci/publish-accepted-image.sh "$artifact_dir"

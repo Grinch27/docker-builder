@@ -47,7 +47,7 @@ def validate_workflow(root):
     blocks = job_blocks(text)
     required = {"runner-image", "plan", "fetch-versions", "monitor",
                 "diagnostic-layers", "diagnostic-platforms", "diagnostic-collect",
-                "diagnostic-validate", "container-build", "publish-adguardvpn-release"}
+                "diagnostic-validate", "container-build", "publish-image"}
     assert required == blocks.keys(), "Core Job set changed"
     planning = blocks["plan"]
     outputs = set(re.findall(r"^      ([a-zA-Z0-9_-]+): \$\{\{ steps\.plan\.outputs\.", planning, re.MULTILINE))
@@ -130,20 +130,23 @@ class WorkflowContractTests(unittest.TestCase):
     def test_publication_is_isolated_from_builds_and_requires_acceptance(self):
         self.assertNotRegex(TEXT,r'\b(?:docker\s+(?:login|push)|gh\s+release|git\s+push)\b')
         blocks = job_blocks(TEXT)
-        publisher = blocks.pop('publish-adguardvpn-release')
+        publisher = blocks.pop('publish-image')
         self.assertNotRegex(''.join(blocks.values()), r'--dest-creds|release-action|secrets\.')
         self.assertEqual(dependencies(publisher), {'runner-image', 'plan', 'container-build', 'diagnostic-validate'})
-        for guard in ("github.event_name == 'push'", "github.ref == 'refs/heads/main'",
-                      "needs.plan.outputs.publish_adguard_release == 'true'"):
+        for guard in ("!cancelled()", "github.ref == 'refs/heads/main'",
+                      "github.repository == 'Grinch27/docker-builder'",
+                      "needs.plan.outputs.build == 'true'",
+                      "needs.diagnostic-validate.result == 'success'"):
             self.assertIn(guard, publisher)
-        self.assertIn('needs.container-build.outputs.acceptance_artifact_id', publisher)
+        self.assertIn('pattern: container-acceptance-${{ matrix.app_branch }}-${{ matrix.tag_repo }}-a*', publisher)
+        self.assertIn('scripts/ci/publish-accepted-image.sh', publisher)
         self.assertEqual(set(re.findall(r'secrets\.([A-Z_]+)', publisher)),
                          {'DOCKER_USERNAME', 'DOCKER_PASSWORD'})
         planner=(ROOT/'scripts/ci/workflow_plan.py').read_text()
         self.assertNotIn('head_commit',planner)
         self.assertNotIn('GITHUB_EVENT_PATH',planner)
         self.assertIn('127.0.0.1:5000',TEXT)
-        self.assertIn("cron: '0 1 * * *'",TEXT)
+        self.assertIn("cron: '17 1 * * *'",TEXT)
 
     def test_daemon_is_host_socket_only_and_storage_is_observed(self):
         block=job_blocks(TEXT)['container-build']
@@ -391,12 +394,26 @@ class WorkflowContractTests(unittest.TestCase):
         stages=['meta-app','buildx','registry','build','test-export','free-storage','compress','split','verify-outputs','report']
         steps={k:{'conclusion':'success'} for k in stages}
         script=script_for('container-build','Enforce complete Container acceptance')
-        def check(data):
-            return subprocess.run(['bash'],input=script,env=dict(os.environ,STEP_RESULTS=json.dumps(data)),capture_output=True,text=True)
-        self.assertEqual(check(steps).returncode,0)
-        for key in stages:
-            for status in ['failure','skipped','cancelled']:
-                self.assertNotEqual(check(dict(steps,**{key:{'conclusion':status}})).returncode,0)
+        expected = dict(app_branch='novnc_alpine', tag_repo='latest',
+                        repo_dockerhub='grinch27/novnc', publish_tag='alpine', version='1.6.0-r1')
+        with tempfile.TemporaryDirectory() as directory:
+            marker = Path(directory) / 'acceptance.json'
+            env = dict(os.environ, **expected, GITHUB_SHA='fixture-sha',
+                       PATH_metadata=directory, arch_branch='linux/amd64,linux/arm64')
+
+            def check(data):
+                return subprocess.run(['bash'], input=script,
+                                      env=dict(env, STEP_RESULTS=json.dumps(data)),
+                                      capture_output=True, text=True)
+
+            for key in stages:
+                for status in ['failure','skipped','cancelled']:
+                    self.assertNotEqual(check(dict(steps, **{key: {'conclusion': status}})).returncode, 0)
+                    self.assertFalse(marker.exists())
+            result = check(steps)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(marker.read_text()), dict(expected, sha='fixture-sha',
+                             platforms=['linux/amd64', 'linux/arm64']))
 
     def test_manual_artifact_tool_remains_nonpublishing(self):
         manual=(ROOT/'.github/workflows/download_artifact.yml').read_text()

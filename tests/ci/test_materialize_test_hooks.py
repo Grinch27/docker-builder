@@ -138,8 +138,8 @@ class EmbeddedTests(unittest.TestCase):
 
 
     def test_adguardvpn_meta_uses_configured_channel_and_rejects_failed_probes(self):
-        tag_list = ('[{"name":"v9.9-nightly"},{"name":"v1.2-release"},'
-                    '{"name":"v1.3-beta.2-beta"},{"name":"v1.1-release"}]')
+        tag_list = ('[{"name":"v1.9.3-nightly.1"},{"name":"v1.2-release"},'
+                    '{"name":"v1.8.1-rc.2-beta"},{"name":"v1.1-release"}]')
         with tempfile.TemporaryDirectory() as directory:
             root = self.make_temp(directory)
             hooks.materialize(root, 'adguardvpn-cli', 'meta')
@@ -166,7 +166,8 @@ class EmbeddedTests(unittest.TestCase):
                 return subprocess.run(['/bin/sh', str(probe)], cwd=root, env=env,
                                       capture_output=True, text=True)
 
-            for channel, expected in [('release', '1.2'), ('beta', '1.3'), ('nightly', '9.9')]:
+            for channel, expected in [('release', '1.2'), ('beta', '1.8.1-rc.2'),
+                                      ('nightly', '1.9.3-nightly.1')]:
                 with self.subTest(channel=channel):
                     result = run_probe('update_channel=' + channel)
                     self.assertEqual(result.returncode, 0, result.stderr)
@@ -182,6 +183,7 @@ class EmbeddedTests(unittest.TestCase):
                 ('non-array JSON', release, '{"first":{"name":"v1.2-release"}}', 0),
                 ('no match', release, '[{"name":"v9.9-nightly"}]', 0),
                 ('empty version', release, '[{"name":"v-release"}]', 0),
+                ('prerelease used as release', release, '[{"name":"v1.8.1-rc.2-release"}]', 0),
             ]
             for name, build_arg, tags, curl_status in failures:
                 with self.subTest(failure=name):
@@ -204,14 +206,21 @@ class EmbeddedTests(unittest.TestCase):
                 bindir.mkdir()
                 executable = bindir / command
                 env = dict(os.environ, PATH=str(bindir) + os.pathsep + os.environ.get('PATH', ''))
-                for sample, accepted in [(output, True), ('', False), ('bad\x01version\n', False)]:
+                cases = [(output, expected), ('', None), ('bad\x01version\n', None)]
+                if app == 'adguardvpn-cli':
+                    cases.extend([
+                        ('AdGuard VPN CLI v1.8.1-rc.2\n', '1.8.1-rc.2'),
+                        ('AdGuard VPN CLI v1.9.3-nightly.1\n', '1.9.3-nightly.1'),
+                        ('AdGuard VPN CLI v1.9.3-nightly.1\nAdGuard VPN CLI v1.8.1-rc.2\n', None),
+                    ])
+                for sample, version in cases:
                     executable.write_text('#!/bin/sh\nprintf %s ' + __import__('shlex').quote(sample) + '\n')
                     executable.chmod(0o755)
                     result = subprocess.run(['sh', str(root/'application'/app/'test/test.sh')],
                                             env=env, capture_output=True, text=True)
-                    self.assertEqual(result.returncode == 0, accepted, (app, repr(sample), result.stderr))
-                    if accepted:
-                        self.assertEqual(result.stdout, 'version=' + expected + '\n')
+                    self.assertEqual(result.returncode == 0, version is not None, (app, repr(sample), result.stderr))
+                    if version is not None:
+                        self.assertEqual(result.stdout, 'version=' + version + '\n')
 
     def test_canonical_dns_version_uses_first_line(self):
         # README semantics deliberately accept a first-line version followed by a banner.

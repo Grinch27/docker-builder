@@ -121,8 +121,7 @@ class CatalogTests(unittest.TestCase):
         dirs = {x.name for x in (ROOT / "application").iterdir()
                 if x.is_dir() and not x.name.startswith(".")}
         self.assertEqual(dirs, set(self.config["apps"]))
-        self.assertEqual(stats["legacy_ref_conflicts"],
-                         {"grinch27/novnc:latest": ["novnc", "novnc_alpine"]})
+        self.assertEqual(stats["legacy_ref_conflicts"], {})
 
     def test_all_target_settings_are_resolvable(self):
         for name, app in self.config["apps"].items():
